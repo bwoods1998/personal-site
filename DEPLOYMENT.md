@@ -11,7 +11,7 @@ Moderation: https://blake-woods.blake-woods-personal-site.workers.dev/admin/
 Print your private sign-in link locally:
 
 ```sh
-SITE_URL=https://blake-woods.blake-woods-personal-site.workers.dev npm run admin
+npm run admin:live
 ```
 
 Do not share the generated link or `.dev.vars`. All visitor text requires approval; numeric trades are immediate. Free-tier quotas apply.

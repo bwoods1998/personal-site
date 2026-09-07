@@ -13,7 +13,8 @@
     "admin": "node scripts/setup.mjs --admin",
     "test": "node --test test/*.test.mjs",
     "deploy": "npm run build && wrangler deploy",
-    "publish:first": "npm run build && node scripts/publish.mjs"
+    "publish:first": "npm run build && node scripts/publish.mjs",
+    "admin:live": "node scripts/setup.mjs --admin --live"
   },
   "devDependencies": {
     "wrangler": "^4.129.1"

@@ -11,26 +11,31 @@ async function load(append = false) {
   try {
     const data = await api(`orders?status=${filter}${append && before ? `&before=${before}` : ''}`);
     $('#login').hidden = true; $('#review').hidden = false; $('#status').textContent = '';
-    $('#filter-label').textContent = `${filter[0].toUpperCase() + filter.slice(1)} notes`;
+    for (const button of document.querySelectorAll('[data-filter]')) {
+      const label = button.dataset.filter;
+      button.textContent = `${label[0].toUpperCase() + label.slice(1)} (${data.counts[label]})`;
+      button.setAttribute('aria-pressed', String(label === filter));
+    }
+    $('#filter-label').textContent = `${filter[0].toUpperCase() + filter.slice(1)} submissions`;
     if (!append) $('#queue').replaceChildren();
     for (const order of data.orders) {
       const article = document.createElement('article');
       const label = document.createElement('p'); label.textContent = `#${order.id} · ${order.side.toUpperCase()} · ${new Date(order.time).toLocaleString()}`;
       const name = document.createElement('strong'); name.textContent = order.name || 'Guest';
-      const note = document.createElement('p'); note.textContent = order.note || '(No note)';
+      const note = document.createElement('p'); note.textContent = order.note || '(No memo)';
       article.append(label, name, note);
       for (const action of ['approve', 'reject']) {
         if ((action === 'approve' && filter === 'approved') || (action === 'reject' && filter === 'rejected')) continue;
         const button = document.createElement('button'); button.textContent = action === 'approve' ? 'Approve' : filter === 'approved' ? 'Hide' : 'Reject';
         button.addEventListener('click', async () => {
           button.disabled = true;
-          try { await api(`orders/${order.id}/moderate`, { action }); await load(); }
+          try { await api(`orders/${order.id}/moderate`, { action }); await load(); $('#status').textContent = action === 'approve' ? 'Published. Public views refresh within a few seconds.' : 'Hidden from public views.'; }
           catch (error) { $('#status').textContent = error.message; button.disabled = false; }
         }); article.append(button);
       }
       $('#queue').append(article);
     }
-    if (!$('#queue').children.length) $('#queue').textContent = 'Nothing here.';
+    if (!$('#queue').children.length) $('#queue').textContent = 'No submissions in this queue.';
     before = data.next; $('#more').hidden = !before;
   } catch (error) { $('#status').textContent = error.message; }
 }

@@ -42,15 +42,25 @@
           </div>
           <section class="exchange" aria-labelledby="exchange-title">
             <div class="exchange-masthead"><span class="exchange-kicker">Stock Exchange</span><h3 id="exchange-title">The Woods Company</h3></div>
-            <div class="exchange-bar"><span class="ticker">BW</span><span id="market-count">— orders</span></div>
-            <div class="quote"><strong id="price">—</strong><span id="change">Since open · 100.00</span></div>
-            <svg id="chart" viewBox="0 0 320 94" role="img" aria-label="Fictional BW index, awaiting orders"><path class="chart-grid" d="M0 23H320M0 47H320M0 71H320M80 0V94M160 0V94M240 0V94"/><path id="chart-line" d="M0 47H320"/></svg>
-            <p class="exchange-instruction">Buy or sell. Move the price. Leave a note.</p>
-            <div class="trade-actions"><button type="button" data-side="buy">Buy <span>+1 ↗</span></button><button type="button" data-side="sell">Sell <span>−1 ↘</span></button></div>
-            <p class="market-disclaimer">Just for fun. No money or ownership.</p>
+            <div class="exchange-bar"><span class="ticker">WOODS <span>SIM</span></span><span id="market-count">— trades</span></div>
+            <div class="quote"><div><span id="quote-label" class="quote-label">Last / points</span><strong id="price">—</strong></div><span id="change">— / 24h</span></div>
+            <dl class="market-stats"><div><dt>24h high</dt><dd id="day-high">—</dd></div><div><dt>24h low</dt><dd id="day-low">—</dd></div><div><dt>24h trades</dt><dd id="day-trades">—</dd></div></dl>
+            <div class="terminal-tabs" role="tablist" aria-label="Market views">
+              <button id="chart-tab" type="button" role="tab" aria-controls="chart-panel" aria-selected="true" data-view="chart"><span aria-hidden="true">1</span> Chart</button>
+              <button id="tape-tab" type="button" role="tab" aria-controls="tape-panel" aria-selected="false" tabindex="-1" data-view="tape"><span aria-hidden="true">2</span> Tape</button>
+              <button id="memos-tab" type="button" role="tab" aria-controls="memos-panel" aria-selected="false" tabindex="-1" data-view="memos"><span aria-hidden="true">3</span> Memos</button>
+            </div>
+            <div class="terminal-panel" id="chart-panel" role="tabpanel" aria-labelledby="chart-tab">
+              <svg id="chart" viewBox="0 0 320 94" role="img" aria-label="Woods Company simulation, awaiting trades"><path class="chart-grid" d="M0 23H320M0 47H320M0 71H320M80 0V94M160 0V94M240 0V94"/><path id="chart-line" d="M0 47H320"/></svg>
+              <p class="chart-caption">Last 120 trades · in trade order</p>
+            </div>
+            <div class="terminal-panel" id="tape-panel" role="tabpanel" aria-labelledby="tape-tab" tabindex="0" hidden><table class="trade-tape"><caption class="sr-only">Latest 20 simulated executions. Times in UTC; prices in points.</caption><thead><tr><th scope="col">Time / UTC</th><th scope="col">Side</th><th scope="col">Price</th></tr></thead><tbody id="orders"></tbody></table></div>
+            <div class="terminal-panel" id="memos-panel" role="tabpanel" aria-labelledby="memos-tab" tabindex="0" hidden><ol id="memos" class="memo-list"><li>No approved memos yet.</li></ol></div>
+            <p class="exchange-instruction">Trade The Woods Company. Leave a memo.</p>
+            <div class="trade-actions"><button type="button" data-side="buy" aria-label="Buy The Woods Company">Buy <span>+1 ↗</span></button><button type="button" data-side="sell" aria-label="Sell The Woods Company">Sell <span>−1 ↘</span></button></div>
             <p id="market-status" class="market-status" role="status"></p>
-            <button id="refresh" class="text-button" type="button">Refresh ↻</button>
-            <details class="tape"><summary>Recent orders</summary><ol id="orders"><li>No orders yet. You can be first.</li></ol></details>
+            <div class="terminal-footer"><span id="as-of">Awaiting quote</span><button id="refresh" class="text-button" type="button">Refresh ↻</button></div>
+            <details class="market-rules"><summary>Simulation · how it works</summary><p>Buy +1 point; sell −1, floor 1. No matching order book, money, or ownership. Names and memos need approval. One trade/minute, five/day.</p></details>
           </section>
         </section>
       </main>
@@ -59,15 +69,17 @@
   </div>
   <dialog id="ticket" aria-labelledby="ticket-title">
     <form id="order-form">
-      <div class="ticket-bar"><h2 id="ticket-title">Buy BW</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
-      <p class="ticket-caption">Buy adds a point. Sell subtracts one.</p>
+      <div class="ticket-bar"><h2 id="ticket-title">Buy The Woods Company</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
+      <p class="ticket-caption">WOODS · simulated order</p>
+      <dl class="ticket-quote"><div><dt>Last</dt><dd id="ticket-last">—</dd></div><div><dt>Estimated fill</dt><dd id="ticket-estimate">—</dd></div></dl>
+      <p class="ticket-caption">Points, not dollars. Fill may change before submission.</p>
       <label>Name <span>optional</span><input id="order-name" name="name" maxlength="32" autocomplete="nickname"></label>
-      <label>Note <span>optional · 160 max</span><textarea id="order-note" name="note" maxlength="160" rows="3"></textarea></label>
+      <label>Memo <span>optional · 160 max</span><textarea id="order-note" name="note" maxlength="160" rows="3"></textarea></label>
       <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
-      <p class="ticket-caption">Names and notes appear only after approval.</p>
+      <p class="ticket-caption">Names and memos appear only after approval.</p>
       <p id="ticket-status" role="status"></p>
       <button id="submit-order" type="submit">Place buy order ↗</button>
-      <p class="ticket-caption">Fictional index. No money or ownership.<br>1 order/min · 5/day. A cookie keeps your limit.</p>
+      <p class="ticket-caption">Simulated trade. No money or ownership.<br>1 order/min · 5/day. A cookie keeps your limit.</p>
     </form>
   </dialog>
 </body>

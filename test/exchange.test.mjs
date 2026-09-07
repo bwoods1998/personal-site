@@ -75,3 +75,42 @@ test('network quota survives visitor resets and rejected requests roll back', as
     assert.equal((await market.snapshot()).total,105);
   }finally{await db.close();}
 });
+
+test('24-hour statistics use executed prices and the price at the window boundary', async () => {
+  const db = await openDatabase({filename:':memory:'});
+  let now = 1800000000000;
+  const market = await createExchange(db,{now:()=>now});
+  try {
+    let view = await market.snapshot();
+    assert.equal(view.session.trades,0); assert.equal(view.session.high,null); assert.equal(view.lastTradeAt,null);
+    await market.submit({side:'buy',requestId:randomUUID()},'first','first');
+    const firstTime=now;
+    now+=86400000;
+    view=await market.snapshot();
+    assert.equal(view.session.reference,101); assert.equal(view.session.trades,0); assert.equal(view.session.change,0);
+    await market.submit({side:'buy',requestId:randomUUID()},'second','second');
+    now+=1;
+    await market.submit({side:'sell',requestId:randomUUID()},'third','third');
+    view=await market.snapshot();
+    assert.equal(view.session.high,102); assert.equal(view.session.low,101); assert.equal(view.session.trades,2);
+    assert.equal(view.session.reference,101); assert.equal(view.session.changePercent,0);
+    assert.equal(view.lastTradeAt,now); assert.equal(view.asOf,now); assert.ok(view.session.since>firstTime);
+  }finally{await db.close();}
+});
+
+test('approved memos survive leaving the tape and hide immediately when revoked', async () => {
+  const db=await openDatabase({filename:':memory:'});const market=await createExchange(db);
+  try {
+    const receipt=await market.submit({side:'buy',requestId:randomUUID(),name:'Private name',note:'Private memo'},'author','author');
+    assert.equal((await market.snapshot()).memos.length,0);
+    assert.deepEqual((await market.reviewQueue()).counts,{pending:1,approved:0,rejected:0});
+    await market.moderate(receipt.id,'approve');
+    for(let i=0;i<22;i++)await market.submit({side:'buy',requestId:randomUUID()},`new${i}`,`net${i}`);
+    let snapshot=await market.snapshot();
+    assert.equal(snapshot.orders.length,20);assert.ok(!snapshot.orders.some(o=>o.id===receipt.id));
+    assert.equal(snapshot.memos[0].note,'Private memo');assert.equal(snapshot.memos[0].name,'Private name');
+    await market.moderate(receipt.id,'reject');
+    snapshot=await market.snapshot();assert.equal(snapshot.memos.length,0);assert.ok(!JSON.stringify(snapshot).includes('Private'));
+    assert.deepEqual((await market.reviewQueue()).counts,{pending:0,approved:0,rejected:1});
+  }finally{await db.close();}
+});
