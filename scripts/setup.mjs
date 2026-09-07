@@ -10,6 +10,6 @@ catch (error) { if (error.code !== 'EEXIST') throw error; }
 if (process.argv.includes('--admin')) {
   const vars = await readFile(file, 'utf8');
   const key = vars.match(/^ADMIN_KEY=(.+)$/m)[1];
-  const origin = process.env.SITE_URL || (process.argv.includes('--live') ? 'https://blake-woods.blake-woods-personal-site.workers.dev' : 'http://localhost:4173');
+  const origin = process.env.SITE_URL || (process.argv.includes('--live') ? 'https://blakewoods.us' : 'http://localhost:4173');
   console.log(`${origin}/admin/#key=${key}`);
 } else console.log('Local secrets ready. Keep .dev.vars private.');

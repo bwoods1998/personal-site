@@ -1,12 +1,12 @@
 # Live deployment
 
-Public URL: https://blake-woods.blake-woods-personal-site.workers.dev
+Public URL: https://blakewoods.us (also available at https://www.blakewoods.us).
 
-Published September 7, 2026 to Cloudflare Workers with a SQLite Durable Object. No custom domain or paid-plan upgrade was purchased. The hosted database starts empty and is separate from local test databases.
+Published September 7, 2026 to Cloudflare Workers with a SQLite Durable Object. The custom domain is registered with Cloudflare; hosting remains on the Free plan. The original workers.dev address remains available. Both custom hostnames use the same existing Worker and exchange database, separate from local test databases.
 
 Update: `npm run deploy` from this directory.
 
-Moderation: https://blake-woods.blake-woods-personal-site.workers.dev/admin/
+Moderation: https://blakewoods.us/admin/
 
 Print your private sign-in link locally:
 

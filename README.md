@@ -1,6 +1,6 @@
 # Blake Woods
 
-[Live website](https://blake-woods.blake-woods-personal-site.workers.dev) · [GitHub](https://github.com/bwoods1998)
+[Live website](https://blakewoods.us) · [GitHub](https://github.com/bwoods1998)
 
 Personal site for Blake Woods, with The Woods Company Stock Exchange: a fictional market guestbook. Buy/sell moves an index by one point; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
