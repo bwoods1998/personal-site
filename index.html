@@ -40,32 +40,34 @@
             <h2 id="projects-title" class="section-label">Projects</h2>
             <p class="project-intro">A home for my free-time projects, built with AI agents on a 2019 MacBook revived with <a href="https://omarchy.org/" target="_blank" rel="noopener noreferrer">Omarchy Linux<span class="sr-only"> (opens in a new tab)</span></a>. Cloud when needed.</p>
           </div>
-          <section class="exchange" aria-labelledby="exchange-title">
-            <div class="exchange-masthead"><span class="exchange-kicker">Stock Exchange</span><h3 id="exchange-title">The Woods Company</h3></div>
+        </section>
+        <section id="stock-exchange" class="stock-exchange" aria-labelledby="stock-exchange-title">
+          <h2 id="stock-exchange-title" class="section-label">Stock Exchange</h2>
+          <div class="exchange" aria-labelledby="exchange-title">
+            <div class="exchange-masthead"><h3 id="exchange-title">The Woods Company</h3></div>
             <div class="exchange-bar"><span class="ticker">WOODS <span>SIM</span></span><span id="market-count">— trades</span></div>
-            <div class="quote"><div><span id="quote-label" class="quote-label">Last / points</span><strong id="price">—</strong></div><span id="change">— / 24h</span></div>
+            <div class="quote"><div><span id="quote-label" class="quote-label">Last / USD</span><strong id="price">—</strong></div><span id="change">— / 24h</span></div>
             <div class="chart-ranges" role="group" aria-label="Price history period"><button type="button" data-range="6m" aria-pressed="false">6M</button><button type="button" data-range="1y" aria-pressed="false">1Y</button><button type="button" data-range="all" aria-pressed="true">All</button></div>
             <div class="history-chart">
-              <svg id="chart" viewBox="0 0 360 180" role="slider" tabindex="0" aria-label="Inspect Woods Company price history" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1" aria-describedby="chart-note">
+              <svg id="chart" viewBox="0 0 360 180" role="slider" tabindex="0" aria-label="Inspect Woods Company price history" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1">
                 <path class="chart-grid" d="M36 16H350M36 78H350M36 140H350"/>
                 <text id="chart-high" class="chart-scale" x="31" y="19" text-anchor="end"></text><text id="chart-low" class="chart-scale" x="31" y="143" text-anchor="end"></text>
                 <path id="chart-fill"/><path id="chart-line"/>
                 <path id="chart-crosshair" hidden/><circle id="chart-dot" r="3" hidden/>
               </svg>
               <div class="chart-dates"><span id="chart-start">Jun 2021</span><span id="chart-end">Today</span></div>
-              <p id="chart-inspect" class="chart-caption" aria-live="polite">Hover or use arrow keys to inspect</p>
-              <p id="chart-note" class="chart-caption">Illustrative backfill · live visitor trades</p>
+              <p id="chart-inspect" class="chart-caption" aria-live="polite"></p>
             </div>
             <p class="exchange-instruction">Trade The Woods Company. Leave a memo.</p>
-            <div class="trade-actions"><button type="button" data-side="buy" aria-label="Buy The Woods Company">Buy <span>+1 ↗</span></button><button type="button" data-side="sell" aria-label="Sell The Woods Company">Sell <span>−1 ↘</span></button></div>
+            <div class="trade-actions"><button type="button" data-side="buy" aria-label="Buy The Woods Company">Buy <span>+$1 ↗</span></button><button type="button" data-side="sell" aria-label="Sell The Woods Company">Sell <span>−$1 ↘</span></button></div>
             <p id="market-status" class="market-status" role="status"></p>
             <div class="terminal-footer"><span id="as-of">Awaiting quote</span><button id="refresh" class="text-button" type="button">Refresh ↻</button></div>
             <section class="memos-section" aria-labelledby="memos-title"><h4 id="memos-title">Memos</h4><ol id="memos" class="memo-list"><li>Memos appear after approval.</li></ol></section>
-            <details class="market-rules"><summary>Simulation · how it works</summary><p>Buy +1 point; sell −1, floor 1. No matching order book, money, or ownership. Names and memos need approval. One trade/minute, five/day.</p></details>
-          </section>
+            <details class="market-rules"><summary>Simulation · how it works</summary><p>Fictional stock, simulated dollars. History before launch is generated. Buy +$1; sell −$1, minimum $1. No real money or ownership. Names and memos need approval. One trade/minute, five/day.</p></details>
+          </div>
         </section>
       </main>
-      <footer class="window-footer"><span>© <span id="year">2026</span> Blake Woods</span><svg viewBox="0 0 64 15" aria-hidden="true"><path d="M0 12h8l4-5 6 3 8-7 7 6h8l5-5 6 2 7-5h5"/></svg></footer>
+      <footer class="window-footer"><span>© <span id="year">2026</span> Blake Woods &amp; AI agents</span></footer>
     </div>
   </div>
   <dialog id="ticket" aria-labelledby="ticket-title">
@@ -73,7 +75,7 @@
       <div class="ticket-bar"><h2 id="ticket-title">Buy The Woods Company</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
       <p class="ticket-caption">WOODS · simulated order</p>
       <dl class="ticket-quote"><div><dt>Last</dt><dd id="ticket-last">—</dd></div><div><dt>Estimated fill</dt><dd id="ticket-estimate">—</dd></div></dl>
-      <p class="ticket-caption">Points, not dollars. Fill may change before submission.</p>
+      <p class="ticket-caption">Fill may change before submission.</p>
       <label>Name <span>optional</span><input id="order-name" name="name" maxlength="32" autocomplete="nickname"></label>
       <label>Memo <span>optional · 160 max</span><textarea id="order-note" name="note" maxlength="160" rows="3"></textarea></label>
       <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>

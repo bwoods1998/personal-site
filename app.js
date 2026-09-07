@@ -5,7 +5,7 @@ const ticket = $('#ticket');
 let side = 'buy', requestId, submittedPayload, busy = false, opening = 0, lastSnapshot;
 let cooldownUntil = 0, cooldownTimer;
 let period = 'all', chartPoints = [], chartIndex = 0, chartGeometry;
-const priceText = value => value == null ? '—' : value.toFixed(2);
+const priceText = value => value == null ? '—' : new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(value);
 const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 const utc = value => new Date(value).toISOString().slice(11, 19);
 const stamp = value => `${new Date(value).toISOString().slice(0, 10)} ${utc(value)} UTC`;
@@ -18,8 +18,8 @@ async function api(path, body) {
 function render(data) {
   lastSnapshot = data;
   $('#price').textContent = priceText(data.price);
-  $('#quote-label').textContent = data.total ? 'Last / points' : 'Reference / points';
-  $('#change').textContent = `${signed(data.session.change)} (${signed(data.session.changePercent)}%) / 24h`;
+  $('#quote-label').textContent = data.total ? 'Last / USD' : 'Reference / USD';
+  $('#change').textContent = `${data.session.change >= 0 ? '+' : '−'}${priceText(Math.abs(data.session.change))} (${signed(data.session.changePercent)}%) / 24h`;
   $('#change').dataset.direction = data.session.change < 0 ? 'down' : 'up';
   $('#market-count').textContent = `${data.total.toLocaleString()} ${data.total === 1 ? 'trade' : 'trades'}`;
   $('#as-of').textContent = `As of ${utc(data.asOf)} UTC`;
@@ -61,9 +61,9 @@ function inspectPoint(index, visible = true) {
   if (!chartPoints.length) return;
   chartIndex = Math.max(0, Math.min(chartPoints.length - 1, index));
   const point = chartPoints[chartIndex], x = chartGeometry.x(point.time), y = chartGeometry.y(point.price);
-  const description = `${new Date(point.time).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'})} · ${priceText(point.price)} pts · ${point.kind === 'illustrative' ? 'illustrative' : 'visitor market'}`;
+  const description = `${new Date(point.time).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'})} · ${priceText(point.price)}`;
   $('#chart').setAttribute('aria-valuenow', String(chartIndex)); $('#chart').setAttribute('aria-valuetext', description);
-  $('#chart-inspect').textContent = visible ? description : 'Hover or use arrow keys to inspect';
+  $('#chart-inspect').textContent = visible ? description : '';
   $('#chart-crosshair').setAttribute('d', `M${x} 16V140`);
   $('#chart-dot').setAttribute('cx', x); $('#chart-dot').setAttribute('cy', y);
   for (const element of [$('#chart-crosshair'), $('#chart-dot')]) {
@@ -134,7 +134,7 @@ $('#order-form').addEventListener('submit', async event => {
   try {
     const result = await api('orders', submittedPayload);
     ticket.close(); await refresh(true);
-    $('#market-status').textContent = `WOODS ${side.toUpperCase()} #${String(result.id).padStart(4, '0')} · ${priceText(result.price)} pts.${result.review === 'pending' ? ' Name/memo pending approval.' : ''}`;
+    $('#market-status').textContent = `WOODS ${side.toUpperCase()} #${String(result.id).padStart(4, '0')} · ${priceText(result.price)}.${result.review === 'pending' ? ' Name/memo pending approval.' : ''}`;
   } catch (error) {
     $('#ticket-status').textContent = error.status ? error.message : 'Connection interrupted. Retry to check this order.';
     if (error.status && error.status < 500) { submittedPayload = null; requestId = crypto.randomUUID(); setInputs(false); }

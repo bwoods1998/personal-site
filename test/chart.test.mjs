@@ -7,7 +7,10 @@ test('illustrative growth is deterministic, ends at launch and never changes rea
   const data={history:{anchor,daily:[{time:anchor.time+1000,price:99}]},points:[{id:1,time:anchor.time+1000,price:99}],asOf:anchor.time+5000,price:99};
   const series=buildHistory(data);assert.deepEqual(series,buildHistory(data));assert.equal(series[0].time,Date.UTC(2021,5,1));assert.equal(series[0].price,1);
   const fake=series.filter(p=>p.kind==='illustrative');assert.ok(fake.length>1000);
-  for(let i=1;i<fake.length;i++)assert.ok(fake[i].price>fake[i-1].price);
+  for(let i=1;i<fake.length;i++)assert.ok(fake[i].price>=fake[i-1].price);
+  assert.ok(fake.some((point,i)=>i>0 && point.price===fake[i-1].price));
+  const gains=fake.slice(1).map((point,i)=>point.price/fake[i].price-1).filter(gain=>gain>0);
+  assert.ok(Math.max(...gains)>10*(gains.reduce((a,b)=>a+b,0)/gains.length));
   assert.ok(fake.at(-1).time<anchor.time);assert.ok(fake.at(-1).price<100);
   assert.equal(series.find(p=>p.time===anchor.time).price,100);assert.equal(series.at(-1).price,99);
   assert.equal(series.find(p=>p.kind==='trade').price,99);

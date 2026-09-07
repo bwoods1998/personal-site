@@ -7,10 +7,18 @@ export function buildHistory({ history, points, asOf, price }) {
     const day = new Date(time).getUTCDay();
     if (day !== 0 && day !== 6) dates.push(time);
   }
-  let seed = 20210601, sum = 0;
-  const weights = dates.map(() => {
+  let seed = 20210601, sum = 0, regime = 1, remaining = 0;
+  const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    const weight = .25 + (seed / 4294967296) * 1.5;
+    return seed / 4294967296;
+  };
+  const weights = dates.map(() => {
+    // Quiet stretches, bursts of buying and occasional upward gaps.
+    // All returns are nonnegative, as requested for this fictional history.
+    if (remaining-- <= 0) { regime = random() < .4 ? .06 : .4 + random() * 3; remaining = 8 + Math.floor(random() * 48); }
+    const pause = random() < .28;
+    const jump = random() < .025 ? 8 + random() * 24 : 0;
+    const weight = pause ? 0 : regime * Math.pow(random(), 2) + jump;
     sum += weight; return weight;
   });
   let progress = 0;

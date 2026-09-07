@@ -53,13 +53,13 @@ h1 > span { color: var(--accent); }
 .path-note { display: block; font-size: 8px; color: var(--muted); margin-top: 8px; }
 .timeline li:last-child h3 { color: var(--accent); }
 .path-note.current { color: #9fac7d; }
-.projects { border-top: 1px solid var(--line); display: grid; grid-template-columns: 1.35fr 1fr; align-items: center; gap: 42px; padding: 32px 0 37px; }
+.projects { border-top:1px solid var(--line); padding:25px 0 27px; }
 .projects-copy { min-width: 0; }
-.project-intro { margin: 21px 0 25px; max-width: 410px; font-size: 12px; line-height: 1.9; color: #b1b2a3; }
+.project-intro { margin:18px 0 0; max-width: 650px; font-size: 12px; line-height: 1.9; color: #b1b2a3; }
 .project-intro a { text-decoration-color: #666b54; text-underline-offset: 4px; }
 .project-intro a:hover { color: var(--accent); }
 .window-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 20px; border-top: 1px solid var(--line); font-size: 8px; color: #939782; background: #22251f; }
-.window-footer svg { width: 58px; height: 15px; stroke: #9e9b6d; fill: none; stroke-width: .8; }
+
 .skip-link { position: fixed; top: 10px; left: 12px; z-index: 10; padding: 10px; background: #242720; transform: translateY(-200%); }
 .skip-link:focus { transform: translateY(0); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; border: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
@@ -173,3 +173,9 @@ textarea { resize:vertical; }input:focus-visible, textarea:focus-visible, select
 .ticket-bar h2 { max-width:260px; line-height:1.4; font-family:Georgia,serif; font-size:21px; }
 .ticket-quote { grid-template-columns:1fr 1fr; padding:13px 0; border-block:1px solid var(--line); }.ticket-quote dd { font-size:20px; }
 .admin > p { font-size:12px; line-height:1.7; color:var(--muted); }.admin nav button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+
+.stock-exchange { border-top:1px solid var(--line); padding:25px 0 32px; }
+.stock-exchange .exchange { width:min(100%,620px); margin:23px auto 0; padding:24px; }
+.exchange-masthead h3 { margin-top:0; font-size:clamp(24px,3vw,32px); }
+#chart-inspect { min-height:17px; margin-top:8px; }
+@media (max-width:700px) { .stock-exchange .exchange { padding:16px; } .project-intro { margin-bottom:0; } }

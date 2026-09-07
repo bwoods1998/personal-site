@@ -35,10 +35,10 @@ Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, 
 
 ## Price chart and memos
 
-The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a visitor-driven points simulation, not a security or brokerage. Existing trades retain the original +1/−1 rule and floor of 1.
+The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a visitor-driven stock-price simulation in fictional USD, not a security or brokerage. Existing trades retain the original +1/−1 rule and floor of 1.
 
 - **6M / 1Y / All** select calendar periods on a time-scaled chart. Hover, touch, or arrow keys inspect prices and dates.
-- A deterministic random, rising series starts June 1, 2021 and ends at the exchange's original 100-point launch reference. It is visibly labeled **illustrative backfill**, never inserted into the ledger, and never counted as visitor activity. Real trades take over from launch onward.
+- A deterministic, nondecreasing series with quiet stretches, buying bursts and upward gaps starts June 1, 2021 and ends at the exchange's original 100-dollar launch reference. It is identified as generated in the expandable simulation rules, never inserted into the ledger, and never counted as visitor activity. Real trades take over from launch onward.
 - Daily closing points are stored from real executions, plus recent individual trades for detail. A one-time migration backfills daily closes from existing trades without changing them. Long-range history remains available after trades leave the recent window.
 - Approved memos run below the chart. The latest 20 are displayed, independent of their trade's age. All text uses `textContent`.
 - **Delete** permanently erases the selected name and memo from the application database. The numeric trade, counters, daily prices and retry reference remain intact. Deleted text cannot be re-approved. Provider recovery backups may retain historical copies until their retention window expires.
