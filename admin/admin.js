@@ -24,12 +24,13 @@ async function load(append = false) {
       const name = document.createElement('strong'); name.textContent = order.name || 'Guest';
       const note = document.createElement('p'); note.textContent = order.note || '(No memo)';
       article.append(label, name, note);
-      for (const action of ['approve', 'reject']) {
+      for (const action of ['approve', 'reject', 'delete']) {
         if ((action === 'approve' && filter === 'approved') || (action === 'reject' && filter === 'rejected')) continue;
-        const button = document.createElement('button'); button.textContent = action === 'approve' ? 'Approve' : filter === 'approved' ? 'Hide' : 'Reject';
+        const button = document.createElement('button'); button.textContent = action === 'delete' ? 'Delete' : action === 'approve' ? 'Approve' : filter === 'approved' ? 'Hide' : 'Reject';
         button.addEventListener('click', async () => {
+          if (action === 'delete' && !confirm('Permanently delete this name and memo? The trade will remain.')) return;
           button.disabled = true;
-          try { await api(`orders/${order.id}/moderate`, { action }); await load(); $('#status').textContent = action === 'approve' ? 'Published. Public views refresh within a few seconds.' : 'Hidden from public views.'; }
+          try { await api(`orders/${order.id}/moderate`, { action }); await load(); $('#status').textContent = action === 'delete' ? 'Name and memo deleted. Trade preserved.' : action === 'approve' ? 'Published. Public views refresh within a few seconds.' : 'Hidden from public views.'; }
           catch (error) { $('#status').textContent = error.message; button.disabled = false; }
         }); article.append(button);
       }

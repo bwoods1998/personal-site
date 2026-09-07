@@ -4,12 +4,13 @@ const root = new URL('./', import.meta.url), output = new URL('./dist/', root);
 await mkdir(new URL('assets/', output), { recursive: true });
 // Remove only our generated hashed assets so old JavaScript is not published.
 for (const file of await readdir(new URL('assets/', output))) {
-  if (/^(styles|app|admin|favicon)\.[a-f0-9]{12}\.(css|js|svg)$/.test(file)) await unlink(new URL(`assets/${file}`, output));
+  if (/^(styles|app|admin|favicon|chart)\.[a-f0-9]{12}\.(css|js|svg)$/.test(file)) await unlink(new URL(`assets/${file}`, output));
 }
 await mkdir(new URL('admin/', output), { recursive: true });
 const assets = new Map();
-for (const filename of ['styles.css', 'app.js', 'favicon.svg', 'admin/admin.js']) {
-  const content = await readFile(new URL(filename, root));
+for (const filename of ['chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js']) {
+  let content = await readFile(new URL(filename, root));
+  if (filename === 'app.js') content = Buffer.from(content.toString().replace('./chart.js', './' + assets.get('chart.js').split('/').at(-1)));
   const digest = createHash('sha256').update(content).digest('hex').slice(0, 12);
   const name = filename.split('/').at(-1), dot = name.lastIndexOf('.');
   const asset = `assets/${name.slice(0, dot)}.${digest}${name.slice(dot)}`;

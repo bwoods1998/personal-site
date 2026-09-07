@@ -15,7 +15,7 @@ npm run dev
 
 Open http://localhost:4173. `npm run admin` prints the private review sign-in link. Generated keys live in ignored `.dev.vars` (owner-readable only). Local orders live in ignored `.data/exchange.sqlite`.
 
-For the published site, `npm run admin:live` prints your private sign-in link. Choose **Pending → Approve** to publish a name and memo. **Reject** keeps text private; **Approved → Hide** removes previously approved text without undoing its trade. Do not share the key or private link.
+For the published site, `npm run admin:live` prints your private sign-in link. Choose **Pending → Approve** to publish a name and memo. **Reject** keeps text private; **Approved → Hide** unpublishes text; **Delete** erases the name and memo without undoing the trade. Do not share the key or private link.
 
 To test the actual cloud runtime: `npm run dev:cloud` (http://localhost:4175). Its local database is separate from Node development and the public database. Use `SITE_URL=http://localhost:4175 npm run admin` for its review link.
 
@@ -27,22 +27,22 @@ Use **Cloudflare Workers Free**, including its SQLite-backed Durable Objects dat
 2. Run `npx wrangler login` and authorize in your browser.
 3. Run `node scripts/setup.mjs` to generate local secrets if needed.
 4. Run `npm run publish:first`. This builds the site, provisions its database with the Worker, installs the two private secrets, and publishes. If interrupted, rerun the command. It does not reset the database. Until both secrets are installed, API requests return an unavailable response rather than accepting unprotected orders.
-5. Use the URL printed by Wrangler. Your private moderation page is `/admin/`. To print your private sign-in link: `SITE_URL=https://YOUR-URL.workers.dev npm run admin`. Store your admin key in a password manager. Never share `.dev.vars` or the private sign-in link.
+5. Use the URL printed by Wrangler. Your private moderation page is `/admin/`. To print your private sign-in link: `SITE_URL=https://YOUR-URL.workers.dev npm run admin`. Store your admin password in a password manager. Never share `.dev.vars` or the private sign-in link.
 
-Subsequent updates: `npm run deploy`. Never rename the `Exchange` class, `bw-exchange-v1` object name, or migration unless intentionally migrating the data. Deploys preserve hosted orders independently of the MacBook. Local test data is never uploaded. If you rotate `SESSION_SECRET`, visitor cookies become invalid; rotate the admin key together with clearing outstanding admin sessions if revoking compromised access.
+Subsequent updates: `npm run deploy`. Never rename the `Exchange` class, `bw-exchange-v1` object name, or migration unless intentionally migrating the data. Deploys preserve hosted orders independently of the MacBook. Local test data is never uploaded. If you rotate `SESSION_SECRET`, visitor cookies become invalid; rotate the admin password together with clearing outstanding admin sessions if revoking compromised access.
 
 Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, `.data`, tests and server internals are not public assets. The admin HTML/JS shell is public but every queue and moderation endpoint requires a server-verified admin session.
 
-## Market terminal
+## Price chart and memos
 
-The on-screen symbol is **WOODS**, for **The Woods Company**. It is a points-based visitor simulation, not an actual security, brokerage or matching exchange. The existing one-point buy/sell rule and floor of 1 preserve all historical trades.
+The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a visitor-driven points simulation, not a security or brokerage. Existing trades retain the original +1/−1 rule and floor of 1.
 
-- **Last** is the last executed simulated price. Before the first trade, the display says **Reference**.
-- **24h change** compares the latest price with the last price at or before the rolling 24-hour boundary (or the initial 100). High/low use actual executions in that window; no trades means no high/low. Trade counts are not labeled share volume.
-- **Chart** shows the most recent 120 trades, equally spaced by execution order, explicitly labeled. Hover exposes the point and UTC timestamp.
-- **Tape** shows the latest 20 executions with UTC time, side, price and approved name. **Memos** separately shows the latest 20 approved memos, including older trades no longer on the tape.
-- Tickets show an estimated fill; concurrent trades may change the actual result. No artificial bid/ask, liquidity, market cap or unbacked real-market claim is displayed.
-- The terminal borrows compact panels, numbered function tabs and amber quotes from classic financial terminals. It is not affiliated with Bloomberg. A true price-time-priority order book is a separate future upgrade.
+- **6M / 1Y / All** select calendar periods on a time-scaled chart. Hover, touch, or arrow keys inspect prices and dates.
+- A deterministic random, rising series starts June 1, 2021 and ends at the exchange's original 100-point launch reference. It is visibly labeled **illustrative backfill**, never inserted into the ledger, and never counted as visitor activity. Real trades take over from launch onward.
+- Daily closing points are stored from real executions, plus recent individual trades for detail. A one-time migration backfills daily closes from existing trades without changing them. Long-range history remains available after trades leave the recent window.
+- Approved memos run below the chart. The latest 20 are displayed, independent of their trade's age. All text uses `textContent`.
+- **Delete** permanently erases the selected name and memo from the application database. The numeric trade, counters, daily prices and retry reference remain intact. Deleted text cannot be re-approved. Provider recovery backups may retain historical copies until their retention window expires.
+- The admin password is supplied only through Cloudflare's `ADMIN_KEY` secret and ignored local `.dev.vars`. No password value belongs in source, tests, documentation or Git. Login attempts are rate limited. Changing the password invalidates previous admin sessions without resetting visitor cookies.
 
 ## Behavior and costs
 

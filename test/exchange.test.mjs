@@ -114,3 +114,47 @@ test('approved memos survive leaving the tape and hide immediately when revoked'
     assert.deepEqual((await market.reviewQueue()).counts,{pending:0,approved:0,rejected:1});
   }finally{await db.close();}
 });
+
+test('deleting approved text preserves prices, chart history and idempotency', async () => {
+  const db=await openDatabase({filename:':memory:'}); const market=await createExchange(db);
+  try {
+    const order={side:'buy',requestId:randomUUID(),name:'Remove this name',note:'Remove this memo'};
+    const receipt=await market.submit(order,'v','n');await market.moderate(receipt.id,'approve');
+    const before=await market.snapshot();assert.equal(before.memos.length,1);
+    await market.moderate(receipt.id,'delete');
+    const after=await market.snapshot();assert.equal(after.memos.length,0);assert.equal(after.total,before.total);assert.equal(after.price,before.price);assert.deepEqual(after.history,before.history);
+    assert.ok(!JSON.stringify(after).includes('Remove this'));assert.equal((await market.reviewQueue('approved')).orders.length,0);
+    await assert.rejects(market.moderate(receipt.id,'approve'),{status:409});
+    await market.submit(order,'v','n');assert.equal((await market.snapshot()).memos.length,0);
+    const [row]=await db.transaction(q=>q('SELECT display_name,note FROM orders WHERE id=?',[receipt.id]),true);
+    assert.equal(row.display_name,'');assert.equal(row.note,'');
+  }finally{await db.close();}
+});
+
+test('admin password rotation rejects existing sessions without changing visitor signatures', async () => {
+  const db=await openDatabase({filename:':memory:'});const market=await createExchange(db);
+  const config={sessionSecret:'s'.repeat(43),adminKey:randomUUID().slice(0,8)};
+  const old=createApi(market,config);
+  const req=(path,key,cookie)=>new Request('https://example.com/api/'+path,{method:key?'POST':'GET',headers:{origin:'https://example.com','content-type':'application/json',...(cookie?{cookie}:{})},...(key?{body:JSON.stringify({key})}:{})});
+  try{
+    const login=await old(req('admin/login',config.adminKey),'network');assert.equal(login.status,200);
+    const cookie=login.headers.get('set-cookie').split(';')[0];assert.equal((await old(req('admin/orders',null,cookie),'network')).status,200);
+    const next=createApi(market,{...config,adminKey:randomUUID().slice(0,8)});
+    assert.equal((await next(req('admin/orders',null,cookie),'network')).status,401);
+    assert.equal((await next(req('admin/login',config.adminKey),'network')).status,401);
+  }finally{await db.close();}
+});
+
+test('daily chart migration recovers existing trades without changing the ledger', async () => {
+  const db=await openDatabase({filename:':memory:'});let now=Date.UTC(2026,8,1,12);
+  let market=await createExchange(db,{now:()=>now});
+  try{
+    await market.submit({side:'buy',requestId:randomUUID()},'a','a');now+=1000;
+    await market.submit({side:'buy',requestId:randomUUID()},'b','b');now+=86400000;
+    await market.submit({side:'sell',requestId:randomUUID()},'c','c');
+    const before=await market.snapshot();
+    await db.transaction(async q=>{await q('DROP TABLE chart_daily');await q("DELETE FROM schema_migrations WHERE name='chart-daily-v1'");});
+    market=await createExchange(db,{now:()=>now});const after=await market.snapshot();
+    assert.equal(after.total,3);assert.equal(after.price,101);assert.deepEqual(after.history,before.history);assert.deepEqual(after.history.daily.map(p=>p.price),[102,101]);
+  }finally{await db.close();}
+});

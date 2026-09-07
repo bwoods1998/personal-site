@@ -8,7 +8,7 @@
     "start": "node server.mjs",
     "build": "node build.mjs",
     "preview": "node server.mjs --built",
-    "check": "node --check app.js && node --check admin/admin.js && node --check worker.mjs && node --check lib/api.mjs && node --check lib/exchange.mjs && node --check server.mjs",
+    "check": "node --check app.js && node --check chart.js && node --check admin/admin.js && node --check worker.mjs && node --check lib/api.mjs && node --check lib/exchange.mjs && node --check server.mjs",
     "dev:cloud": "node scripts/setup.mjs && npm run build && wrangler dev --port 4175",
     "admin": "node scripts/setup.mjs --admin",
     "test": "node --test test/*.test.mjs",

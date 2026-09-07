@@ -14,4 +14,4 @@ Print your private sign-in link locally:
 npm run admin:live
 ```
 
-Do not share the generated link or `.dev.vars`. All visitor text requires approval; numeric trades are immediate. Free-tier quotas apply.
+Do not share the generated link or `.dev.vars`. All visitor text requires approval; approved memos can be hidden or permanently deleted; numeric trades are immediate. Free-tier quotas apply.

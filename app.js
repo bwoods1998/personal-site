@@ -1,8 +1,10 @@
+import { buildHistory, selectHistory } from './chart.js';
 document.querySelector('#year').textContent = new Date().getFullYear();
 const $ = selector => document.querySelector(selector);
 const ticket = $('#ticket');
 let side = 'buy', requestId, submittedPayload, busy = false, opening = 0, lastSnapshot;
 let cooldownUntil = 0, cooldownTimer;
+let period = 'all', chartPoints = [], chartIndex = 0, chartGeometry;
 const priceText = value => value == null ? '—' : value.toFixed(2);
 const signed = value => `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 const utc = value => new Date(value).toISOString().slice(11, 19);
@@ -19,30 +21,10 @@ function render(data) {
   $('#quote-label').textContent = data.total ? 'Last / points' : 'Reference / points';
   $('#change').textContent = `${signed(data.session.change)} (${signed(data.session.changePercent)}%) / 24h`;
   $('#change').dataset.direction = data.session.change < 0 ? 'down' : 'up';
-  $('#day-high').textContent = priceText(data.session.high);
-  $('#day-low').textContent = priceText(data.session.low);
-  $('#day-trades').textContent = data.session.trades.toLocaleString();
-  $('#market-count').textContent = `${data.total.toLocaleString()} ${data.total === 1 ? 'trade' : 'trades'} · all time`;
+  $('#market-count').textContent = `${data.total.toLocaleString()} ${data.total === 1 ? 'trade' : 'trades'}`;
   $('#as-of').textContent = `As of ${utc(data.asOf)} UTC`;
   $('#as-of').title = stamp(data.asOf);
-  const prices = data.points.map(p => p.price);
-  const low = Math.min(...prices) - 2, high = Math.max(...prices) + 2;
-  const points = prices.length === 1 ? [prices[0], prices[0]] : prices;
-  $('#chart-line').setAttribute('d', points.map((p, i) => `${i ? 'L' : 'M'}${i / (points.length - 1) * 320} ${85 - (p - low) / (high - low) * 76}`).join(' '));
-  $('#chart').setAttribute('aria-label', `Woods Company simulation: ${priceText(data.price)} points, ${data.total} trades. Most recent 120 trades, equally spaced by trade order.`);
-  $('#orders').replaceChildren();
-  for (const order of data.orders) {
-    const row = document.createElement('tr');
-    const time = document.createElement('td'); time.textContent = utc(order.time); time.title = stamp(order.time);
-    const action = document.createElement('td'); action.className = order.side; action.textContent = order.side.toUpperCase();
-    const price = document.createElement('td'); price.textContent = priceText(order.price);
-    row.title = `#${order.id} · ${order.name} · ${stamp(order.time)}`;
-    row.append(time, action, price); $('#orders').append(row);
-    const attribution = document.createElement('tr'); attribution.className = 'trade-attribution';
-    const cell = document.createElement('td'); cell.colSpan = 3; cell.textContent = order.name;
-    attribution.append(cell); $('#orders').append(attribution);
-  }
-  if (!data.orders.length) { const row = document.createElement('tr'), cell = document.createElement('td'); cell.colSpan = 3; cell.textContent = 'No trades yet.'; row.append(cell); $('#orders').append(row); }
+  renderChart();
   $('#memos').replaceChildren();
   for (const memo of data.memos) {
     const li = document.createElement('li');
@@ -55,28 +37,60 @@ function render(data) {
   }
   if (!data.memos.length) { const li = document.createElement('li'); li.textContent = 'Memos appear after approval.'; $('#memos').append(li); }
 }
-const tabs = [...document.querySelectorAll('[data-view]')];
-function selectView(tab, focus = false) {
-  for (const item of tabs) {
-    const active = item === tab;
-    item.setAttribute('aria-selected', String(active)); item.tabIndex = active ? 0 : -1;
-    $(`#${item.dataset.view}-panel`).hidden = !active;
+const dateLabel = time => new Date(time).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+function renderChart() {
+  if (!lastSnapshot) return;
+  chartPoints = selectHistory(buildHistory(lastSnapshot), period, lastSnapshot.asOf);
+  if (!chartPoints.length) return;
+  const prices = chartPoints.map(point => point.price);
+  const min = Math.min(...prices), max = Math.max(...prices), padding = Math.max((max - min) * .08, .5);
+  const low = Math.max(0, min - padding), high = max + padding;
+  const first = chartPoints[0].time, span = Math.max(1, chartPoints.at(-1).time - first);
+  chartGeometry = { x: time => 36 + (time - first) / span * 314, y: price => 140 - (price - low) / (high - low) * 124 };
+  const path = chartPoints.map((point, i) => `${i ? 'L' : 'M'}${chartGeometry.x(point.time).toFixed(2)} ${chartGeometry.y(point.price).toFixed(2)}`).join(' ');
+  $('#chart-line').setAttribute('d', path);
+  $('#chart-fill').setAttribute('d', `${path} L350 140 L36 140 Z`);
+  $('#chart-high').textContent = high.toFixed(0); $('#chart-low').textContent = low.toFixed(0);
+  $('#chart-start').textContent = dateLabel(first); $('#chart-end').textContent = dateLabel(lastSnapshot.asOf);
+  $('#chart').setAttribute('aria-valuemax', String(chartPoints.length - 1));
+  chartIndex = chartPoints.length - 1;
+  inspectPoint(chartIndex, false);
+  for (const button of document.querySelectorAll('[data-range]')) button.setAttribute('aria-pressed', String(button.dataset.range === period));
+}
+function inspectPoint(index, visible = true) {
+  if (!chartPoints.length) return;
+  chartIndex = Math.max(0, Math.min(chartPoints.length - 1, index));
+  const point = chartPoints[chartIndex], x = chartGeometry.x(point.time), y = chartGeometry.y(point.price);
+  const description = `${new Date(point.time).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'})} · ${priceText(point.price)} pts · ${point.kind === 'illustrative' ? 'illustrative' : 'visitor market'}`;
+  $('#chart').setAttribute('aria-valuenow', String(chartIndex)); $('#chart').setAttribute('aria-valuetext', description);
+  $('#chart-inspect').textContent = visible ? description : 'Hover or use arrow keys to inspect';
+  $('#chart-crosshair').setAttribute('d', `M${x} 16V140`);
+  $('#chart-dot').setAttribute('cx', x); $('#chart-dot').setAttribute('cy', y);
+  for (const element of [$('#chart-crosshair'), $('#chart-dot')]) {
+    if (visible) element.removeAttribute('hidden'); else element.setAttribute('hidden', '');
   }
-  if (focus) tab.focus();
 }
-for (const tab of tabs) {
-  tab.addEventListener('click', () => selectView(tab));
-  tab.addEventListener('keydown', event => {
-    let index = tabs.indexOf(tab);
-    if (event.key === 'ArrowRight') index = (index + 1) % tabs.length;
-    else if (event.key === 'ArrowLeft') index = (index + tabs.length - 1) % tabs.length;
-    else if (event.key === 'Home') index = 0;
-    else if (event.key === 'End') index = tabs.length - 1;
-    else if (/^[123]$/.test(event.key)) index = Number(event.key) - 1;
-    else return;
-    event.preventDefault(); selectView(tabs[index], true);
-  });
-}
+for (const button of document.querySelectorAll('[data-range]')) button.addEventListener('click', () => { period = button.dataset.range; renderChart(); });
+$('#chart').addEventListener('pointermove', event => {
+  if (!chartPoints.length) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const position = Math.max(0, Math.min(1, ((event.clientX - rect.left) / rect.width * 360 - 36) / 314));
+  const time = chartPoints[0].time + position * (chartPoints.at(-1).time - chartPoints[0].time);
+  let nearest = 0;
+  for (let i = 1; i < chartPoints.length; i++) if (Math.abs(chartPoints[i].time - time) < Math.abs(chartPoints[nearest].time - time)) nearest = i;
+  inspectPoint(nearest);
+});
+$('#chart').addEventListener('pointerleave', () => { if (document.activeElement !== $('#chart')) inspectPoint(chartIndex, false); });
+$('#chart').addEventListener('focus', () => inspectPoint(chartIndex));
+$('#chart').addEventListener('blur', () => inspectPoint(chartIndex, false));
+$('#chart').addEventListener('keydown', event => {
+  const offsets = {ArrowLeft:-1, ArrowDown:-1, ArrowRight:1, ArrowUp:1, PageDown:-20, PageUp:20};
+  if (event.key in offsets) inspectPoint(chartIndex + offsets[event.key]);
+  else if (event.key === 'Home') inspectPoint(0);
+  else if (event.key === 'End') inspectPoint(chartPoints.length - 1);
+  else return;
+  event.preventDefault();
+});
 async function refresh(fresh = false) {
   $('#refresh').disabled = true;
   try { render(await api(fresh ? 'exchange?fresh=1' : 'exchange')); $('#market-status').textContent = ''; }
@@ -128,13 +142,4 @@ $('#order-form').addEventListener('submit', async event => {
   } finally { busy = false; $('#close-ticket').disabled = false; updateSubmit(); }
 });
 $('#refresh').addEventListener('click', () => refresh(true));
-// The chart is a sequence of trades, not evenly spaced clock time.
-$('#chart').addEventListener('pointermove', event => {
-  if (!lastSnapshot?.points.length) return;
-  const rect = event.currentTarget.getBoundingClientRect();
-  const index = Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * (lastSnapshot.points.length - 1));
-  const point = lastSnapshot.points[index];
-  $('.chart-caption').textContent = `${point.id ? `#${point.id}` : 'Launch'} · ${priceText(point.price)} · ${stamp(point.time)}`;
-});
-$('#chart').addEventListener('pointerleave', () => { $('.chart-caption').textContent = 'Last 120 trades · in trade order'; });
 refresh();
