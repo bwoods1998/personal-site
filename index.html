@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151715">
+  <meta name="description" content="Blake Woods · Oceanside, CA. Career and free-time projects built with AI agents on a 2019 MacBook revived with Omarchy Linux.">
+  <meta property="og:title" content="Blake Woods">
+  <meta property="og:description" content="A home for my free-time projects.">
+  <meta property="og:type" content="website">
+  <title>Blake Woods</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="desktop">
+    <div class="window">
+      <header class="window-bar">
+        <a href="#main" class="window-name" aria-label="Blake Woods, home"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v11H3zM1 17h18M7 17v-2m6 2v-2"/><path d="m6 8 2 2-2 2m4 0h4"/></svg>blake.html</a>
+        <span class="window-marks" aria-hidden="true"><i></i><i></i><i></i></span>
+      </header>
+      <main id="main">
+        <section class="intro" aria-labelledby="name">
+          <h1 id="name">blake <span>woods</span></h1>
+          <div class="contact"><span class="location"><svg viewBox="0 0 16 18" aria-hidden="true"><path d="M14 7c0 4-6 9-6 9S2 11 2 7a6 6 0 0 1 12 0Z"/><circle cx="8" cy="7" r="2"/></svg>Oceanside, CA</span><a href="mailto:blakewoods98@gmail.com">blakewoods98@gmail.com <span aria-hidden="true">↗</span></a><a href="https://github.com/bwoods1998" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span><span class="sr-only"> (opens in a new tab)</span></a></div>
+        </section>
+        <section class="path" aria-labelledby="path-title">
+          <h2 id="path-title" class="section-label">Path</h2>
+          <ol class="timeline">
+            <li><h3>UC San Diego</h3><span class="path-note">School</span></li>
+            <li><h3>University of Chicago<br>Booth School of Business</h3></li>
+            <li><h3>Goldman Sachs</h3></li>
+            <li><h3>SpaceX</h3><span class="path-note current">Current</span></li>
+          </ol>
+        </section>
+        <section id="projects" class="projects" aria-labelledby="projects-title">
+          <div class="projects-copy">
+            <h2 id="projects-title" class="section-label">Projects</h2>
+            <p class="project-intro">A home for my free-time projects, built with AI agents on a 2019 MacBook revived with <a href="https://omarchy.org/" target="_blank" rel="noopener noreferrer">Omarchy Linux<span class="sr-only"> (opens in a new tab)</span></a>. Cloud when needed.</p>
+          </div>
+          <section class="exchange" aria-labelledby="exchange-title">
+            <div class="exchange-masthead"><span class="exchange-kicker">Stock Exchange</span><h3 id="exchange-title">The Woods Company</h3></div>
+            <div class="exchange-bar"><span class="ticker">BW</span><span id="market-count">— orders</span></div>
+            <div class="quote"><strong id="price">—</strong><span id="change">Since open · 100.00</span></div>
+            <svg id="chart" viewBox="0 0 320 94" role="img" aria-label="Fictional BW index, awaiting orders"><path class="chart-grid" d="M0 23H320M0 47H320M0 71H320M80 0V94M160 0V94M240 0V94"/><path id="chart-line" d="M0 47H320"/></svg>
+            <p class="exchange-instruction">Buy or sell. Move the price. Leave a note.</p>
+            <div class="trade-actions"><button type="button" data-side="buy">Buy <span>+1 ↗</span></button><button type="button" data-side="sell">Sell <span>−1 ↘</span></button></div>
+            <p class="market-disclaimer">Just for fun. No money or ownership.</p>
+            <p id="market-status" class="market-status" role="status"></p>
+            <button id="refresh" class="text-button" type="button">Refresh ↻</button>
+            <details class="tape"><summary>Recent orders</summary><ol id="orders"><li>No orders yet. You can be first.</li></ol></details>
+          </section>
+        </section>
+      </main>
+      <footer class="window-footer"><span>© <span id="year">2026</span> Blake Woods</span><svg viewBox="0 0 64 15" aria-hidden="true"><path d="M0 12h8l4-5 6 3 8-7 7 6h8l5-5 6 2 7-5h5"/></svg></footer>
+    </div>
+  </div>
+  <dialog id="ticket" aria-labelledby="ticket-title">
+    <form id="order-form">
+      <div class="ticket-bar"><h2 id="ticket-title">Buy BW</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
+      <p class="ticket-caption">Buy adds a point. Sell subtracts one.</p>
+      <label>Name <span>optional</span><input id="order-name" name="name" maxlength="32" autocomplete="nickname"></label>
+      <label>Note <span>optional · 160 max</span><textarea id="order-note" name="note" maxlength="160" rows="3"></textarea></label>
+      <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+      <p class="ticket-caption">Names and notes appear only after approval.</p>
+      <p id="ticket-status" role="status"></p>
+      <button id="submit-order" type="submit">Place buy order ↗</button>
+      <p class="ticket-caption">Fictional index. No money or ownership.<br>1 order/min · 5/day. A cookie keeps your limit.</p>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "blake-woods-personal-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/setup.mjs && node server.mjs",
+    "start": "node server.mjs",
+    "build": "node build.mjs",
+    "preview": "node server.mjs --built",
+    "check": "node --check app.js && node --check admin/admin.js && node --check worker.mjs && node --check lib/api.mjs && node --check lib/exchange.mjs && node --check server.mjs",
+    "dev:cloud": "node scripts/setup.mjs && npm run build && wrangler dev --port 4175",
+    "admin": "node scripts/setup.mjs --admin",
+    "test": "node --test test/*.test.mjs",
+    "deploy": "npm run build && wrangler deploy",
+    "publish:first": "npm run build && node scripts/publish.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.129.1"
+  }
+}

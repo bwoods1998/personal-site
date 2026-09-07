@@ -1,0 +1,11 @@
+dist/
+node_modules/
+.data/
+.env*
+.dev.vars*
+.wrangler/
+archive/
+*.sqlite*
+*.pem
+*.key
+.DS_Store
