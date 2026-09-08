@@ -30,7 +30,7 @@ function render(data) {
     const li = document.createElement('li');
     const line = document.createElement('div'); line.className = 'memo-byline';
     const name = document.createElement('strong'); name.textContent = memo.name;
-    const action = document.createElement('span'); action.className = memo.side; action.textContent = `${memo.side.toUpperCase()} · ${priceText(memo.price)}`;
+    const action = document.createElement('span'); action.className = memo.side; action.textContent = `${memo.side.toUpperCase()} ×${memo.quantity || 1} · ${priceText(memo.price)}`;
     const note = document.createElement('p'); note.textContent = memo.note;
     const time = document.createElement('time'); time.dateTime = new Date(memo.time).toISOString(); time.textContent = stamp(memo.time);
     line.append(name, action); li.append(line, note, time); $('#memos').append(li);

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { openDatabase } from '../lib/database.mjs';
 import { createExchange } from '../lib/exchange.mjs';
 import { createApi } from '../lib/api.mjs';
+import { dailyCameo } from '../lib/cameos.mjs';
 
 test('moderation, idempotency, concurrency, limits and session expiry', async () => {
   const db = await openDatabase({ filename: ':memory:' });
@@ -163,10 +164,11 @@ test('daily chart migration recovers existing trades without changing the ledger
 test('daily cameo is atomic, once per UTC day, removable and durable across restarts', async () => {
   const db=await openDatabase({filename:':memory:'}); let now=Date.UTC(2026,8,7,23,59);
   let market=await createExchange(db,{now:()=>now});
+  const firstQuantity=dailyCameo(Date.UTC(2026,8,7)).quantity, secondQuantity=dailyCameo(Date.UTC(2026,8,8)).quantity;
   try {
     const orders=await Promise.all(Array.from({length:12},()=>market.dailyBuy()));
     assert.equal(new Set(orders.map(o=>o.id)).size,1);
-    let view=await market.snapshot(); assert.equal(view.total,1); assert.equal(view.price,101);
+    let view=await market.snapshot(); assert.equal(view.total,1); assert.equal(view.price,100+firstQuantity); assert.equal(view.memos[0].quantity,firstQuantity);
     assert.ok(!view.memos[0].name.includes('(fictional)')); assert.equal(view.memos[0].cameo,true); assert.ok(view.memos[0].note);
     assert.equal((await market.reviewQueue('approved')).orders.length,1);
     await db.transaction(q=>q("UPDATE orders SET display_name=display_name || ' (fictional)' WHERE id=?",[orders[0].id]));
@@ -178,9 +180,9 @@ test('daily cameo is atomic, once per UTC day, removable and durable across rest
     assert.equal((await market.snapshot()).memos.length,0);
     now+=60000;
     await Promise.all([market.dailyBuy(),market.submit({side:'sell',requestId:randomUUID()},'v','n')]);
-    view=await market.snapshot(); assert.equal(view.price,102); assert.equal(view.total,3);
+    view=await market.snapshot(); assert.equal(view.price,100+firstQuantity+secondQuantity); assert.equal(view.total,3);
     assert.equal(view.buys,2); assert.equal(view.sells,1); assert.equal(view.memos.length,1);
-    assert.deepEqual(view.history.daily.map(p=>p.price),[101,102]);
+    assert.deepEqual(view.history.daily.map(p=>p.price),[100+firstQuantity,100+firstQuantity+secondQuantity]);
     await market.moderate(view.memos[0].id,'reject'); await market.dailyBuy();
     assert.equal((await market.snapshot()).memos.length,0);
   } finally { await db.close(); }
@@ -198,4 +200,15 @@ test('a failed daily buy rolls back its ledger and can retry', async () => {
     assert.equal((await market.snapshot()).total,0);
     fail=false; await market.dailyBuy(); assert.equal((await market.snapshot()).total,1);
   } finally { await db.close(); }
+});
+
+
+test('daily share sizes span 1–10 and stay stable on retries', () => {
+  const sizes=new Set();
+  for(let day=0;day<365;day++) {
+    const time=Date.UTC(2026,0,1)+day*86400000;
+    const cameo=dailyCameo(time); assert.ok(cameo.quantity>=1 && cameo.quantity<=10);
+    assert.deepEqual(cameo,dailyCameo(time)); sizes.add(cameo.quantity);
+  }
+  assert.equal(sizes.size,10);
 });
