@@ -108,7 +108,7 @@ h1 > span { color: var(--accent); }
 .exchange-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .exchange-masthead { text-align:center; border-bottom:3px double #595b46; padding:3px 0 17px; margin-bottom:14px; }
 .exchange-kicker { color:var(--muted); font-size:8px; text-transform:uppercase; letter-spacing:2px; }
-.exchange-masthead h3 { margin:8px 0 0; color:var(--accent); font-family:Georgia, serif; font-size:clamp(21px, 2.2vw, 27px); font-weight:normal; letter-spacing:-.6px; }
+.exchange-masthead h3 { margin:8px 0 0; color:var(--accent); font-family:inherit; font-size:clamp(21px, 2.2vw, 27px); font-weight:700; letter-spacing:-.6px; }
 .ticker { color:var(--accent); font-size:10px; letter-spacing:1px; }
 .exchange-instruction { font-size:10px; color:#bbbbae; line-height:1.6; margin:0 0 13px; }
 #market-count { font-size:9px; color:var(--muted); }
@@ -170,12 +170,12 @@ textarea { resize:vertical; }input:focus-visible, textarea:focus-visible, select
 .terminal-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:4px; }
 #as-of { font-size:8px; color:var(--muted); }
 .market-rules { font-size:9px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px; }.market-rules summary { cursor:pointer; }.market-rules p { line-height:1.8; margin-bottom:0; }
-.ticket-bar h2 { max-width:260px; line-height:1.4; font-family:Georgia,serif; font-size:21px; }
+.ticket-bar h2 { max-width:260px; line-height:1.4; font-family:inherit; font-size:21px; }
 .ticket-quote { grid-template-columns:1fr 1fr; padding:13px 0; border-block:1px solid var(--line); }.ticket-quote dd { font-size:20px; }
 .admin > p { font-size:12px; line-height:1.7; color:var(--muted); }.admin nav button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
 
 .stock-exchange { border-top:1px solid var(--line); padding:25px 0 32px; }
 .stock-exchange .exchange { width:min(100%,620px); margin:23px auto 0; padding:24px; }
-.exchange-masthead h3 { margin-top:0; font-size:clamp(24px,3vw,32px); }
+.exchange-masthead h3 { margin-top:0; font-size:clamp(21px,2.8vw,28px); }
 #chart-inspect { min-height:17px; margin-top:8px; }
 @media (max-width:700px) { .stock-exchange .exchange { padding:16px; } .project-intro { margin-bottom:0; } }

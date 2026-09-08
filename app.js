@@ -110,7 +110,7 @@ for (const button of document.querySelectorAll('[data-side]')) button.addEventLi
   side = button.dataset.side;
   requestId = crypto.randomUUID(); submittedPayload = null; cooldownUntil = 0;
   $('#order-form').reset(); setInputs(false);
-  $('#ticket-title').textContent = `${side === 'buy' ? 'Buy' : 'Sell'} The Woods Company`;
+  $('#ticket-title').textContent = `${side === 'buy' ? 'Buy' : 'Sell'} Blake Woods Stock`;
   $('#submit-order').disabled = true; $('#submit-order').textContent = 'Loading quote…';
   $('#ticket-last').textContent = $('#ticket-estimate').textContent = '—';
   $('#ticket-status').textContent = ''; ticket.showModal();
@@ -134,7 +134,7 @@ $('#order-form').addEventListener('submit', async event => {
   try {
     const result = await api('orders', submittedPayload);
     ticket.close(); await refresh(true);
-    $('#market-status').textContent = `WOODS ${side.toUpperCase()} #${String(result.id).padStart(4, '0')} · ${priceText(result.price)}.${result.review === 'pending' ? ' Name/memo pending approval.' : ''}`;
+    $('#market-status').textContent = `$WOODS ${side.toUpperCase()} #${String(result.id).padStart(4, '0')} · ${priceText(result.price)}.${result.review === 'pending' ? ' Name/memo pending approval.' : ''}`;
   } catch (error) {
     $('#ticket-status').textContent = error.status ? error.message : 'Connection interrupted. Retry to check this order.';
     if (error.status && error.status < 500) { submittedPayload = null; requestId = crypto.randomUUID(); setInputs(false); }

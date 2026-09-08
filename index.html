@@ -46,12 +46,12 @@
         <section id="stock-exchange" class="stock-exchange" aria-labelledby="stock-exchange-title">
           <h2 id="stock-exchange-title" class="section-label">Stock Exchange</h2>
           <div class="exchange" aria-labelledby="exchange-title">
-            <div class="exchange-masthead"><h3 id="exchange-title">The Woods Company</h3></div>
-            <div class="exchange-bar"><span class="ticker">WOODS <span>SIM</span></span><span id="market-count">— trades</span></div>
+            <div class="exchange-masthead"><h3 id="exchange-title">Blake Woods Stock</h3></div>
+            <div class="exchange-bar"><span class="ticker">$WOODS <span>SIM</span></span><span id="market-count">— trades</span></div>
             <div class="quote"><div><span id="quote-label" class="quote-label">Last / USD</span><strong id="price">—</strong></div><span id="change">— / 24h</span></div>
             <div class="chart-ranges" role="group" aria-label="Price history period"><button type="button" data-range="6m" aria-pressed="false">6M</button><button type="button" data-range="1y" aria-pressed="false">1Y</button><button type="button" data-range="all" aria-pressed="true">All</button></div>
             <div class="history-chart">
-              <svg id="chart" viewBox="0 0 360 180" role="slider" tabindex="0" aria-label="Inspect Woods Company price history" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1">
+              <svg id="chart" viewBox="0 0 360 180" role="slider" tabindex="0" aria-label="Inspect Blake Woods stock price history" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1">
                 <path class="chart-grid" d="M36 16H350M36 78H350M36 140H350"/>
                 <text id="chart-high" class="chart-scale" x="31" y="19" text-anchor="end"></text><text id="chart-low" class="chart-scale" x="31" y="143" text-anchor="end"></text>
                 <path id="chart-fill"/><path id="chart-line"/>
@@ -60,8 +60,8 @@
               <div class="chart-dates"><span id="chart-start">Jun 2021</span><span id="chart-end">Today</span></div>
               <p id="chart-inspect" class="chart-caption" aria-live="polite"></p>
             </div>
-            <p class="exchange-instruction">Trade The Woods Company. Leave a memo.</p>
-            <div class="trade-actions"><button type="button" data-side="buy" aria-label="Buy The Woods Company">Buy <span>+$1 ↗</span></button><button type="button" data-side="sell" aria-label="Sell The Woods Company">Sell <span>+$0 →</span></button></div>
+            <p class="exchange-instruction">Trade Blake Woods stock $WOODS. Leave a memo.</p>
+            <div class="trade-actions"><button type="button" data-side="buy" aria-label="Buy Blake Woods Stock">Buy <span>+$1 ↗</span></button><button type="button" data-side="sell" aria-label="Sell Blake Woods Stock">Sell <span>+$0 →</span></button></div>
             <p id="market-status" class="market-status" role="status"></p>
             <div class="terminal-footer"><span id="as-of">Awaiting quote</span><button id="refresh" class="text-button" type="button">Refresh ↻</button></div>
             <section class="memos-section" aria-labelledby="memos-title"><h4 id="memos-title">Memos</h4><ol id="memos" class="memo-list"><li>Memos appear after approval.</li></ol></section>
@@ -74,8 +74,8 @@
   </div>
   <dialog id="ticket" aria-labelledby="ticket-title">
     <form id="order-form">
-      <div class="ticket-bar"><h2 id="ticket-title">Buy The Woods Company</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
-      <p class="ticket-caption">WOODS · simulated order</p>
+      <div class="ticket-bar"><h2 id="ticket-title">Buy Blake Woods Stock</h2><button id="close-ticket" type="button" aria-label="Close ticket">×</button></div>
+      <p class="ticket-caption">$WOODS · simulated order</p>
       <dl class="ticket-quote"><div><dt>Last</dt><dd id="ticket-last">—</dd></div><div><dt>Estimated fill</dt><dd id="ticket-estimate">—</dd></div></dl>
       <p class="ticket-caption">Fill may change before submission.</p>
       <label>Name <span>optional</span><input id="order-name" name="name" maxlength="32" autocomplete="nickname"></label>

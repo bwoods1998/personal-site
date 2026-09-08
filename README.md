@@ -2,7 +2,7 @@
 
 [Live website](https://blakewoods.us) · [GitHub](https://github.com/bwoods1998)
 
-Personal site for Blake Woods, with The Woods Company Stock Exchange: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
+Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
 ## Local
 
@@ -35,7 +35,7 @@ Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, 
 
 ## Price chart and memos
 
-The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a playful stock-price simulation in fictional USD, not a security or brokerage. New buys add $1; new sells execute at the current price without lowering it. Historical trades are preserved.
+The on-screen symbol is **$WOODS**, for **Blake Woods Stock**. The price is a playful stock-price simulation in fictional USD, not a security or brokerage. New buys add $1; new sells execute at the current price without lowering it. Historical trades are preserved.
 
 - **6M / 1Y / All** select calendar periods on a time-scaled chart. Hover, touch, or arrow keys inspect prices and dates.
 - A deterministic, nondecreasing series with quiet stretches, buying bursts and upward gaps starts June 1, 2021 and ends at the exchange's original 100-dollar launch reference. It is identified as generated in the expandable simulation rules, never inserted into the ledger, and never counted as visitor activity. Real trades take over from launch onward.
