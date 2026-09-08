@@ -16,7 +16,7 @@ test('moderation, idempotency, concurrency, limits and session expiry', async ()
     assert.equal(new Set(receipts.map(r => r.id)).size,1);
     let snapshot = await market.snapshot();
     assert.equal(snapshot.total,1); assert.equal(snapshot.price,101);
-    assert.equal(snapshot.orders[0].name,'Guest'); assert.equal(snapshot.orders[0].note,'');
+    assert.equal(snapshot.orders[0].cameo,false); assert.equal(snapshot.orders[0].name,'Guest'); assert.equal(snapshot.orders[0].note,'');
     assert.ok(!JSON.stringify(snapshot).includes('Private pending'));
     await assert.rejects(market.submit({...order,note:'changed'},'visitor','network'),{status:409});
     await assert.rejects(market.submit({...order,requestId:randomUUID()},'visitor','network'),{status:429});
@@ -167,8 +167,11 @@ test('daily cameo is atomic, once per UTC day, removable and durable across rest
     const orders=await Promise.all(Array.from({length:12},()=>market.dailyBuy()));
     assert.equal(new Set(orders.map(o=>o.id)).size,1);
     let view=await market.snapshot(); assert.equal(view.total,1); assert.equal(view.price,101);
-    assert.match(view.memos[0].name,/\(fictional\)$/); assert.ok(view.memos[0].note);
+    assert.ok(!view.memos[0].name.includes('(fictional)')); assert.equal(view.memos[0].cameo,true); assert.ok(view.memos[0].note);
     assert.equal((await market.reviewQueue('approved')).orders.length,1);
+    await db.transaction(q=>q("UPDATE orders SET display_name=display_name || ' (fictional)' WHERE id=?",[orders[0].id]));
+    assert.ok(!(await market.snapshot()).memos[0].name.includes('(fictional)'));
+    assert.ok(!(await market.reviewQueue('approved')).orders[0].name.includes('(fictional)'));
     await market.moderate(orders[0].id,'delete');
     market=await createExchange(db,{now:()=>now});
     assert.equal((await market.dailyBuy()).replay,true);
