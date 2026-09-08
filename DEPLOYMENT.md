@@ -2,7 +2,7 @@
 
 Public URL: https://blakewoods.us (also available at https://www.blakewoods.us).
 
-Published September 7, 2026 to Cloudflare Workers with a SQLite Durable Object. The custom domain is registered with Cloudflare; hosting remains on the Free plan. The original workers.dev address remains available. Both custom hostnames use the same existing Worker and exchange database, separate from local test databases.
+Published September 7, 2026 to Cloudflare Workers with a SQLite Durable Object. The custom domain is registered with Cloudflare; hosting remains on the Free plan. The original workers.dev address is disabled in Wrangler configuration. Both custom hostnames use the same existing Worker and exchange database, separate from local test databases.
 
 Update: `npm run deploy` from this directory.
 
