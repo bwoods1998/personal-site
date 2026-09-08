@@ -15,13 +15,19 @@ export class Exchange extends DurableObject {
       },
     };
     ctx.blockConcurrencyWhile(async () => {
-      this.api = createApi(await createExchange(database), { sessionSecret: env.SESSION_SECRET, adminKey: env.ADMIN_KEY });
+      this.market = await createExchange(database);
+      await this.market.dailyBuy();
+      this.api = createApi(this.market, { sessionSecret: env.SESSION_SECRET, adminKey: env.ADMIN_KEY });
     });
   }
+  dailyBuy() { return this.market.dailyBuy(); }
   fetch(request) { return this.api(request, request.headers.get('CF-Connecting-IP') || 'unknown'); }
 }
 
 export default {
+  async scheduled(controller, env) {
+    await env.EXCHANGE.get(env.EXCHANGE.idFromName('bw-exchange-v1')).dailyBuy();
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {

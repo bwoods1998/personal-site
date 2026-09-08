@@ -2,7 +2,7 @@
 
 [Live website](https://blakewoods.us) · [GitHub](https://github.com/bwoods1998)
 
-Personal site for Blake Woods, with The Woods Company Stock Exchange: a fictional market guestbook. Buy/sell moves an index by one point; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
+Personal site for Blake Woods, with The Woods Company Stock Exchange: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
 ## Local
 
@@ -35,7 +35,7 @@ Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, 
 
 ## Price chart and memos
 
-The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a visitor-driven stock-price simulation in fictional USD, not a security or brokerage. Existing trades retain the original +1/−1 rule and floor of 1.
+The on-screen symbol is **WOODS**, for **The Woods Company**. The price is a playful stock-price simulation in fictional USD, not a security or brokerage. New buys add $1; new sells execute at the current price without lowering it. Historical trades are preserved.
 
 - **6M / 1Y / All** select calendar periods on a time-scaled chart. Hover, touch, or arrow keys inspect prices and dates.
 - A deterministic, nondecreasing series with quiet stretches, buying bursts and upward gaps starts June 1, 2021 and ends at the exchange's original 100-dollar launch reference. It is identified as generated in the expandable simulation rules, never inserted into the ledger, and never counted as visitor activity. Real trades take over from launch onward.
@@ -64,3 +64,9 @@ https://developers.cloudflare.com/durable-objects/platform/limits/
 `npm run check`, `npm test`, `npm run build`, and `npx wrangler deploy --dry-run`.
 
 Tests cover concurrent idempotent orders, index consistency, cooldown/daily limits, moderation gating and revocation, admin session expiry/logout, forged cookies, cross-origin writes and body limits. Cloudflare runtime/browser smoke checks additionally exercise the ticket, approval flow, literal HTML text rendering, public-file allowlist and mobile overflow.
+
+### Daily fictional cameos
+
+A Cloudflare Cron Trigger runs at 00:00 UTC each day through an internal Durable Object RPC method. Object startup also checks the current day, so the first cameo appears immediately and a missed run can recover on a later startup. There is at most one automated $1 buy per UTC day; missed days are not bulk-backfilled. The unique system/day order key and transactional writes make retries and concurrent invocations safe, including after memo deletion.
+
+`lib/cameos.mjs` contains original, curated jokes selected by a date-seeded hash. All famous names carry `(fictional)` in public and admin views. Cameos are automatically approved and can be hidden or deleted with the existing moderation controls. Visitor text still requires approval. Scheduled buys count in the simulated price, volume and chart. No external AI, market-data service, or additional paid infrastructure is used. The daily method has no public HTTP endpoint.

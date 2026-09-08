@@ -26,7 +26,7 @@ test('moderation, idempotency, concurrency, limits and session expiry', async ()
     await market.moderate(receipts[0].id,'reject');
     assert.equal((await market.snapshot()).orders[0].note,'');
     await Promise.all(Array.from({length:15},(_,i)=>market.submit({side:i%2?'buy':'sell',requestId:randomUUID()},`v${i}`,`n${i}`)));
-    snapshot=await market.snapshot(); assert.equal(snapshot.total,16); assert.equal(snapshot.price,100);
+    snapshot=await market.snapshot(); assert.equal(snapshot.total,16); assert.equal(snapshot.price,108);
     for(let i=0;i<4;i++){now+=60001;await market.submit({side:'buy',requestId:randomUUID()},'visitor','network');}
     now+=60001;
     await assert.rejects(market.submit({side:'buy',requestId:randomUUID()},'visitor','network'),{status:429});
@@ -66,10 +66,10 @@ test('network quota survives visitor resets and rejected requests roll back', as
   try {
     for(let i=0;i<30;i++)await market.submit({side:'sell',requestId:randomUUID()},`new-cookie-${i}`,'shared-network');
     await assert.rejects(market.submit({side:'buy',requestId:randomUUID()},'another-cookie','shared-network'),{status:429});
-    assert.equal((await market.snapshot()).price,70);
+    assert.equal((await market.snapshot()).price,100);
     assert.equal((await market.snapshot()).total,30);
     for(let i=0;i<75;i++)await market.submit({side:'sell',requestId:randomUUID()},`other-${i}`,`network-${i}`);
-    assert.equal((await market.snapshot()).price,1);
+    assert.equal((await market.snapshot()).price,100);
     const snapshot=await market.snapshot();assert.equal(snapshot.orders.length,20);
     await assert.rejects(market.submit({side:'buy',requestId:randomUUID(),note:'x'.repeat(161)},'bad','bad'),{status:400});
     assert.equal((await market.snapshot()).total,105);
@@ -92,8 +92,8 @@ test('24-hour statistics use executed prices and the price at the window boundar
     now+=1;
     await market.submit({side:'sell',requestId:randomUUID()},'third','third');
     view=await market.snapshot();
-    assert.equal(view.session.high,102); assert.equal(view.session.low,101); assert.equal(view.session.trades,2);
-    assert.equal(view.session.reference,101); assert.equal(view.session.changePercent,0);
+    assert.equal(view.session.high,102); assert.equal(view.session.low,102); assert.equal(view.session.trades,2);
+    assert.equal(view.session.reference,101); assert.equal(view.session.changePercent,1/101*100);
     assert.equal(view.lastTradeAt,now); assert.equal(view.asOf,now); assert.ok(view.session.since>firstTime);
   }finally{await db.close();}
 });
@@ -155,6 +155,44 @@ test('daily chart migration recovers existing trades without changing the ledger
     const before=await market.snapshot();
     await db.transaction(async q=>{await q('DROP TABLE chart_daily');await q("DELETE FROM schema_migrations WHERE name='chart-daily-v1'");});
     market=await createExchange(db,{now:()=>now});const after=await market.snapshot();
-    assert.equal(after.total,3);assert.equal(after.price,101);assert.deepEqual(after.history,before.history);assert.deepEqual(after.history.daily.map(p=>p.price),[102,101]);
+    assert.equal(after.total,3);assert.equal(after.price,102);assert.deepEqual(after.history,before.history);assert.deepEqual(after.history.daily.map(p=>p.price),[102,102]);
   }finally{await db.close();}
+});
+
+
+test('daily cameo is atomic, once per UTC day, removable and durable across restarts', async () => {
+  const db=await openDatabase({filename:':memory:'}); let now=Date.UTC(2026,8,7,23,59);
+  let market=await createExchange(db,{now:()=>now});
+  try {
+    const orders=await Promise.all(Array.from({length:12},()=>market.dailyBuy()));
+    assert.equal(new Set(orders.map(o=>o.id)).size,1);
+    let view=await market.snapshot(); assert.equal(view.total,1); assert.equal(view.price,101);
+    assert.match(view.memos[0].name,/\(fictional\)$/); assert.ok(view.memos[0].note);
+    assert.equal((await market.reviewQueue('approved')).orders.length,1);
+    await market.moderate(orders[0].id,'delete');
+    market=await createExchange(db,{now:()=>now});
+    assert.equal((await market.dailyBuy()).replay,true);
+    assert.equal((await market.snapshot()).memos.length,0);
+    now+=60000;
+    await Promise.all([market.dailyBuy(),market.submit({side:'sell',requestId:randomUUID()},'v','n')]);
+    view=await market.snapshot(); assert.equal(view.price,102); assert.equal(view.total,3);
+    assert.equal(view.buys,2); assert.equal(view.sells,1); assert.equal(view.memos.length,1);
+    assert.deepEqual(view.history.daily.map(p=>p.price),[101,102]);
+    await market.moderate(view.memos[0].id,'reject'); await market.dailyBuy();
+    assert.equal((await market.snapshot()).memos.length,0);
+  } finally { await db.close(); }
+});
+
+test('a failed daily buy rolls back its ledger and can retry', async () => {
+  const db=await openDatabase({filename:':memory:'}); let fail=true;
+  const wrapped={kind:db.kind,transaction:fn=>db.transaction(q=>fn((sql,args)=>{
+    if(fail && sql.startsWith('UPDATE exchange_state SET price=?,buys=buys+1')) throw new Error('test failure');
+    return q(sql,args);
+  }))};
+  const market=await createExchange(wrapped);
+  try {
+    await assert.rejects(market.dailyBuy(),/test failure/);
+    assert.equal((await market.snapshot()).total,0);
+    fail=false; await market.dailyBuy(); assert.equal((await market.snapshot()).total,1);
+  } finally { await db.close(); }
 });

@@ -119,7 +119,7 @@ for (const button of document.querySelectorAll('[data-side]')) button.addEventLi
     if (attempt !== opening || !ticket.open) return;
     render(quote); cooldownUntil = visitor.nextOrderAt;
     $('#ticket-last').textContent = priceText(quote.price);
-    $('#ticket-estimate').textContent = priceText(Math.max(1, quote.price + (side === 'buy' ? 1 : -1)));
+    $('#ticket-estimate').textContent = priceText(Math.max(1, quote.price + (side === 'buy' ? 1 : 0)));
     updateSubmit();
   } catch { if (attempt === opening) $('#ticket-status').textContent = 'Unable to open ticket. Close and try again.'; }
 });
