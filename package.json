@@ -9,7 +9,7 @@
     "build": "node build.mjs",
     "preview": "node server.mjs --built",
     "check": "node --check app.js && node --check chart.js && node --check admin/admin.js && node --check worker.mjs && node --check lib/api.mjs && node --check lib/exchange.mjs && node --check server.mjs",
-    "dev:cloud": "node scripts/setup.mjs && npm run build && wrangler dev --port 4175",
+    "dev:cloud": "node scripts/setup.mjs && npm run build && wrangler dev --port 4175 --host localhost",
     "admin": "node scripts/setup.mjs --admin",
     "test": "node --test test/*.test.mjs",
     "deploy": "npm run build && wrangler deploy",
