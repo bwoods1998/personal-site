@@ -14,6 +14,8 @@
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./portfolio.css">
   <script src="./portfolio.js" type="module"></script>
+  <script src="./investigations.js" type="module"></script>
+  <script src="./evaluations.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to research</a>
@@ -28,6 +30,17 @@
           <div class="intro-line"><span class="eyebrow">An experiment in public</span><span class="status"><i aria-hidden="true"></i> Research only</span></div>
           <h1 id="page-title">portfolio <span>agent</span></h1>
           <p>An AI investor that remembers its reasoning.</p>
+        </section>
+
+        <section id="investigations" class="investigations" aria-labelledby="investigations-title" hidden>
+          <div class="section-heading"><h2 id="investigations-title">Research runs</h2><span id="investigation-count"></span></div>
+          <div id="investigation-tabs" class="investigation-tabs" role="tablist" aria-label="Reviewed investigations"></div>
+          <article id="investigation-panel" class="investigation-panel" role="tabpanel" tabindex="0"></article>
+        </section>
+
+        <section id="evaluations" class="evaluations" aria-labelledby="evaluations-title" hidden>
+          <div class="section-heading"><h2 id="evaluations-title">Bench notes</h2><span>Evidence checks</span></div>
+          <div id="evaluation-campaigns"></div>
         </section>
 
         <div id="load-state" class="load-state" role="status"><span class="loading-mark" aria-hidden="true">·</span> Opening the research ledger…</div>

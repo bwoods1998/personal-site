@@ -21,7 +21,7 @@ export function createServer(api, { built = false, origin = 'http://localhost:41
       if (url.pathname === '/portfolio') { res.writeHead(308, { Location: './portfolio/' }); res.end(); return; }
       const path = url.pathname;
       let filename = path === '/' ? 'index.html' : path === '/admin/' ? 'admin/index.html' : path === '/portfolio/' ? 'portfolio/index.html' : path.slice(1);
-      const allowed = built ? /^(index\.html|(?:admin|portfolio)\/index\.html|portfolio\/snapshot\.json|assets\/(?:(?:styles|portfolio)\.[a-f0-9]{12}\.css|(?:app|admin|chart|portfolio)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/ : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|portfolio\.(?:css|js)|snapshot\.json))$/;
+      const allowed = built ? /^(index\.html|(?:admin|portfolio)\/index\.html|portfolio\/(?:snapshot|investigations|evaluations)\.json|assets\/(?:(?:styles|portfolio)\.[a-f0-9]{12}\.css|(?:app|admin|chart|portfolio|investigations|evaluations)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/ : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|portfolio\.(?:css|js)|(?:investigations|evaluations)\.js|(?:snapshot|investigations|evaluations)\.json))$/;
       if (!allowed.test(filename)) { res.writeHead(404); res.end('Not found'); return; }
       const content = await readFile(new URL(filename, root));
       const type = filename.endsWith('.html') ? 'text/html' : filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.json') ? 'application/json' : 'image/svg+xml';

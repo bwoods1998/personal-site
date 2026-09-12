@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-09-12T23:23:54.458Z",
+  "campaigns": [
+    {
+      "id": "88228d0c-275c-44a8-bd3c-d8fb7f4d1110",
+      "created_at": "2026-09-12T22:52:13Z",
+      "finished": true,
+      "planned_calls": 96,
+      "fixture_count": 16,
+      "cases_sha256": "15fb36380d9c62a070986598c47a013d155a806fdcd8141ae82015e34020b20a",
+      "prompts_sha256": "e3eb5003d1438e3772c9681002137e34692ba12202957ec95d2cf94b5416cff5",
+      "baseline": [
+        {
+          "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+          "trials": 32,
+          "finalized": 32,
+          "passed": 32,
+          "estimated_known_usd": "0.025353988",
+          "unknown_cost_runs": 0
+        },
+        {
+          "model": "moonshotai/Kimi-K3",
+          "trials": 32,
+          "finalized": 32,
+          "passed": 32,
+          "estimated_known_usd": "0.153837",
+          "unknown_cost_runs": 0
+        },
+        {
+          "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+          "trials": 32,
+          "finalized": 32,
+          "passed": 31,
+          "estimated_known_usd": "0.00407376",
+          "unknown_cost_runs": 0
+        }
+      ],
+      "paired": []
+    },
+    {
+      "id": "53e5e9bb-89d6-4b86-90c0-8cd614992c99",
+      "created_at": "2026-09-12T23:10:12Z",
+      "finished": true,
+      "planned_calls": 32,
+      "fixture_count": 16,
+      "cases_sha256": "15fb36380d9c62a070986598c47a013d155a806fdcd8141ae82015e34020b20a",
+      "prompts_sha256": "60af573eaa5e1e64dd2b089f91f7ee2d6fe45f6db514a2f90c3265abd11fb25b",
+      "baseline": [
+        {
+          "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+          "trials": 16,
+          "finalized": 16,
+          "passed": 16,
+          "estimated_known_usd": "0.008506828",
+          "unknown_cost_runs": 0
+        }
+      ],
+      "paired": [
+        {
+          "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+          "critic_model": "moonshotai/Kimi-K3",
+          "scheduled_pairs": 16,
+          "finalized_pairs": 16,
+          "before_passed": 16,
+          "after_passed": 16,
+          "extra_estimated_known_usd": "0.071598",
+          "unknown_cost_runs": 0
+        }
+      ]
+    }
+  ]
+}
