@@ -4,11 +4,12 @@ const root = new URL('./', import.meta.url), output = new URL('./dist/', root);
 await mkdir(new URL('assets/', output), { recursive: true });
 // Remove only our generated hashed assets so old JavaScript is not published.
 for (const file of await readdir(new URL('assets/', output))) {
-  if (/^(styles|app|admin|favicon|chart)\.[a-f0-9]{12}\.(css|js|svg)$/.test(file)) await unlink(new URL(`assets/${file}`, output));
+  if (/^(styles|app|admin|favicon|chart|portfolio)\.[a-f0-9]{12}\.(css|js|svg)$/.test(file)) await unlink(new URL(`assets/${file}`, output));
 }
 await mkdir(new URL('admin/', output), { recursive: true });
+await mkdir(new URL('portfolio/', output), { recursive: true });
 const assets = new Map();
-for (const filename of ['chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js']) {
+for (const filename of ['chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js', 'portfolio/portfolio.css', 'portfolio/portfolio.js']) {
   let content = await readFile(new URL(filename, root));
   if (filename === 'app.js') content = Buffer.from(content.toString().replace('./chart.js', './' + assets.get('chart.js').split('/').at(-1)));
   const digest = createHash('sha256').update(content).digest('hex').slice(0, 12);
@@ -17,13 +18,20 @@ for (const filename of ['chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admi
   assets.set(filename, asset);
   await writeFile(new URL(asset, output), content);
 }
-for (const filename of ['index.html', 'admin/index.html']) {
+for (const filename of ['index.html', 'admin/index.html', 'portfolio/index.html']) {
   let html = await readFile(new URL(filename, root), 'utf8');
+  const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
   for (const [source, target] of assets) {
-    const reference = filename.startsWith('admin/') ? (source.startsWith('admin/') ? './admin.js' : `../${source}`) : `./${source}`;
-    html = html.replaceAll(reference, `${filename.startsWith('admin/') ? '../' : './'}${target}`);
+    const reference = directory ? (source.startsWith(directory) ? `./${source.slice(directory.length)}` : `../${source}`) : `./${source}`;
+    html = html.replaceAll(reference, `${directory ? '../' : './'}${target}`);
   }
   await writeFile(new URL(filename, output), html);
 }
-await writeFile(new URL('_headers', output), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n`);
-console.log('Built public site and private review shell → dist/');
+// The research pipeline explicitly publishes this allowlisted public projection.
+// Never copy the private project directory or call a model during a site build.
+const snapshot = await readFile(new URL('portfolio/snapshot.json', root), 'utf8');
+const { validSnapshot } = await import('./portfolio/portfolio.js');
+if (!validSnapshot(JSON.parse(snapshot))) throw new Error('Invalid Portfolio Agent publication. Run the reviewed snapshot export first.');
+await writeFile(new URL('portfolio/snapshot.json', output), snapshot);
+await writeFile(new URL('_headers', output), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n/portfolio/snapshot.json\n  Cache-Control: no-cache\n`);
+console.log('Built public site, Portfolio Agent ledger, and private review shell → dist/');

@@ -4,6 +4,18 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
+[Portfolio Agent](https://blakewoods.us/portfolio/) is a separate research project: a versioned thesis with source evidence and measured inference costs. Its public page reads a reviewed snapshot; visitors cannot start research or access an account. Schwab is not connected.
+
+## Publish research
+
+The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns research, private state, and review. After reviewing a revision there, export its public projection from that repository:
+
+```sh
+python3 portfolio.py export ../personal-site/portfolio/snapshot.json
+```
+
+Review the snapshot diff, then run this site's checks, tests, build, and deployment below. The committed snapshot makes a fresh checkout buildable without Python, Sail access, or private account data. Builds reject unknown fields and malformed snapshots. Only HTML, hashed assets, and the explicitly exported JSON enter the public bundle. Public requests do not trigger inference.
+
 ## Local
 
 Node 24 or newer:

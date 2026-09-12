@@ -18,12 +18,13 @@ export function createServer(api, { built = false, origin = 'http://localhost:41
       }
       if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }
       if (url.pathname === '/admin') { res.writeHead(308, { Location: './admin/' }); res.end(); return; }
+      if (url.pathname === '/portfolio') { res.writeHead(308, { Location: './portfolio/' }); res.end(); return; }
       const path = url.pathname;
-      let filename = path === '/' ? 'index.html' : path === '/admin/' ? 'admin/index.html' : path.slice(1);
-      const allowed = built ? /^(index\.html|admin\/index\.html|assets\/(styles\.[a-f0-9]{12}\.css|(?:app|admin|chart)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/ : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js))$/;
+      let filename = path === '/' ? 'index.html' : path === '/admin/' ? 'admin/index.html' : path === '/portfolio/' ? 'portfolio/index.html' : path.slice(1);
+      const allowed = built ? /^(index\.html|(?:admin|portfolio)\/index\.html|portfolio\/snapshot\.json|assets\/(?:(?:styles|portfolio)\.[a-f0-9]{12}\.css|(?:app|admin|chart|portfolio)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/ : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|portfolio\.(?:css|js)|snapshot\.json))$/;
       if (!allowed.test(filename)) { res.writeHead(404); res.end('Not found'); return; }
       const content = await readFile(new URL(filename, root));
-      const type = filename.endsWith('.html') ? 'text/html' : filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'text/javascript' : 'image/svg+xml';
+      const type = filename.endsWith('.html') ? 'text/html' : filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.json') ? 'application/json' : 'image/svg+xml';
       res.writeHead(200, { ...securityHeaders, 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store' });
       res.end(req.method === 'HEAD' ? undefined : content);
     } catch (error) { res.writeHead(error.code === 'ENOENT' ? 404 : 503); res.end('Unable to load. Please retry.'); }

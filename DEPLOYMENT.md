@@ -6,6 +6,8 @@ Published September 7, 2026 to Cloudflare Workers with a SQLite Durable Object. 
 
 Update: `npm run deploy` from this directory.
 
+Portfolio Agent: https://blakewoods.us/portfolio/. Research updates arrive through the reviewed `portfolio/snapshot.json` export from the sibling project, then the normal site deployment. No additional Worker, database, or API secret is needed for that page.
+
 Moderation: https://blakewoods.us/admin/
 
 Print your private sign-in link locally:

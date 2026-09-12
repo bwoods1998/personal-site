@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151715">
+  <meta name="description" content="Portfolio Agent by Blake Woods. An AI investor that remembers its reasoning. Follow the research, decisions, and cost of learning.">
+  <meta property="og:title" content="Portfolio Agent · Blake Woods">
+  <meta property="og:description" content="An AI investor that remembers its reasoning. Built in public.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://blakewoods.us/portfolio/">
+  <link rel="canonical" href="https://blakewoods.us/portfolio/">
+  <title>Portfolio Agent · Blake Woods</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./portfolio.css">
+  <script src="./portfolio.js" type="module"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to research</a>
+  <div class="desktop">
+    <div class="window">
+      <header class="window-bar">
+        <a class="back-link" href="/#projects"><span aria-hidden="true">←</span> blake woods</a>
+        <span class="file-name">portfolio.agent</span>
+      </header>
+      <main id="main">
+        <section class="intro" aria-labelledby="page-title">
+          <div class="intro-line"><span class="eyebrow">An experiment in public</span><span class="status"><i aria-hidden="true"></i> Research only</span></div>
+          <h1 id="page-title">portfolio <span>agent</span></h1>
+          <p>An AI investor that remembers its reasoning.</p>
+        </section>
+
+        <div id="load-state" class="load-state" role="status"><span class="loading-mark" aria-hidden="true">·</span> Opening the research ledger…</div>
+        <button id="retry" class="retry" type="button" hidden>Try again <span aria-hidden="true">↻</span></button>
+        <noscript><p class="load-state">Enable JavaScript to browse the ledger, or <a href="./snapshot.json">read the published snapshot</a>.</p></noscript>
+
+        <div id="research" hidden>
+          <section class="ledger" aria-labelledby="ledger-title">
+            <div class="section-heading"><h2 id="ledger-title">Decision ledger</h2><span id="version-count"></span></div>
+            <div id="version-list" class="version-list" role="tablist" aria-label="Research versions"></div>
+
+            <article id="version-panel" class="thesis" role="tabpanel" tabindex="0">
+              <div class="thesis-bar"><span id="version-label"></span><span id="as-of"></span></div>
+              <div class="thesis-body">
+                <p class="eyebrow topic">AI infrastructure</p>
+                <h3 id="question">Can AI investment turn into durable cash flow?</h3>
+                <div class="stance-line"><span class="stance" id="stance"></span><span class="model" id="model"></span></div>
+                <p id="summary" class="thesis-summary"></p>
+
+                <div class="research-grid">
+                  <section class="evidence-section" aria-labelledby="evidence-title">
+                    <div class="section-heading"><h4 id="evidence-title">Evidence</h4><span id="evidence-count"></span></div>
+                    <div id="evidence" class="evidence-list"></div>
+                    <details id="more-evidence" class="more-evidence" hidden><summary id="more-evidence-label">More evidence</summary><div id="remaining-evidence" class="evidence-list"></div></details>
+                  </section>
+                  <div class="notes-column">
+                    <section class="note-section" aria-labelledby="changes-title"><h4 id="changes-title">What changed</h4><ul id="changes" class="changes-list"></ul></section>
+                    <section class="note-section" aria-labelledby="next-title"><h4 id="next-title">Next question</h4><p id="next-question"></p></section>
+                    <section class="note-section watch-section" aria-labelledby="watch-title"><h4 id="watch-title">Watching</h4><ul id="watch-list"></ul></section>
+                  </div>
+                </div>
+                <details class="reasoning"><summary>Reasoning &amp; review <span aria-hidden="true">+</span></summary><div id="reasoning"></div></details>
+              </div>
+              <div class="review-bar"><span id="review-status"></span><span id="research-cost"></span></div>
+            </article>
+          </section>
+
+          <div class="account-line"><span><span class="account-mark" aria-hidden="true">□</span> Schwab <span class="muted">· Not connected</span></span></div>
+          <details class="method"><summary>Behind the ledger <span aria-hidden="true">+</span></summary><p>A versioned research experiment using Sail. Each entry preserves its source dates, evidence, and reasoning. Research is not a trade instruction.</p><p id="method-note"></p></details>
+        </div>
+      </main>
+      <footer><span>Blake Woods &amp; AI agents</span><a href="https://github.com/bwoods1998/portfolio-agent" target="_blank" rel="noopener noreferrer">Source <span aria-hidden="true">↗</span><span class="sr-only"> (GitHub, opens in a new tab)</span></a></footer>
+    </div>
+  </div>
+</body>
+</html>
