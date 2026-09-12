@@ -52,6 +52,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the live moderation link. Free-plan quota
 
 Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, `.data`, tests and server internals are not public assets. The admin HTML/JS shell is public but every queue and moderation endpoint requires a server-verified admin session.
 
+Public HTML uses `Cache-Control: no-transform` to prevent Cloudflare from injecting analytics scripts outside the site's self-only script policy. Hashed assets retain their normal caching; the research snapshot revalidates. See [Cloudflare's injection behavior](https://developers.cloudflare.com/web-analytics/faq/).
+
 ## Price chart and memos
 
 The on-screen symbol is **$WOODS**, for **Blake Woods Stock**. The price is a playful stock-price simulation in fictional USD, not a security or brokerage. New buys add $1; new sells execute at the current price without lowering it. Historical trades are preserved.

@@ -33,5 +33,9 @@ const snapshot = await readFile(new URL('portfolio/snapshot.json', root), 'utf8'
 const { validSnapshot } = await import('./portfolio/portfolio.js');
 if (!validSnapshot(JSON.parse(snapshot))) throw new Error('Invalid Portfolio Agent publication. Run the reviewed snapshot export first.');
 await writeFile(new URL('portfolio/snapshot.json', output), snapshot);
-await writeFile(new URL('_headers', output), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n/portfolio/snapshot.json\n  Cache-Control: no-cache\n`);
+// Keep public HTML intact: Cloudflare's automatic analytics injection conflicts
+// with our self-only script policy. Hashed assets retain their normal caching.
+const publicHtmlHeaders = ['/', '/index.html', '/portfolio/', '/portfolio/index.html'].map(path =>
+  `${path}\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n`).join('');
+await writeFile(new URL('_headers', output), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n/portfolio/snapshot.json\n  Cache-Control: no-cache\n${publicHtmlHeaders}`);
 console.log('Built public site, Portfolio Agent ledger, and private review shell → dist/');
