@@ -18,6 +18,7 @@
   <script src="./evaluations.js" type="module"></script>
   <script src="./replay.js" type="module"></script>
   <script src="./cache.js" type="module"></script>
+  <script src="./cashflow.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to research</a>
@@ -38,6 +39,11 @@
           <div class="section-heading"><h2 id="investigations-title">Research runs</h2><span id="investigation-count"></span></div>
           <div id="investigation-tabs" class="investigation-tabs" role="tablist" aria-label="Reviewed investigations"></div>
           <article id="investigation-panel" class="investigation-panel" role="tabpanel" tabindex="0"></article>
+        </section>
+
+        <section id="cashflow" class="cashflow" aria-labelledby="cashflow-title" hidden>
+          <div class="section-heading"><h2 id="cashflow-title">Cash-flow bridge</h2><span>Microsoft</span></div>
+          <div id="cashflow-content"></div>
         </section>
 
         <section id="replay" class="replay" aria-labelledby="replay-title" hidden>
