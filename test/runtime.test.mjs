@@ -279,6 +279,18 @@ test('current work renders actual tasks and separates known charges from unsettl
   } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
 });
 
+test('deadline-critical allocation accepts and renders the Pro ASAP profile', () => {
+  const state = activeFixture();
+  state.sail.activity.tasks = [{ symbol: null, kind: 'allocation', profile: 'pro_asap', status: 'running' }];
+  assert(validRuntime(state));
+  const previous = globalThis.document; globalThis.document = documentStub();
+  try {
+    const target = new Node('main'); mountRuntime(state, target);
+    assert.match(target.textContent, /Portfolio allocation/);
+    assert.match(target.textContent, /DeepSeek V4 Pro · ASAP · In progress/);
+  } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+});
+
 test('unchanged checkpoints age visibly without new provider calls or full page replacement', async () => {
   const previous = globalThis.document, oldFetch = globalThis.fetch, oldNow = Date.now;
   globalThis.document = documentStub(); const state = activeFixture();

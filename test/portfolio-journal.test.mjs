@@ -40,6 +40,13 @@ test('authenticated append is immutable, atomic on conflicts and replay-safe', a
   assert.equal((await api(req('GET', null, '', secret, { 'If-None-Match': etag }))).status, 304);
   const saved = await api(req('GET', null, '/' + entry().id)); assert.deepEqual(await saved.json(), entry());
 });
+test('settled Pro ASAP allocation records remain publishable and readable', async () => {
+  const e = entry(); e.profile = 'pro_asap'; e.kind = 'allocation'; e.symbol = null;
+  assert(validEntry(e));
+  const api = setup();
+  assert.equal((await api(req('POST', batch(e)))).status, 200);
+  assert.deepEqual(await (await api(req('GET', null, '/' + e.id))).json(), e);
+});
 test('pagination remains stable while newer records arrive and list pages omit full findings', async () => {
   const api = setup(); await api(req('POST', batch(...Array.from({ length: 15 }, (_, i) => entry(i + 1)))));
   const first = await (await api(req())).json(); assert.equal(first.entries.length, 12); assert.equal(first.entries[0].id, entry(15).id);

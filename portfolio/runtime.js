@@ -13,7 +13,8 @@ const TASK_KIND = {
   portfolio_critic: 'Allocation review', memory_review: 'Memory review',
 };
 const TASK_PROFILE = {
-  pro_flex: 'DeepSeek V4 Pro', kimi_flex: 'Kimi K2.6 · Flex', kimi_asap: 'Kimi K2.6 · ASAP',
+  pro_flex: 'DeepSeek V4 Pro', pro_asap: 'DeepSeek V4 Pro · ASAP',
+  kimi_flex: 'Kimi K2.6 · Flex', kimi_asap: 'Kimi K2.6 · ASAP',
   kimi_balanced: 'Kimi K2.6 · Balanced', glm_flex: 'GLM 5.3', k3: 'Kimi K3',
 };
 
