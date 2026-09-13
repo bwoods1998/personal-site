@@ -95,12 +95,11 @@ test('period buttons update both bridges locally and preserve accessible pressed
   }
 });
 
-test('build and static server allowlist validate and serve only the checked projection', async () => {
+test('historical cash-flow renderer remains safe and is retired from the public build', async () => {
   const html = await readFile(new URL('../portfolio/index.html', import.meta.url), 'utf8');
-  assert.match(html, /id="cash-explorer"/); assert.doesNotMatch(html, /src="\.\/cashflow\.js"/);
+  assert.doesNotMatch(html, /id="cash-explorer"|src="\.\/cashflow\.js"/);
   const build = await readFile(new URL('../build.mjs', import.meta.url), 'utf8');
-  assert.match(build, /validCashflow\(JSON\.parse\(cashflow\)\)/);
-  assert.match(build, /portfolio\/cashflow\.json\\n  Cache-Control: no-cache/);
+  assert.doesNotMatch(build, /portfolio\/cashflow\.(?:js|json)/);
   const source = await readFile(new URL('../portfolio/cashflow.js', import.meta.url), 'utf8');
   assert.equal((source.match(/\bfetch\(/g) || []).length, 1);
   assert.match(source, /fetch\('\.\/cashflow\.json'/);

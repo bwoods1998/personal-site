@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { createPortfolioState } from './lib/portfolio-state.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
 
@@ -24,6 +25,14 @@ export class Exchange extends DurableObject {
   fetch(request) { return this.api(request, request.headers.get('CF-Connecting-IP') || 'unknown'); }
 }
 
+export class PortfolioState extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.api = createPortfolioState(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN);
+  }
+  fetch(request) { return this.api(request); }
+}
+
 export default {
   async scheduled(controller, env) {
     await env.EXCHANGE.get(env.EXCHANGE.idFromName('bw-exchange-v1')).dailyBuy();
@@ -33,6 +42,9 @@ export default {
     if (url.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {
       url.protocol = 'https:';
       return Response.redirect(url.href, 308);
+    }
+    if (url.pathname === '/api/portfolio/state') {
+      return env.PORTFOLIO_STATE.get(env.PORTFOLIO_STATE.idFromName('portfolio-v1')).fetch(request);
     }
     if (url.pathname.startsWith('/api/')) {
       if (!env.ADMIN_KEY || !env.SESSION_SECRET) return Response.json({ error: 'Exchange setup is incomplete.' }, { status: 503 });

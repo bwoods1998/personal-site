@@ -1,19 +1,36 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile, readdir, unlink } from 'node:fs/promises';
-const root = new URL('./', import.meta.url), output = new URL('./dist/', root);
-await mkdir(new URL('assets/', output), { recursive: true });
-// Remove only our generated hashed assets so old JavaScript is not published.
-for (const file of await readdir(new URL('assets/', output))) {
-  if (/^(styles|app|admin|favicon|chart|portfolio|investigations|evaluations|replay|cache|cashflow|scenario|universe|overnight|explorer|agent|project)\.[a-f0-9]{12}\.(css|js|svg)$/.test(file)) await unlink(new URL(`assets/${file}`, output));
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { validRuntime } from './portfolio/runtime.js';
+
+const root = new URL('./', import.meta.url);
+const output = new URL('./dist/', root);
+// Only this explicit projection can enter the public portfolio page.
+// A build never reads private research data or starts model/brokerage requests.
+const runtime = await readFile(new URL('portfolio/runtime.json', root), 'utf8');
+if (!validRuntime(JSON.parse(runtime))) {
+  throw new Error('Invalid public portfolio state. Export a validated runtime checkpoint.');
+}
+
+// Both directories are generated. Clearing them also retires old public reports.
+for (const directory of ['assets/', 'portfolio/']) {
+  await rm(new URL(directory, output), { recursive: true, force: true });
+  await mkdir(new URL(directory, output), { recursive: true });
 }
 await mkdir(new URL('admin/', output), { recursive: true });
-await mkdir(new URL('portfolio/', output), { recursive: true });
 const assets = new Map();
-for (const filename of ['chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js', 'portfolio/portfolio.css', 'portfolio/portfolio.js', 'portfolio/investigations.js', 'portfolio/evaluations.js', 'portfolio/replay.js', 'portfolio/cache.js', 'portfolio/cashflow.js', 'portfolio/scenario.js', 'portfolio/universe.js', 'portfolio/overnight.js', 'portfolio/explorer.js', 'portfolio/agent.js', 'portfolio/project.css']) {
+for (const filename of [
+  'chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js',
+  'portfolio/runtime.css', 'portfolio/runtime.js',
+]) {
   let content = await readFile(new URL(filename, root));
-  if (filename === 'app.js') content = Buffer.from(content.toString().replace('./chart.js', './' + assets.get('chart.js').split('/').at(-1)));
+  if (filename === 'app.js') {
+    content = Buffer.from(content.toString().replace(
+      './chart.js', './' + assets.get('chart.js').split('/').at(-1),
+    ));
+  }
   const digest = createHash('sha256').update(content).digest('hex').slice(0, 12);
-  const name = filename.split('/').at(-1), dot = name.lastIndexOf('.');
+  const name = filename.split('/').at(-1);
+  const dot = name.lastIndexOf('.');
   const asset = `assets/${name.slice(0, dot)}.${digest}${name.slice(dot)}`;
   assets.set(filename, asset);
   await writeFile(new URL(asset, output), content);
@@ -22,79 +39,26 @@ for (const filename of ['index.html', 'admin/index.html', 'portfolio/index.html'
   let html = await readFile(new URL(filename, root), 'utf8');
   const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
   for (const [source, target] of assets) {
-    const reference = directory ? (source.startsWith(directory) ? `./${source.slice(directory.length)}` : `../${source}`) : `./${source}`;
+    const reference = directory
+      ? (source.startsWith(directory) ? `./${source.slice(directory.length)}` : `../${source}`)
+      : `./${source}`;
     html = html.replaceAll(reference, `${directory ? '../' : './'}${target}`);
   }
   await writeFile(new URL(filename, output), html);
 }
-// The research pipeline explicitly publishes this allowlisted public projection.
-// Never copy the private project directory or call a model during a site build.
-const snapshot = await readFile(new URL('portfolio/snapshot.json', root), 'utf8');
-const { validSnapshot, validProjectStatus } = await import('./portfolio/portfolio.js');
-if (!validSnapshot(JSON.parse(snapshot))) throw new Error('Invalid Portfolio Agent publication. Run the reviewed snapshot export first.');
-await writeFile(new URL('portfolio/snapshot.json', output), snapshot);
-const investigations = await readFile(new URL('portfolio/investigations.json', root), 'utf8');
-const { validInvestigations } = await import('./portfolio/investigations.js');
-if (!validInvestigations(JSON.parse(investigations))) throw new Error('Invalid reviewed investigation publication.');
-await writeFile(new URL('portfolio/investigations.json', output), investigations);
-const evaluations = await readFile(new URL('portfolio/evaluations.json', root), 'utf8');
-const { validEvaluations } = await import('./portfolio/evaluations.js');
-if (!validEvaluations(JSON.parse(evaluations))) throw new Error('Invalid evaluation publication.');
-await writeFile(new URL('portfolio/evaluations.json', output), evaluations);
-const replay = await readFile(new URL('portfolio/replay.json', root), 'utf8');
-const { validReplay } = await import('./portfolio/replay.js');
-if (!validReplay(JSON.parse(replay))) throw new Error('Invalid synthetic replay publication.');
-await writeFile(new URL('portfolio/replay.json', output), replay);
-const cashflow = await readFile(new URL('portfolio/cashflow.json', root), 'utf8');
-const { validCashflow } = await import('./portfolio/cashflow.js');
-if (!validCashflow(JSON.parse(cashflow))) throw new Error('Invalid checked cash-flow publication.');
-await writeFile(new URL('portfolio/cashflow.json', output), cashflow);
-const scenario = await readFile(new URL('portfolio/scenario.json', root), 'utf8');
-const { validScenario } = await import('./portfolio/scenario.js');
-if (!validScenario(JSON.parse(scenario), JSON.parse(cashflow))) throw new Error('Invalid checked scenario inputs.');
-await writeFile(new URL('portfolio/scenario.json', output), scenario);
-try {
-  const status = await readFile(new URL('portfolio/project-status.json', root), 'utf8');
-  if (!validProjectStatus(JSON.parse(status), JSON.parse(snapshot), JSON.parse(investigations))) throw new Error('Project status contradicts reviewed publication or cost snapshot.');
-  await writeFile(new URL('portfolio/project-status.json', output), status);
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-  await unlink(new URL('portfolio/project-status.json', output)).catch(error => { if (error.code !== 'ENOENT') throw error; });
-}
+await writeFile(new URL('portfolio/runtime.json', output), runtime);
 
-try {
-  const universe = await readFile(new URL('portfolio/universe.json', root), 'utf8');
-  const { validUniverse } = await import('./portfolio/universe.js');
-  if (!validUniverse(JSON.parse(universe))) throw new Error('Invalid checked research universe.');
-  await writeFile(new URL('portfolio/universe.json', output), universe);
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-  await unlink(new URL('portfolio/universe.json', output)).catch(error => { if (error.code !== 'ENOENT') throw error; });
-}
-try {
-  const overnight = await readFile(new URL('portfolio/overnight-research.json', root), 'utf8');
-  const { validOvernight } = await import('./portfolio/overnight.js');
-  if (!validOvernight(JSON.parse(overnight))) throw new Error('Invalid overnight research checkpoint.');
-  await writeFile(new URL('portfolio/overnight-research.json', output), overnight);
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-  await unlink(new URL('portfolio/overnight-research.json', output)).catch(error => { if (error.code !== 'ENOENT') throw error; });
-}
-const { validCashMap } = await import('./portfolio/explorer.js');
-const { validAgentState } = await import('./portfolio/agent.js');
-const cashMap = await readFile(new URL('portfolio/cash-map.json', root));
-const review = JSON.parse(await readFile(new URL('portfolio/cash-map-review.json', root), 'utf8'));
-const reviewKeys = ['schema_version','reviewed_at','dataset_sha256','companies','scope','current_and_prior_periods','source_definitions_preserved'];
-if (!review || Object.keys(review).length !== reviewKeys.length || !reviewKeys.every(key => Object.hasOwn(review, key)) || typeof review.reviewed_at !== 'string' || !Number.isFinite(Date.parse(review.reviewed_at)) || review.scope !== 'Source-table and arithmetic review by an AI coding agent. This does not approve investment theses or measure AI-only returns.') throw new Error('Invalid source-review record.');
-if (!validCashMap(JSON.parse(cashMap)) || review.schema_version !== 1 || review.companies !== 9 || review.current_and_prior_periods !== true || review.source_definitions_preserved !== true || review.dataset_sha256 !== createHash('sha256').update(cashMap).digest('hex')) throw new Error('Cash map has no matching source review.');
-const agentState = await readFile(new URL('portfolio/agent-state.json', root));
-if (!validAgentState(JSON.parse(agentState))) throw new Error('Invalid agent checkpoint.');
-await writeFile(new URL('portfolio/cash-map.json', output), cashMap);
-await writeFile(new URL('portfolio/agent-state.json', output), agentState);
-await writeFile(new URL('portfolio/social.png', output), await readFile(new URL('portfolio/social.png', root)));
-// Keep public HTML intact: Cloudflare's automatic analytics injection conflicts
-// with our self-only script policy. Hashed assets retain their normal caching.
-const publicHtmlHeaders = ['/', '/index.html', '/portfolio/', '/portfolio/index.html'].map(path =>
-  `${path}\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n`).join('');
-await writeFile(new URL('_headers', output), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'\n/admin/*\n  X-Robots-Tag: noindex, nofollow\n/portfolio/snapshot.json\n  Cache-Control: no-cache\n/portfolio/investigations.json\n  Cache-Control: no-cache\n/portfolio/evaluations.json\n  Cache-Control: no-cache\n/portfolio/replay.json\n  Cache-Control: no-cache\n/portfolio/cashflow.json\n  Cache-Control: no-cache\n/portfolio/scenario.json\n  Cache-Control: no-cache\n/portfolio/project-status.json\n  Cache-Control: no-cache\n/portfolio/universe.json\n  Cache-Control: no-cache\n/portfolio/overnight-research.json\n  Cache-Control: no-cache\n/portfolio/cash-map.json\n  Cache-Control: no-cache\n/portfolio/agent-state.json\n  Cache-Control: no-cache\n${publicHtmlHeaders}`);
-console.log('Built public site, Portfolio Agent ledger, and private review shell → dist/');
+// Prevent analytics injection outside the self-only script policy.
+const publicHtmlHeaders = ['/', '/index.html', '/portfolio/', '/portfolio/index.html']
+  .map(path => `${path}\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n`)
+  .join('');
+await writeFile(new URL('_headers', output), `/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+/admin/*
+  X-Robots-Tag: noindex, nofollow
+/portfolio/runtime.json
+  Cache-Control: no-cache
+${publicHtmlHeaders}`);
+console.log('Built personal site, public portfolio checkpoint, and review shell → dist/');

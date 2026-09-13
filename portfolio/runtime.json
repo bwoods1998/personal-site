@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-09-13T15:34:12Z",
+  "portfolio": {
+    "schema_version": 1,
+    "mode": "paper",
+    "currency": "USD",
+    "status": "cash",
+    "created_at": "2026-09-13T15:34:12Z",
+    "as_of": "2026-09-13T15:34:12Z",
+    "initial_cash": "100000",
+    "cash": "100000",
+    "equity": "100000",
+    "net_deposits": "0",
+    "trading_fees": "0",
+    "holdings": [],
+    "pending_decisions": [],
+    "performance": {
+      "started_at": null,
+      "time_weighted_return_pct": null,
+      "investment_pnl": null,
+      "benchmark": {
+        "name": "S&P 500 Total Return",
+        "status": "unavailable",
+        "return_pct": null,
+        "excess_return_percentage_points": null
+      }
+    },
+    "history": []
+  },
+  "research": {
+    "status": "not_started",
+    "updated_at": "2026-09-13T15:34:12Z",
+    "question": "Which S&P 500 companies deserve a place in the first portfolio?",
+    "next": "Preparing five hours of research, competing allocations and measured Sail comparisons."
+  },
+  "latest_decision": null,
+  "sail": {
+    "status": "not_started",
+    "started_at": null,
+    "ends_at": null,
+    "known_cost_usd": "0",
+    "unsettled_requests": 0
+  }
+}

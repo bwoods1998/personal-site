@@ -3,69 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#171a17">
-  <meta name="description" content="Follow the AI dollar. Explore nine companies’ cash flows and a research agent built with Sail by Blake Woods.">
-  <meta property="og:title" content="Follow the AI dollar · Portfolio Agent">
-  <meta property="og:description" content="From the AI buildout to cash flow. A public research project by Blake Woods, built with Sail.">
-  <meta property="og:image" content="https://blakewoods.us/portfolio/social.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Follow the AI dollar: a Sail research project across cloud, chips, power and cooling.">
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#171916">
+  <meta name="description" content="Building an autonomous portfolio manager on Sail to outperform the S&P 500. A public record of its portfolio, decisions and research.">
+  <meta property="og:title" content="Portfolio Agent · Blake Woods">
+  <meta property="og:description" content="Building an autonomous portfolio manager on Sail to outperform the S&P 500.">
+  <meta name="twitter:card" content="summary">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/portfolio/">
   <link rel="canonical" href="https://blakewoods.us/portfolio/">
-  <title>Follow the AI dollar · Blake Woods</title>
+  <title>Portfolio Agent · Blake Woods</title>
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./project.css">
-  <script src="./explorer.js" type="module"></script>
-  <script src="./agent.js" type="module"></script>
+  <link rel="stylesheet" href="./runtime.css">
+  <script src="./runtime.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to project</a>
-  <div class="project-window">
-    <header class="project-bar">
-      <a href="/#projects" class="home-link"><span aria-hidden="true">↖</span> blake woods</a>
-      <span class="project-file">portfolio.agent</span>
-      <a href="https://github.com/bwoods1998/portfolio-agent" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  <div class="page">
+    <header class="navigation">
+      <a href="/#projects">Blake Woods</a>
+      <a href="https://github.com/bwoods1998/portfolio-agent">GitHub ↗</a>
     </header>
     <main id="main">
-      <section class="hero" aria-labelledby="title">
-        <div class="hero-top"><span class="eyebrow">An experiment in public</span><span class="phase"><span aria-hidden="true"></span> Research phase</span></div>
-        <h1 id="title">Follow the<br><span>AI dollar.</span></h1>
-        <div class="hero-bottom">
-          <p>An agent tracing the AI buildout<br class="desktop-break"> from company filings to cash flow.</p>
-          <nav aria-label="Project sections"><a href="#explore">Explore <span aria-hidden="true">↓</span></a><a href="#method">The agent <span aria-hidden="true">↓</span></a></nav>
-        </div>
+      <section class="introduction" aria-labelledby="title">
+        <h1 id="title">Portfolio Agent</h1>
+        <p>Building an autonomous portfolio manager on <a href="https://www.sailresearch.com/">Sail</a> to outperform the <span class="nowrap">S&amp;P 500.</span></p>
       </section>
-
-      <section id="explore" class="explore" aria-labelledby="explore-title">
-        <div class="section-label"><span class="eyebrow">01 / The spending cycle</span><span>9 public companies</span></div>
-        <h2 id="explore-title">One company’s investment.<br>Another’s opportunity.</h2>
-        <p class="section-intro">Different businesses. A shared AI spending cycle.</p>
-        <div id="cash-explorer" aria-busy="true"><p class="loading">Opening the cash-flow record…</p></div>
-        <p class="map-scope">Source-reviewed figures, separate from the agent drafts. Periods and cash-flow definitions differ.</p>
-        <noscript><p>Read the <a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/AI-STACK.md">source-linked cash-flow record</a>.</p></noscript>
-      </section>
-
-      <section id="method" class="method" aria-labelledby="method-title">
-        <div class="section-label"><span class="eyebrow">02 / The research agent</span><a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/SAIL-PRODUCTS.md" target="_blank" rel="noopener noreferrer">Built with Sail ↗</a></div>
-        <h2 id="method-title">A view that has<br>to earn its evidence.</h2>
-        <p class="section-intro">Read the filings. Challenge the explanation. Keep the checks.</p>
-        <ol class="research-loop" aria-label="Research workflow">
-          <li><span class="loop-number">1</span> Read</li><li><span class="loop-number">2</span> Challenge</li><li><span class="loop-number">3</span> Revise</li><li><span class="loop-number">4</span> Check</li>
-        </ol>
-        <div id="agent-report"><p class="loading">Opening the research checkpoint…</p></div>
-      </section>
-
-      <section class="next" aria-labelledby="next-title">
-        <span class="eyebrow">Where this goes</span>
-        <h2 id="next-title">Research today.<br>A portfolio next.</h2>
-        <p>The goal: a persistent agent that explains its changing view, then tests it in a small live portfolio.</p>
-        <div class="next-footer"><span>Schwab integration pending · No live trades</span><a href="https://github.com/bwoods1998/portfolio-agent#next" target="_blank" rel="noopener noreferrer">What’s next ↗</a></div>
-      </section>
+      <div id="portfolio-runtime" aria-busy="true">
+        <p class="loading" role="status">Loading the latest checkpoint…</p>
+      </div>
+      <noscript><p>Read the <a href="https://github.com/bwoods1998/portfolio-agent">portfolio record on GitHub</a>.</p></noscript>
     </main>
-    <footer class="project-footer"><span>Blake Woods &amp; AI agents</span><span>Built on a revived 2019 MacBook</span></footer>
+    <footer>
+      <span>Blake Woods &amp; AI agents</span>
+      <a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/EVALUATION.md">Research &amp; method ↗</a>
+    </footer>
   </div>
 </body>
 </html>

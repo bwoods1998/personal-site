@@ -4,26 +4,24 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Portfolio Agent](https://blakewoods.us/portfolio/) follows the AI dollar across nine companies. Explore source-checked cash bridges, change the assumptions, and inspect a measured Sail research experiment. Technical detail lives on GitHub. Visitors cannot start paid work or access an account. Schwab is disconnected.
+[Portfolio Agent](https://blakewoods.us/portfolio/) is an autonomous portfolio manager built on Sail, with the S&P 500 as its investment universe and total-return benchmark. The public page shows saved paper-portfolio state, decisions and current research. Live brokerage integration is pending.
 
-## Publish research
+## Portfolio publication
 
-The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the private research ledger and reviewed public data. This site serves saved files; visits cannot start research or reach a brokerage account.
+The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the research and paper ledger. This site renders a strictly validated public checkpoint from `/api/portfolio/state`, falling back to the bundled `portfolio/runtime.json` when the endpoint is unavailable. Page visits cannot start research or submit orders.
 
-The landing page uses two projections:
+Only `runtime.js`, `runtime.css`, `runtime.json` and the portfolio HTML are deployed for this project. Earlier portfolio components and data remain in the source tree for historical regression tests; they are neither served nor copied into the build. Old generated reports are removed on every build.
 
-- `portfolio/cash-map.json`: nine source-checked current/prior cash bridges. The build requires the exact dataset hash recorded in `cash-map-review.json`.
-- `portfolio/agent-state.json`: typed experiment measurements. No private draft, run ID or trace link is published.
-
-From the research repository, refresh a saved campaign checkpoint offline:
+A fresh clone builds without Python, Sail credentials or private data. Validate and review a new checkpoint before deploying:
 
 ```sh
-python3 scripts/export_presentation.py CAMPAIGN_ID --site ../personal-site
+npm run check
+npm test
+npm run build
+npm run deploy
 ```
 
-This does not update the curated financial figures. Source and accounting review must precede a new cash-map publication. Historical projections remain available for compatibility; `scripts/export_project.py` refreshes those from reviewed ledger state.
-
-Review the public diff, then run `npm run check`, `npm test`, `npm run build`, and `npm run deploy`. A fresh site clone builds without Python, Sail access or private data. Only HTML, hashed assets and allowlisted JSON enter the public bundle.
+The frontend shows only recorded observations. It never generates prices, backfills returns or substitutes an ETF for the S&P 500 Total Return benchmark. Pending paper allocations remain distinct from filled holdings.
 
 ## Local
 
@@ -61,7 +59,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for the live moderation link. Free-plan quota
 
 Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, `.data`, tests and server internals are not public assets. The admin HTML/JS shell is public but every queue and moderation endpoint requires a server-verified admin session.
 
-Public HTML uses `Cache-Control: no-transform` to prevent Cloudflare from injecting analytics scripts outside the site's self-only script policy. Hashed assets retain their normal caching; the research snapshot revalidates. See [Cloudflare's injection behavior](https://developers.cloudflare.com/web-analytics/faq/).
+Public HTML uses `Cache-Control: no-transform` to prevent Cloudflare from injecting analytics scripts outside the site's self-only script policy. Hashed assets retain their normal caching; the public portfolio checkpoint revalidates. See [Cloudflare's injection behavior](https://developers.cloudflare.com/web-analytics/faq/).
 
 ## Price chart and memos
 
