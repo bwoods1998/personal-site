@@ -10,7 +10,11 @@ Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestb
 
 The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the research and paper ledger. This site renders a strictly validated public checkpoint from `/api/portfolio/state`, falling back to the bundled `portfolio/runtime.json` when the endpoint is unavailable. Page visits cannot start research or submit orders.
 
-Only `runtime.js`, `runtime.css`, `runtime.json` and the portfolio HTML are deployed for this project. Earlier portfolio components and data remain in the source tree for historical regression tests; they are neither served nor copied into the build. Old generated reports are removed on every build.
+Current tasks and heartbeat stay visible; counts, costs and run timing sit inside **Run details**. Completed runs keep the same portfolio page.
+
+Cloudflare alarms notify the owner on completion or missing updates, independently of the research host. Delivery requires the `EMAIL` binding, the private `NOTIFICATION_EMAIL` secret, an onboarded email domain and a verified destination. See [deployment](DEPLOYMENT.md) for setup and private delivery checks.
+
+Only `runtime.js`, `runtime.css`, `runtime.json` and the portfolio HTML are deployed for this project. Retired portfolio interfaces, reports and publisher scripts are preserved in Git history. Old generated reports are removed on every build.
 
 A fresh clone builds without Python, Sail credentials or private data. Validate and review a new checkpoint before deploying:
 

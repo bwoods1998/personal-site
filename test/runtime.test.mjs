@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validRuntime, validPortfolio, sourceUrl, money, percent, chartData, mountRuntime, loadRuntime, startRuntime } from '../portfolio/runtime.js';
+import { validRuntime, validPortfolio, sourceUrl, money, percent, chartData, mountRuntime, loadRuntime, startRuntime, activityStatus } from '../portfolio/runtime.js';
 
 function portfolio() {
   return {
@@ -44,7 +44,11 @@ class Node {
   replaceChildren(...children) { this._text = ''; this.children = children; }
   setAttribute(name, value) { this.attributes[name] = value; }
   all(tag) { return this.children.flatMap(child => [...(child.tag === tag ? [child] : []), ...child.all(tag)]); }
-  querySelectorAll(selector) { return selector.startsWith('details') ? this.all('details').filter(node => !selector.includes('[open]') || node.open) : []; }
+  querySelectorAll(selector) {
+    if (selector.startsWith('details')) return this.all('details').filter(node => !selector.includes('[open]') || node.open);
+    if (selector.startsWith('.')) return this.all('span').filter(node => node.className.split(' ').includes(selector.slice(1)));
+    return [];
+  }
 }
 function documentStub() {
   const listeners = new Map();
@@ -156,7 +160,7 @@ test('rendering keeps pending targets separate from holdings, literal text and n
     assert.match(target.textContent, /\$100,000.00 virtual capital/);
     assert.match(target.textContent, /No performance record yet/);
     assert.match(target.textContent, /Pending allocationMSFT20%/);
-    assert.match(target.textContent, /fresh regular-session quotes/);
+    assert.match(target.textContent, /Paper orders await market-session prices/);
     assert.match(target.textContent, /<img src=x onerror=alert\(1\)>/);
     assert.equal(target.all('img').length, 0);
     assert.equal(target.all('svg').length, 0);
@@ -222,4 +226,75 @@ test('corporate-action suspension retains history without inventing a current ma
   p.performance.benchmark.excess_return_percentage_points = null;
   assert(validPortfolio(p));
   p.status = 'invested'; assert.equal(validPortfolio(p), false);
+});
+
+function activeFixture() {
+  const state = fixture();
+  state.research.status = 'running';
+  state.sail = { status: 'running', started_at: '2026-09-13T18:00:00Z', ends_at: '2026-09-13T23:00:00Z', known_cost_usd: '3.142', unsettled_requests: 8,
+    activity: { heartbeat_at: '2026-09-13T18:30:00Z', completed_requests: 42, total_requests: 50,
+      companies_researched: 28, universe_size: 503, reserved_cost_usd: '1.72', tasks: [
+        { symbol: 'NVDA', kind: 'company', profile: 'pro_flex', status: 'running' },
+        { symbol: 'JPM', kind: 'fresh_review', profile: 'kimi_flex', status: 'running' },
+        { symbol: null, kind: 'portfolio_critic', profile: 'k3', status: 'queued' },
+      ] },
+  };
+  return state;
+}
+
+test('optional public activity accepts only bounded typed operational facts', () => {
+  assert(validRuntime(activeFixture()));
+  for (const mutate of [
+    a => { a.completed_requests = 51; },
+    a => { a.total_requests = 1.5; },
+    a => { a.companies_researched = 504; },
+    a => { a.universe_size = 0; },
+    a => { a.reserved_cost_usd = '-1'; },
+    a => { a.heartbeat_at = '2026-09-13T18:31:00Z'; },
+    a => { a.tasks.push(a.tasks[0]); },
+    a => { a.tasks[0].symbol = '<script>'; },
+    a => { a.tasks[0].kind = 'raw private reasoning'; },
+    a => { a.tasks[0].profile = 'unknown-model'; },
+    a => { a.tasks[0].status = 'completed'; },
+    a => { a.tasks[0].request_id = 'private'; },
+    a => { a.raw_response = 'private'; },
+  ]) {
+    const state = activeFixture(); mutate(state.sail.activity); assert.equal(validRuntime(state), false);
+  }
+  const state = activeFixture(); state.sail.activity = null; assert.equal(validRuntime(state), false);
+});
+
+test('current work renders actual tasks and separates known charges from unsettled reservations', () => {
+  const previous = globalThis.document; globalThis.document = documentStub();
+  try {
+    const target = new Node('main'); mountRuntime(activeFixture(), target);
+    assert.match(target.textContent, /42 \/ 50/);
+    assert.match(target.textContent, /28 \/ 503/);
+    assert.match(target.textContent, /Known inference cost\$3.14/);
+    assert.match(target.textContent, /\$1.72 reserved · 8 unsettled requests/);
+    assert.match(target.textContent, /NVDA · Company research/);
+    assert.match(target.textContent, /Kimi K3 · Queued/);
+    assert.equal(target.all('ul').filter(node => node.className === 'active-tasks')[0].children.length, 3);
+    assert.match(target.textContent, /Run deadline/);
+  } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+});
+
+test('unchanged checkpoints age visibly without new provider calls or full page replacement', async () => {
+  const previous = globalThis.document, oldFetch = globalThis.fetch, oldNow = Date.now;
+  globalThis.document = documentStub(); const state = activeFixture();
+  let at = Date.parse('2026-09-13T18:30:05Z'); Date.now = () => at;
+  globalThis.fetch = async () => new Response(JSON.stringify(state), { status: 200 });
+  try {
+    const target = new Node('main'); await loadRuntime(target);
+    assert.match(target.textContent, /Updated · just now/);
+    const firstChild = target.children[0];
+    at += 5 * 60000; await loadRuntime(target);
+    assert.match(target.textContent, /Checkpoint delayed · 5m ago/);
+    assert.equal(target.children[0], firstChild);
+    assert(activityStatus(state.sail, at).delayed);
+    state.sail.status = 'complete'; assert.equal(activityStatus(state.sail, at).delayed, false);
+  } finally {
+    Date.now = oldNow; globalThis.fetch = oldFetch;
+    if (previous === undefined) delete globalThis.document; else globalThis.document = previous;
+  }
 });

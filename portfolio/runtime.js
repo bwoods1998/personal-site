@@ -7,6 +7,15 @@ const REPOSITORY = 'https://github.com/bwoods1998/portfolio-agent';
 const responseCache = new Map();
 const mounted = new WeakMap();
 const loading = new WeakMap();
+const TASK_KIND = {
+  company: 'Company research', cache_control: 'Cache comparison', fresh_review: 'Fresh review',
+  window_pair: 'Completion-window comparison', cache_write: 'Shared context', allocation: 'Portfolio allocation',
+  portfolio_critic: 'Allocation review', memory_review: 'Memory review',
+};
+const TASK_PROFILE = {
+  pro_flex: 'DeepSeek V4 Pro', kimi_flex: 'Kimi K2.6 · Flex', kimi_asap: 'Kimi K2.6 · ASAP',
+  kimi_balanced: 'Kimi K2.6 · Balanced', glm_flex: 'GLM 5.3', k3: 'Kimi K3',
+};
 
 function keys(value, expected) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -36,6 +45,18 @@ function nullable(value, check) { return value === null || check(value); }
 function symbol(value) { return typeof value === 'string' && /^[A-Z][A-Z0-9.-]{0,9}$/.test(value); }
 function percentValue(value) { return decimal(value, { signed: true, fraction: 12 }); }
 function before(left, right) { return Date.parse(left) <= Date.parse(right); }
+function count(value, max = 100000) { return Number.isSafeInteger(value) && value >= 0 && value <= max; }
+function validActivity(activity, publishedAt) {
+  if (!keys(activity, ['heartbeat_at', 'completed_requests', 'total_requests', 'companies_researched', 'universe_size', 'reserved_cost_usd', 'tasks'])
+    || !nullable(activity.heartbeat_at, instant) || (activity.heartbeat_at !== null && !before(activity.heartbeat_at, publishedAt))
+    || !count(activity.completed_requests) || !count(activity.total_requests) || activity.completed_requests > activity.total_requests
+    || !count(activity.companies_researched, 600) || !count(activity.universe_size, 600) || activity.universe_size < 1
+    || activity.companies_researched > activity.universe_size || !decimal(activity.reserved_cost_usd)
+    || !Array.isArray(activity.tasks) || activity.tasks.length > 3) return false;
+  return activity.tasks.every(task => keys(task, ['symbol', 'kind', 'profile', 'status'])
+    && nullable(task.symbol, symbol) && Object.hasOwn(TASK_KIND, task.kind) && Object.hasOwn(TASK_PROFILE, task.profile)
+    && ['queued', 'running'].includes(task.status));
+}
 
 export function sourceUrl(value) {
   if (typeof value !== 'string' || value.length > 1000) return null;
@@ -145,7 +166,7 @@ export function validRuntime(value) {
       }
     }
     const sail = value.sail;
-    if (!keys(sail, ['status', 'started_at', 'ends_at', 'known_cost_usd', 'unsettled_requests'])
+    if (!keys(sail, ['status', 'started_at', 'ends_at', 'known_cost_usd', 'unsettled_requests', ...(Object.hasOwn(sail || {}, 'activity') ? ['activity'] : [])])
       || !['not_started', 'running', 'complete', 'needs_attention'].includes(sail.status)
       || !nullable(sail.started_at, instant) || !nullable(sail.ends_at, instant)
       || !decimal(sail.known_cost_usd) || !Number.isSafeInteger(sail.unsettled_requests)
@@ -153,6 +174,7 @@ export function validRuntime(value) {
     if (sail.status === 'not_started' && (sail.started_at !== null || sail.ends_at !== null)) return false;
     if (sail.status !== 'not_started' && (sail.started_at === null || sail.ends_at === null || !before(sail.started_at, sail.ends_at))) return false;
     if (sail.started_at !== null && !before(sail.started_at, value.published_at)) return false;
+    if (Object.hasOwn(sail, 'activity') && !validActivity(sail.activity, value.published_at)) return false;
     return true;
   } catch { return false; }
 }
@@ -276,7 +298,7 @@ function portfolioView(portfolio) {
   metrics.append(metric('S&P 500 total return', percent(performance.benchmark.return_pct)));
   metrics.append(metric('Difference', percent(performance.benchmark.excess_return_percentage_points, ' pp'), performance.benchmark.excess_return_percentage_points));
   section.append(metrics);
-  if (performance.started_at === null) section.append(element('p', 'No performance record yet. Waiting for a sourced market observation.', 'portfolio-note'));
+  if (performance.started_at === null) section.append(element('p', 'No performance record yet.', 'portfolio-note'));
   else {
     section.append(element('p', `Since ${date(performance.started_at)} · Time-weighted, after recorded trading costs.${performance.benchmark.status === 'unavailable' ? ' Benchmark data unavailable.' : ''}`, 'portfolio-note'));
     const performanceChart = chart(portfolio.history);
@@ -296,7 +318,7 @@ function portfolioView(portfolio) {
     for (const target of latest.targets) { const item = element('li', target.symbol); item.append(element('span', weight(target.weight))); targets.append(item); }
     if (latest.targets.length) pending.append(targets);
     else pending.append(element('p', 'Move to cash.'));
-    pending.append(element('p', 'Paper orders wait for fresh regular-session quotes.'));
+    pending.append(element('p', 'Paper orders await market-session prices.'));
     section.append(pending);
   }
   if (portfolio.status === 'suspended') section.append(element('p', 'Paper execution is paused pending a state check.', 'portfolio-note'));
@@ -317,16 +339,69 @@ function decisionView(decision) {
   return section;
 }
 const RESEARCH_STATUS = { not_started: 'Preparing', running: 'Research running', complete: 'Research complete', paused: 'Research paused', needs_attention: 'Needs attention' };
+export function activityStatus(sail, at = Date.now()) {
+  const heartbeat = sail.activity?.heartbeat_at;
+  if (!heartbeat) return { text: 'Awaiting first update', delayed: false };
+  const age = Math.max(0, Math.floor((at - Date.parse(heartbeat)) / 1000));
+  const elapsed = age < 60 ? 'just now' : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`;
+  const delayed = sail.status === 'running' && age > 180;
+  return { text: `${delayed ? 'Checkpoint delayed' : 'Updated'} · ${elapsed}`, delayed };
+}
+function updateFreshness(target, sail) {
+  const status = activityStatus(sail);
+  for (const node of target.querySelectorAll?.('.run-heartbeat') || []) {
+    node.textContent = status.text;
+    node.className = `run-heartbeat${status.delayed ? ' delayed' : ''}`;
+  }
+}
+function activityView(sail) {
+  const activity = sail.activity;
+  const view = element('div', null, 'run-activity');
+  if (activity.tasks.length) {
+    const list = element('ul', null, 'active-tasks');
+    list.setAttribute('aria-label', 'Current Sail tasks');
+    for (const task of activity.tasks) {
+      const item = element('li');
+      const title = element('span', `${task.symbol ? task.symbol + ' · ' : ''}${TASK_KIND[task.kind]}`);
+      const state = task.status === 'running' ? 'In progress' : 'Queued';
+      item.append(title, element('span', `${TASK_PROFILE[task.profile]} · ${state}`, 'task-status'));
+      list.append(item);
+    }
+    view.append(list);
+  }
+  const note = element('div', null, 'activity-note');
+  const status = activityStatus(sail);
+  note.append(element('span', status.text, `run-heartbeat${status.delayed ? ' delayed' : ''}`));
+  view.append(note);
+  return view;
+}
+function activityDetails(sail) {
+  const activity = sail.activity;
+  const details = element('div', null, 'activity-details');
+  const stats = element('dl', null, 'run-stats');
+  for (const [label, value] of [
+    ['Requests completed', `${activity.completed_requests.toLocaleString('en-US')} / ${activity.total_requests.toLocaleString('en-US')}`],
+    ['Companies researched', `${activity.companies_researched} / ${activity.universe_size}`],
+    ['Known inference cost', money(sail.known_cost_usd)],
+  ]) stats.append(metric(label, value));
+  details.append(stats);
+  if (sail.unsettled_requests || scaled(activity.reserved_cost_usd) > 0n) {
+    details.append(element('p', `${money(activity.reserved_cost_usd)} reserved · ${sail.unsettled_requests} unsettled request${sail.unsettled_requests === 1 ? '' : 's'}`, 'reservation-note'));
+  }
+  return details;
+}
 function researchView(research, sail) {
   const section = element('section', null, 'research'); section.append(heading('Current work', RESEARCH_STATUS[research.status]));
-  section.append(element('p', research.question, 'question'), element('p', research.next, 'next-step'));
+  section.append(element('p', research.question, 'question'));
+  if (sail.activity) section.append(activityView(sail));
+  section.append(element('p', research.next, 'next-step'));
   if (sail.started_at !== null) {
     const details = element('details', null, 'run-details'); details.append(element('summary', 'Run details'));
+    if (sail.activity) details.append(activityDetails(sail));
     const data = element('dl');
-    for (const [label, value] of [
-      ['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)],
-      ['Known Sail cost', money(sail.known_cost_usd)], ['Unsettled requests', String(sail.unsettled_requests)],
-    ]) data.append(element('dt', label), element('dd', value));
+    const rows = [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
+    if (!sail.activity) rows.push(['Known Sail cost', money(sail.known_cost_usd)], ['Unsettled requests', String(sail.unsettled_requests)]);
+    for (const [label, value] of rows) data.append(element('dt', label), element('dd', value));
     details.append(data, element('p', 'Agent operating costs are tracked separately from portfolio returns.'));
     section.append(details);
   }
@@ -367,8 +442,8 @@ async function refreshRuntime(target) {
     const previous = mounted.get(target);
     // A temporary endpoint failure must not replace a newer checkpoint with
     // the older static fallback. The visible publication timestamp stays honest.
-    if (previous && Date.parse(data.published_at) < Date.parse(previous.published_at)) return;
-    if (previous && JSON.stringify(previous) === JSON.stringify(data)) return;
+    if (previous && Date.parse(data.published_at) < Date.parse(previous.published_at)) { updateFreshness(target, previous.sail); return; }
+    if (previous && JSON.stringify(previous) === JSON.stringify(data)) { updateFreshness(target, previous.sail); return; }
     const opened = [...(target.querySelectorAll?.('details[open]') || [])].map(node => node.className);
     mountRuntime(data, target);
     for (const details of target.querySelectorAll?.('details') || []) {
@@ -376,7 +451,7 @@ async function refreshRuntime(target) {
     }
     mounted.set(target, data);
   } catch {
-    if (mounted.has(target)) return;
+    if (mounted.has(target)) { updateFreshness(target, mounted.get(target).sail); return; }
     const notice = element('p', 'The latest checkpoint is unavailable. ', 'unavailable');
     notice.append(link('View the project on GitHub.', REPOSITORY));
     target.replaceChildren(notice); target.setAttribute('aria-busy', 'false');

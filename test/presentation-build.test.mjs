@@ -46,3 +46,13 @@ test('static server serves only active public files and denies historical and pr
     }
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test('visitor page has one objective and one portfolio record',async()=>{
+  const html=await readFile(new URL('../portfolio/index.html',import.meta.url),'utf8');
+  assert.match(html,/Building an autonomous portfolio manager/);
+  assert.match(html,/to outperform the <span class="nowrap">S&amp;P 500/);
+  assert.match(html,/id="portfolio-runtime"/);
+  assert.doesNotMatch(html,/cash-explorer|agent-report|data-view=|id="panel-lab"|Follow the|src="\.\/(?:replay|cache|evaluations|portfolio|explorer|agent)\.js"/);
+  const source=await readFile(new URL('../portfolio/runtime.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/\.innerHTML|localStorage|sessionStorage|sendBeacon/);
+});

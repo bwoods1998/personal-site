@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { createPortfolioState } from './lib/portfolio-state.mjs';
+import { createPortfolioNotifier } from './lib/portfolio-notify.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
 
@@ -28,9 +29,11 @@ export class Exchange extends DurableObject {
 export class PortfolioState extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.api = createPortfolioState(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN);
+    this.notifications = createPortfolioNotifier(ctx.storage, env);
+    this.api = createPortfolioState(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN, () => Date.now(), this.notifications);
   }
   fetch(request) { return this.api(request); }
+  alarm() { return this.notifications.alarm(); }
 }
 
 export default {
@@ -43,7 +46,7 @@ export default {
       url.protocol = 'https:';
       return Response.redirect(url.href, 308);
     }
-    if (url.pathname === '/api/portfolio/state') {
+    if (['/api/portfolio/state', '/api/portfolio/notifications', '/api/portfolio/notifications/test'].includes(url.pathname)) {
       return env.PORTFOLIO_STATE.get(env.PORTFOLIO_STATE.idFromName('portfolio-v1')).fetch(request);
     }
     if (url.pathname.startsWith('/api/')) {
