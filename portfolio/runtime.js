@@ -147,8 +147,17 @@ export function validPortfolio(p) {
 
 export function validRuntime(value) {
   try {
-    if (!keys(value, ROOT_KEYS) || value.schema_version !== 1 || !instant(value.published_at)
+    if (!keys(value, [...ROOT_KEYS, ...(Object.hasOwn(value || {}, 'service') ? ['service'] : [])]) || value.schema_version !== 1 || !instant(value.published_at)
       || !nullable(value.portfolio, validPortfolio)) return false;
+    if (Object.hasOwn(value, 'service')) {
+      const s = value.service;
+      if (!keys(s, ['id', 'status', 'next_wake_at', 'heartbeat_at', 'week_ends_at', 'reason_code'])
+        || typeof s.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(s.id)
+        || !['running', 'waiting', 'paused', 'needs_attention', 'complete'].includes(s.status)
+        || !instant(s.heartbeat_at) || !before(s.heartbeat_at, value.published_at) || !instant(s.week_ends_at)
+        || !nullable(s.next_wake_at, instant)
+        || ![null, 'scheduled_wait', 'funding_needed', 'data_unavailable', 'recovering', 'manual_pause', 'week_complete', 'runtime_error'].includes(s.reason_code)) return false;
+    }
     if (value.portfolio && (!before(value.portfolio.created_at, value.published_at)
       || (value.portfolio.as_of && !before(value.portfolio.as_of, value.published_at)))) return false;
     const research = value.research;
@@ -347,8 +356,8 @@ export function activityStatus(sail, at = Date.now()) {
   const delayed = sail.status === 'running' && age > 180;
   return { text: `${delayed ? 'Checkpoint delayed' : 'Updated'} · ${elapsed}`, delayed };
 }
-function updateFreshness(target, sail) {
-  const status = activityStatus(sail);
+function updateFreshness(target, sail, service) {
+  const status = activityStatus(service ? { ...sail, status: service.status === 'running' ? 'running' : 'complete', activity: { ...sail.activity, heartbeat_at: service.heartbeat_at } } : sail);
   for (const node of target.querySelectorAll?.('.run-heartbeat') || []) {
     node.textContent = status.text;
     node.className = `run-heartbeat${status.delayed ? ' delayed' : ''}`;
@@ -390,16 +399,18 @@ function activityDetails(sail) {
   }
   return details;
 }
-function researchView(research, sail) {
-  const section = element('section', null, 'research'); section.append(heading('Current work', RESEARCH_STATUS[research.status]));
+function researchView(research, sail, service) {
+  const labels = { running: 'Research running', waiting: 'Between research sessions', paused: 'Research paused', needs_attention: 'Needs attention', complete: 'Week complete' };
+  const section = element('section', null, 'research'); section.append(heading('Current work', service ? labels[service.status] : RESEARCH_STATUS[research.status]));
   section.append(element('p', research.question, 'question'));
-  if (sail.activity) section.append(activityView(sail));
+  if (sail.activity) section.append(activityView(service ? { ...sail, status: service.status === 'running' ? 'running' : 'complete', activity: { ...sail.activity, heartbeat_at: service.heartbeat_at, tasks: service.status === 'running' ? sail.activity.tasks : [] } } : sail));
   section.append(element('p', research.next, 'next-step'));
+  const historyLink = link('Research history →', '/portfolio/research/'); historyLink.className = 'research-history-link'; section.append(historyLink);
   if (sail.started_at !== null) {
     const details = element('details', null, 'run-details'); details.append(element('summary', 'Run details'));
     if (sail.activity) details.append(activityDetails(sail));
     const data = element('dl');
-    const rows = [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
+    const rows = service ? [['Week ends', date(service.week_ends_at, true)], ...(service.next_wake_at ? [['Next session', date(service.next_wake_at, true)]] : [])] : [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
     if (!sail.activity) rows.push(['Known Sail cost', money(sail.known_cost_usd)], ['Unsettled requests', String(sail.unsettled_requests)]);
     for (const [label, value] of rows) data.append(element('dt', label), element('dd', value));
     details.append(data, element('p', 'Agent operating costs are tracked separately from portfolio returns.'));
@@ -412,7 +423,7 @@ export function mountRuntime(data, target) {
   const checkpoint = element('div', null, 'checkpoint');
   checkpoint.append(element('span', 'Paper trading · Schwab not connected', 'phase'));
   const updated = element('span', 'Published '); updated.append(time(data.published_at, true)); checkpoint.append(updated);
-  target.replaceChildren(checkpoint, portfolioView(data.portfolio), decisionView(data.latest_decision), researchView(data.research, data.sail));
+  target.replaceChildren(checkpoint, portfolioView(data.portfolio), decisionView(data.latest_decision), researchView(data.research, data.sail, data.service));
   target.setAttribute('aria-busy', 'false');
   return target;
 }
@@ -442,8 +453,8 @@ async function refreshRuntime(target) {
     const previous = mounted.get(target);
     // A temporary endpoint failure must not replace a newer checkpoint with
     // the older static fallback. The visible publication timestamp stays honest.
-    if (previous && Date.parse(data.published_at) < Date.parse(previous.published_at)) { updateFreshness(target, previous.sail); return; }
-    if (previous && JSON.stringify(previous) === JSON.stringify(data)) { updateFreshness(target, previous.sail); return; }
+    if (previous && Date.parse(data.published_at) < Date.parse(previous.published_at)) { updateFreshness(target, previous.sail, previous.service); return; }
+    if (previous && JSON.stringify(previous) === JSON.stringify(data)) { updateFreshness(target, previous.sail, previous.service); return; }
     const opened = [...(target.querySelectorAll?.('details[open]') || [])].map(node => node.className);
     mountRuntime(data, target);
     for (const details of target.querySelectorAll?.('details') || []) {
@@ -451,7 +462,7 @@ async function refreshRuntime(target) {
     }
     mounted.set(target, data);
   } catch {
-    if (mounted.has(target)) { updateFreshness(target, mounted.get(target).sail); return; }
+    if (mounted.has(target)) { updateFreshness(target, mounted.get(target).sail, mounted.get(target).service); return; }
     const notice = element('p', 'The latest checkpoint is unavailable. ', 'unavailable');
     notice.append(link('View the project on GitHub.', REPOSITORY));
     target.replaceChildren(notice); target.setAttribute('aria-busy', 'false');

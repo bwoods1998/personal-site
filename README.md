@@ -10,11 +10,13 @@ Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestb
 
 The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the research and paper ledger. This site renders a strictly validated public checkpoint from `/api/portfolio/state`, falling back to the bundled `portfolio/runtime.json` when the endpoint is unavailable. Page visits cannot start research or submit orders.
 
-Current tasks and heartbeat stay visible; counts, costs and run timing sit inside **Run details**. Completed runs keep the same portfolio page.
+Current tasks and heartbeat stay visible; counts, costs and timing sit inside **Run details**. A quiet **Research history** link opens timestamped findings, evidence, questions and decisions. Each finding has a stable link; financial figures link to the exact SEC filing. Failed checks remain visible without publishing their unsupported claims.
 
-Cloudflare alarms notify the owner on completion or missing updates, independently of the research host. Delivery requires the `EMAIL` binding, the private `NOTIFICATION_EMAIL` secret, an onboarded email domain and a verified destination. See [deployment](DEPLOYMENT.md) for setup and private delivery checks.
+The history API is an append-only public projection. Authenticated batches contain at most 20 strictly validated records; public reads paginate 12 summaries at a time, with full detail fetched only on demand. Retries cannot rewrite old findings. No raw prompts, internal reasoning or credentials enter the public journal.
 
-Only `runtime.js`, `runtime.css`, `runtime.json` and the portfolio HTML are deployed for this project. Retired portfolio interfaces, reports and publisher scripts are preserved in Git history. Old generated reports are removed on every build.
+Cloudflare alarms notify the owner on one-off run completion or missing updates, independently of the research host. Persistent weekday sessions use their separate supervisor for service health and funding alerts; routine session completion does not send another email. Delivery requires the `EMAIL` binding, the private `NOTIFICATION_EMAIL` secret, an onboarded email domain and a verified destination. See [deployment](DEPLOYMENT.md) for setup and private delivery checks.
+
+Only the portfolio and research-history interfaces plus the initial validated checkpoint are deployed for this project. Retired portfolio interfaces, reports and publisher scripts are preserved in Git history. Old generated reports are removed on every build.
 
 A fresh clone builds without Python, Sail credentials or private data. Validate and review a new checkpoint before deploying:
 

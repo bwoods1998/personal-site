@@ -19,11 +19,12 @@ export function createServer(api, { built = false, origin = 'http://localhost:41
       if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }
       if (url.pathname === '/admin') { res.writeHead(308, { Location: './admin/' }); res.end(); return; }
       if (url.pathname === '/portfolio') { res.writeHead(308, { Location: './portfolio/' }); res.end(); return; }
+      if (url.pathname === '/portfolio/research') { res.writeHead(308, { Location: '/portfolio/research/' }); res.end(); return; }
       const path = url.pathname;
-      let filename = path === '/' ? 'index.html' : path === '/admin/' ? 'admin/index.html' : path === '/portfolio/' ? 'portfolio/index.html' : path.slice(1);
+      let filename = path === '/' ? 'index.html' : path === '/admin/' ? 'admin/index.html' : path === '/portfolio/' ? 'portfolio/index.html' : path === '/portfolio/research/' ? 'portfolio/research/index.html' : path.slice(1);
       const allowed = built
-        ? /^(index\.html|(?:admin|portfolio)\/index\.html|portfolio\/runtime\.json|assets\/(?:(?:styles|runtime)\.[a-f0-9]{12}\.css|(?:app|admin|chart|runtime)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/
-        : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|runtime\.(?:css|js|json)))$/;
+        ? /^(index\.html|(?:admin|portfolio|portfolio\/research)\/index\.html|portfolio\/runtime\.json|assets\/(?:(?:styles|runtime|research)\.[a-f0-9]{12}\.css|(?:app|admin|chart|runtime|research|schema)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/
+        : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|runtime\.(?:css|js|json)|research\/(?:index\.html|research\.(?:css|js)|schema\.js)))$/;
       if (!allowed.test(filename)) { res.writeHead(404); res.end('Not found'); return; }
       const content = await readFile(new URL(filename, root));
       const type = filename.endsWith('.html') ? 'text/html' : filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.json') ? 'application/json' : filename.endsWith('.png') ? 'image/png' : 'image/svg+xml';

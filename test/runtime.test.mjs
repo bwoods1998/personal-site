@@ -298,3 +298,17 @@ test('unchanged checkpoints age visibly without new provider calls or full page 
     if (previous === undefined) delete globalThis.document; else globalThis.document = previous;
   }
 });
+
+test('persistent service reports deliberate waiting without pretending epoch work is running', () => {
+  const state = fixture();
+  state.service = { id: 'week-test', status: 'waiting', next_wake_at: '2026-09-14T12:00:00Z', heartbeat_at: state.published_at, week_ends_at: '2026-09-18T22:00:00Z', reason_code: 'scheduled_wait' };
+  assert(validRuntime(state));
+  const old = globalThis.document; globalThis.document = documentStub();
+  try {
+    const root = new Node('div'); mountRuntime(state, root);
+    assert.match(root.textContent, /Between research sessions/);
+    assert.equal(root.all('a').filter(a => a.href === '/portfolio/research/').length, 1);
+  } finally { globalThis.document = old; }
+  state.service.private_error = 'private'; assert.equal(validRuntime(state), false); delete state.service.private_error;
+  state.service.heartbeat_at = '2027-01-01T00:00:00Z'; assert.equal(validRuntime(state), false);
+});

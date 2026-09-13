@@ -1,0 +1,49 @@
+.journal-page { width: min(880px, calc(100% - 64px)); }
+.journal-page .introduction { padding-bottom: 42px; }
+.journal-page .introduction p { font-size: 17px; }
+.journal-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); font: 10px/1.6 'Courier New', monospace; color: var(--muted); }
+button { font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 8px 0; text-align: left; }
+button:hover { text-decoration: underline; text-underline-offset: 4px; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.journal-entry, .journal-issues { border-top: 1px solid var(--line); scroll-margin-top: 22px; }
+.journal-entry > summary, .journal-issues > summary { position: relative; display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 20px; width: 100%; padding: 23px 25px 23px 0; list-style: none; font-family: Arial, Helvetica, sans-serif; }
+.journal-entry > summary::-webkit-details-marker, .journal-issues > summary::-webkit-details-marker { display: none; }
+.journal-entry > summary:after, .journal-issues > summary:after { content: '+'; position: absolute; right: 1px; top: 23px; color: var(--muted); font: 18px/1.5 'Courier New', monospace; }
+.journal-entry[open] > summary:after, .journal-issues[open] > summary:after { content: '−'; color: var(--accent); }
+.journal-issues > summary { align-items: baseline; }
+.journal-issue-records { padding-left: 18px; border-left: 1px solid var(--line); margin-bottom: 22px; }
+.journal-time { font: 10px/1.7 'Courier New', monospace; color: var(--muted); }
+.journal-company { display: block; color: var(--accent); font: 11px/1.7 'Courier New', monospace; margin-bottom: 7px; }
+.journal-title { overflow-wrap: anywhere; color: var(--ink); font-size: 15px; line-height: 1.65; display: block; }
+.journal-failure { color: var(--muted); }
+.journal-content { margin: 0 0 27px 136px; font-size: 13px; line-height: 1.8; color: var(--muted); }
+.journal-content h2 { font-size: 11px; font-weight: 400; font-family: 'Courier New', monospace; color: var(--accent); margin: 23px 0 7px; }
+.journal-content p { margin: 0 0 12px; white-space: pre-line; overflow-wrap: anywhere; }
+.journal-content ul { margin: 0; padding-left: 17px; }
+.journal-content li { padding-left: 3px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.journal-claims { list-style: none; padding: 0 !important; }
+.journal-claims li { display: grid; grid-template-columns: 1fr auto; gap: 4px 20px; padding: 11px 0; margin: 0; border-bottom: 1px solid var(--line); }
+.journal-claims strong { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; text-align: right; }
+.journal-claims small { grid-column: 1 / -1; font: 10px/1.7 'Courier New', monospace; }
+.journal-claims a { display: inline-block; margin-left: 12px; }
+.journal-check { font-size: 11px; }
+.journal-metadata { margin-top: 18px; }
+.journal-metadata dl { display: grid; grid-template-columns: 1fr auto; gap: 7px 20px; font: 10px/1.7 'Courier New', monospace; }
+.journal-metadata dd { margin: 0; text-align: right; }
+.journal-metadata p { font-size: 11px; }
+.journal-permalink { display: inline-block; font: 10px/1.7 'Courier New', monospace; margin-top: 12px; min-height: 30px; }
+.journal-status { margin: 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.journal-more { min-height: 60px; font: 11px/1.7 'Courier New', monospace; margin: 12px 0 30px; }
+.journal-page footer { margin-top: 20px; }
+@media (max-width: 560px) {
+  .journal-page { width: calc(100% - 40px); }
+  .journal-page h1 { font-size: 35px; }
+  .journal-page .introduction p { font-size: 15px; }
+  .journal-entry > summary, .journal-issues > summary { grid-template-columns: minmax(0, 1fr); gap: 9px; padding: 21px 25px 21px 0; }
+  .journal-company { margin-bottom: 5px; }
+  .journal-title { font-size: 14px; }
+  .journal-content { margin-left: 0; }
+  .journal-claims { font-size: 12px; }
+  .journal-metadata dl { grid-template-columns: 1fr; gap: 2px; }
+  .journal-metadata dd { text-align: left; margin-bottom: 8px; }
+}

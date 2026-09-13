@@ -313,3 +313,13 @@ test('a distinct frozen run window receives its own completion notification', as
   next.sail.started_at = timestamp(f.now() - 5 * 60 * 60_000); next.sail.ends_at = timestamp(f.now());
   await f.publish(next); await f.notifier.alarm(); assert.equal(f.sent.length, 2);
 });
+
+test('persistent service leaves per-epoch and stale notices to its independent supervisor', async () => {
+  const f = fixture(); await f.publish(f.state());
+  f.advance(1000);
+  const state = f.state('complete');
+  state.service = { id: 'test-week', status: 'waiting', next_wake_at: timestamp(f.now() + 3600000), heartbeat_at: state.published_at, week_ends_at: '2026-09-18T22:00:00Z', reason_code: 'scheduled_wait' };
+  assert.equal((await f.publish(state)).status, 200);
+  f.advance(STALE_MS * 3); await f.notifier.alarm();
+  assert.equal(f.sent.length, 0); assert.equal(f.alarm(), null);
+});

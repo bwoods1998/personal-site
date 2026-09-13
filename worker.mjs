@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { createPortfolioState } from './lib/portfolio-state.mjs';
 import { createPortfolioNotifier } from './lib/portfolio-notify.mjs';
+import { createPortfolioJournal } from './lib/portfolio-journal.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
 
@@ -31,8 +32,9 @@ export class PortfolioState extends DurableObject {
     super(ctx, env);
     this.notifications = createPortfolioNotifier(ctx.storage, env);
     this.api = createPortfolioState(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN, () => Date.now(), this.notifications);
+    this.journal = createPortfolioJournal(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN);
   }
-  fetch(request) { return this.api(request); }
+  fetch(request) { return new URL(request.url).pathname.startsWith('/api/portfolio/research') ? this.journal(request) : this.api(request); }
   alarm() { return this.notifications.alarm(); }
 }
 
@@ -46,8 +48,19 @@ export default {
       url.protocol = 'https:';
       return Response.redirect(url.href, 308);
     }
-    if (['/api/portfolio/state', '/api/portfolio/notifications', '/api/portfolio/notifications/test'].includes(url.pathname)) {
-      return env.PORTFOLIO_STATE.get(env.PORTFOLIO_STATE.idFromName('portfolio-v1')).fetch(request);
+    if (['/api/portfolio/state', '/api/portfolio/notifications', '/api/portfolio/notifications/test', '/api/portfolio/research'].includes(url.pathname) || url.pathname.startsWith('/api/portfolio/research/')) {
+      const journalRead = url.pathname.startsWith('/api/portfolio/research') && ['GET', 'HEAD'].includes(request.method);
+      const cacheKey = journalRead ? new Request(url.href) : null;
+      if (cacheKey) {
+        const hit = await caches.default.match(cacheKey);
+        if (hit) {
+          if (request.headers.get('If-None-Match') === hit.headers.get('ETag')) return new Response(null, { status: 304, headers: hit.headers });
+          return request.method === 'HEAD' ? new Response(null, hit) : hit;
+        }
+      }
+      const response = await env.PORTFOLIO_STATE.get(env.PORTFOLIO_STATE.idFromName('portfolio-v1')).fetch(request);
+      if (cacheKey && request.method === 'GET' && response.status === 200) ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+      return response;
     }
     if (url.pathname.startsWith('/api/')) {
       if (!env.ADMIN_KEY || !env.SESSION_SECRET) return Response.json({ error: 'Exchange setup is incomplete.' }, { status: 503 });
