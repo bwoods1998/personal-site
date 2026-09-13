@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+ <defs><pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#30372b" stroke-width="1"/></pattern></defs>
+ <rect width="1200" height="630" fill="#171a17"/><rect width="1200" height="630" fill="url(#grid)"/>
+ <rect x="35" y="35" width="1130" height="560" fill="#1d211c" stroke="#515b43"/>
+ <path d="M35 91H1165" stroke="#515b43"/>
+ <g font-family="monospace" fill="#afb3a3">
+  <text x="65" y="71" font-size="17">blake woods</text><text x="903" y="71" font-size="17">portfolio.agent</text>
+  <text x="71" y="156" font-size="13" letter-spacing="2">FOLLOWING THE AI BUILDOUT</text>
+  <text x="64" y="260" font-size="94" letter-spacing="-5" fill="#ebe9de">Follow the</text>
+  <text x="64" y="358" font-size="94" letter-spacing="-5" fill="#e6b073">AI dollar.</text>
+  <text x="71" y="408" font-size="20">From company filings to cash flow.</text>
+  <path d="M71 452H1128" stroke="#515b43"/>
+  <text x="71" y="493" font-size="14" fill="#aabd91">CLOUD &amp; APPLICATIONS</text><text x="71" y="526" font-size="18">MSFT  AMZN  GOOGL  META</text>
+  <text x="500" y="493" font-size="14" fill="#aabd91">CHIPS &amp; NETWORKS</text><text x="500" y="526" font-size="18">NVDA  TSM  AVGO</text>
+  <text x="851" y="493" font-size="14" fill="#aabd91">POWER &amp; COOLING</text><text x="851" y="526" font-size="18">CEG  VRT</text>
+  <text x="71" y="569" font-size="12">blakewoods.us/portfolio</text><text x="993" y="569" font-size="12">Built with Sail</text>
+ </g>
+ <g fill="none" stroke="#61794a" stroke-width="2"><path d="M843 176H1050V246H843ZM778 298H908V378H778ZM975 298H1105V378H975Z"/><path d="M948 246V274M843 274H1040M843 274V298M1040 274V298"/></g>
+ <g font-family="monospace" font-size="16" text-anchor="middle" fill="#aabd91"><text x="947" y="218">OPERATING CASH</text><text x="843" y="343">REINVEST</text><text x="1040" y="343">REMAINING</text></g>
+</svg>

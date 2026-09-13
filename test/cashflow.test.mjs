@@ -97,7 +97,7 @@ test('period buttons update both bridges locally and preserve accessible pressed
 
 test('build and static server allowlist validate and serve only the checked projection', async () => {
   const html = await readFile(new URL('../portfolio/index.html', import.meta.url), 'utf8');
-  assert.match(html, /id="cashflow"[^>]*hidden/); assert.match(html, /src="\.\/cashflow\.js" type="module"/);
+  assert.match(html, /id="cash-explorer"/); assert.doesNotMatch(html, /src="\.\/cashflow\.js"/);
   const build = await readFile(new URL('../build.mjs', import.meta.url), 'utf8');
   assert.match(build, /validCashflow\(JSON\.parse\(cashflow\)\)/);
   assert.match(build, /portfolio\/cashflow\.json\\n  Cache-Control: no-cache/);

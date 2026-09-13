@@ -3,131 +3,69 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#151715">
-  <meta name="description" content="Portfolio Agent by Blake Woods. Follow the AI spending cycle.">
-  <meta property="og:title" content="Portfolio Agent · Blake Woods">
-  <meta property="og:description" content="Follow the AI spending cycle.">
+  <meta name="theme-color" content="#171a17">
+  <meta name="description" content="Follow the AI dollar. Explore nine companies’ cash flows and a research agent built with Sail by Blake Woods.">
+  <meta property="og:title" content="Follow the AI dollar · Portfolio Agent">
+  <meta property="og:description" content="From the AI buildout to cash flow. A public research project by Blake Woods, built with Sail.">
+  <meta property="og:image" content="https://blakewoods.us/portfolio/social.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Follow the AI dollar: a Sail research project across cloud, chips, power and cooling.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/portfolio/">
   <link rel="canonical" href="https://blakewoods.us/portfolio/">
-  <title>Portfolio Agent · Blake Woods</title>
+  <title>Follow the AI dollar · Blake Woods</title>
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./portfolio.css">
-  <script src="./portfolio.js" type="module"></script>
-  <script src="./investigations.js" type="module"></script>
-  <script src="./cashflow.js" type="module"></script>
-  <script src="./scenario.js" type="module"></script>
-  <script src="./universe.js" type="module"></script>
-  <script src="./overnight.js" type="module"></script>
+  <link rel="stylesheet" href="./project.css">
+  <script src="./explorer.js" type="module"></script>
+  <script src="./agent.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to project</a>
-  <div class="desktop">
-    <div class="window">
-      <header class="window-bar">
-        <a class="back-link" href="/#projects"><span aria-hidden="true">←</span> blake woods</a>
-        <span class="file-name">portfolio.agent</span>
-      </header>
-      <main id="main">
-        <section class="intro" aria-labelledby="page-title">
-          <div class="intro-line"><span class="eyebrow">Built in public</span><span class="status">Research only</span></div>
-          <h1 id="page-title">portfolio <span>agent</span></h1>
-          <p>Follow the AI spending cycle.</p>
-          <p class="intro-account">Schwab disconnected · No trades</p>
-        </section>
-        <div class="project-tabs" role="tablist" aria-label="Project views">
-          <button id="view-now" type="button" role="tab" aria-selected="true" aria-controls="panel-now" data-view="now">Now</button>
-          <button id="view-research" type="button" role="tab" aria-selected="false" aria-controls="panel-research" data-view="research" tabindex="-1">Case</button>
+  <div class="project-window">
+    <header class="project-bar">
+      <a href="/#projects" class="home-link"><span aria-hidden="true">↖</span> blake woods</a>
+      <span class="project-file">portfolio.agent</span>
+      <a href="https://github.com/bwoods1998/portfolio-agent" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="title">
+        <div class="hero-top"><span class="eyebrow">An experiment in public</span><span class="phase"><span aria-hidden="true"></span> Research phase</span></div>
+        <h1 id="title">Follow the<br><span>AI dollar.</span></h1>
+        <div class="hero-bottom">
+          <p>An agent tracing the AI buildout<br class="desktop-break"> from company filings to cash flow.</p>
+          <nav aria-label="Project sections"><a href="#explore">Explore <span aria-hidden="true">↓</span></a><a href="#method">The agent <span aria-hidden="true">↓</span></a></nav>
         </div>
-        <div id="load-state" class="load-state" role="status">Opening the research snapshot…</div>
-        <button id="retry" class="retry" type="button" hidden>Try again <span aria-hidden="true">↻</span></button>
-        <noscript><p class="load-state">Read the <a href="./snapshot.json">published research snapshot</a> or <a href="https://github.com/bwoods1998/portfolio-agent">project notes</a>.</p></noscript>
+      </section>
 
-        <section id="panel-now" class="project-panel" role="tabpanel" aria-labelledby="view-now" tabindex="0">
-          <div id="now-content" hidden>
-            <div class="now-record"><span id="now-state">Published research</span><time id="now-saved"></time></div>
-          <h2 id="universe-title" class="universe-title">Where does AI spending turn into cash flow?</h2>
-          <section id="universe" class="universe" aria-labelledby="universe-title" hidden>
-            <div class="universe-subheading"><span>Research universe</span><span id="universe-overview">Not holdings</span></div>
-            <p class="universe-context">How much depends on the same AI spending cycle?</p>
-            <div id="universe-content"></div>
-          </section>
-            <section id="overnight" class="night-shift" aria-label="Overnight research checkpoint" hidden><div id="overnight-content"></div></section>
-            <details class="current-case latest-case">
-              <summary>Latest reviewed case · Microsoft</summary>
-              <p id="now-focus" class="eyebrow sr-only"></p>
-              <h2 id="now-question"></h2>
-              <p id="now-finding" class="current-finding"></p>
-              <div class="case-links"><button type="button" class="text-action" data-open-view="research">Explore first case <span aria-hidden="true">→</span></button><span id="now-reviewed"></span></div>
-              <details class="case-invalidation"><summary>What would change the view</summary><p id="now-invalidation"></p></details>
-            </details>
-            <dl id="now-metrics" class="now-metrics"></dl>
-            <div class="now-next"><span class="eyebrow">Next</span><p id="now-next"></p></div>
-            <details id="sail-usage" class="project-method" hidden><summary>How Sail fits</summary><div id="sail-products"></div><p id="status-provenance" class="status-links"></p><p class="status-limit">Saved checkpoint, not a live connection. Visits never start paid work. Costs are known estimates, not reconciled bills.</p></details>
-          </div>
-        </section>
+      <section id="explore" class="explore" aria-labelledby="explore-title">
+        <div class="section-label"><span class="eyebrow">01 / The spending cycle</span><span>9 public companies</span></div>
+        <h2 id="explore-title">One company’s investment.<br>Another’s opportunity.</h2>
+        <p class="section-intro">Different businesses. A shared AI spending cycle.</p>
+        <div id="cash-explorer" aria-busy="true"><p class="loading">Opening the cash-flow record…</p></div>
+        <p class="map-scope">Source-reviewed figures, separate from the agent drafts. Periods and cash-flow definitions differ.</p>
+        <noscript><p>Read the <a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/AI-STACK.md">source-linked cash-flow record</a>.</p></noscript>
+      </section>
 
-        <section id="panel-research" class="project-panel" role="tabpanel" aria-labelledby="view-research" tabindex="0" hidden>
-          <div id="msft-case">
-          <section id="scenario" class="scenario" aria-labelledby="scenario-title" hidden>
-            <div class="section-heading"><h2 id="scenario-title">What would change the case?</h2><span>Microsoft</span></div>
-            <p class="scenario-intro">Cash generation and investment pull in different directions.</p>
-            <div id="scenario-content"></div>
-          </section>
-          <details class="research-disclosure"><summary><span>Annual cash-flow bridge</span><span>Checked figures</span></summary>
-          <section id="cashflow" class="cashflow" aria-labelledby="cashflow-title" hidden>
-            <div class="section-heading"><h2 id="cashflow-title">Cash-flow bridge</h2><span>Microsoft</span></div>
-            <div id="cashflow-content"></div>
-          </section>
-          </details>
-          <details id="investigations" class="research-disclosure investigations" hidden>
-            <summary><span>Research reports</span><span id="investigation-count"></span></summary>
-            <div id="investigation-tabs" class="investigation-tabs" role="tablist" aria-label="Reviewed investigations"></div>
-            <article id="investigation-panel" class="investigation-panel" role="tabpanel" tabindex="0"></article>
-          </details>
-          <details class="research-disclosure thesis-history">
-            <summary><span>Thesis history</span><span id="version-count"></span></summary>
-        <div id="research" hidden>
-          <section class="ledger" aria-labelledby="ledger-title">
-            <h3 id="ledger-title" class="sr-only">Reviewed thesis history</h3>
-            <div id="version-list" class="version-list" role="tablist" aria-label="Research versions"></div>
+      <section id="method" class="method" aria-labelledby="method-title">
+        <div class="section-label"><span class="eyebrow">02 / The research agent</span><a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/SAIL-PRODUCTS.md" target="_blank" rel="noopener noreferrer">Built with Sail ↗</a></div>
+        <h2 id="method-title">A view that has<br>to earn its evidence.</h2>
+        <p class="section-intro">Read the filings. Challenge the explanation. Keep the checks.</p>
+        <ol class="research-loop" aria-label="Research workflow">
+          <li><span class="loop-number">1</span> Read</li><li><span class="loop-number">2</span> Challenge</li><li><span class="loop-number">3</span> Revise</li><li><span class="loop-number">4</span> Check</li>
+        </ol>
+        <div id="agent-report"><p class="loading">Opening the research checkpoint…</p></div>
+      </section>
 
-            <article id="version-panel" class="thesis" role="tabpanel" tabindex="0">
-              <div class="thesis-bar"><span id="version-label"></span><span id="as-of"></span></div>
-              <div class="thesis-body">
-                <p class="eyebrow topic">AI infrastructure</p>
-                <h3 id="question">Can AI investment turn into durable cash flow?</h3>
-                <div class="stance-line"><span class="stance" id="stance"></span><span class="model" id="model"></span></div>
-                <p id="summary" class="thesis-summary"></p>
-
-                <div class="research-grid">
-                  <section class="evidence-section" aria-labelledby="evidence-title">
-                    <div class="section-heading"><h4 id="evidence-title">Evidence</h4><span id="evidence-count"></span></div>
-                    <div id="evidence" class="evidence-list"></div>
-                    <details id="more-evidence" class="more-evidence" hidden><summary id="more-evidence-label">More evidence</summary><div id="remaining-evidence" class="evidence-list"></div></details>
-                  </section>
-                  <div class="notes-column">
-                    <section class="note-section" aria-labelledby="changes-title"><h4 id="changes-title">What changed</h4><ul id="changes" class="changes-list"></ul></section>
-                    <section class="note-section" aria-labelledby="next-title"><h4 id="next-title">Next question</h4><p id="next-question"></p></section>
-                    <section class="note-section watch-section" aria-labelledby="watch-title"><h4 id="watch-title">Watching</h4><ul id="watch-list"></ul></section>
-                  </div>
-                </div>
-                <details class="reasoning"><summary>Reasoning &amp; review <span aria-hidden="true">+</span></summary><div id="reasoning"></div></details>
-              </div>
-              <div class="review-bar"><span id="review-status"></span><span id="research-cost"></span></div>
-            </article>
-          </section>
-
-          <details class="method"><summary>How publication works <span aria-hidden="true">+</span></summary><p>A versioned research experiment using Sail. Each entry preserves its source dates, evidence, and reasoning. Research is not a trade instruction.</p><p id="method-note"></p></details>
-        </div>
-          </details>
-          </div>
-        </section>
-
-        <p class="implementation-link"><a href="https://github.com/bwoods1998/portfolio-agent/blob/main/docs/START-HERE.md" target="_blank" rel="noopener noreferrer">Experiments &amp; implementation ↗<span class="sr-only"> (GitHub, opens in a new tab)</span></a></p>
-      </main>
-      <footer><span>Blake Woods &amp; AI agents</span><a href="https://github.com/bwoods1998/portfolio-agent" target="_blank" rel="noopener noreferrer">Source <span aria-hidden="true">↗</span><span class="sr-only"> (GitHub, opens in a new tab)</span></a></footer>
-    </div>
+      <section class="next" aria-labelledby="next-title">
+        <span class="eyebrow">Where this goes</span>
+        <h2 id="next-title">Research today.<br>A portfolio next.</h2>
+        <p>The goal: a persistent agent that explains its changing view, then tests it in a small live portfolio.</p>
+        <div class="next-footer"><span>Schwab integration pending · No live trades</span><a href="https://github.com/bwoods1998/portfolio-agent#next" target="_blank" rel="noopener noreferrer">What’s next ↗</a></div>
+      </section>
+    </main>
+    <footer class="project-footer"><span>Blake Woods &amp; AI agents</span><span>Built on a revived 2019 MacBook</span></footer>
   </div>
 </body>
 </html>

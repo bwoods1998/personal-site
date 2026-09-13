@@ -31,12 +31,14 @@ test('Now/Case navigation keeps one panel visible and never selects nonexistent 
   activateProjectView('now',doc);assert.equal(nodes['#panel-research'].hidden,true);
 });
 
-test('visitor page keeps one research case, disconnect status, and repository-only technical experiments',async()=>{
+test('visitor page has one cash explorer, one research checkpoint and a clear next step',async()=>{
   const html=await readFile(new URL('../portfolio/index.html',import.meta.url),'utf8');
-  assert.match(html,/Follow the AI spending cycle/);
-  assert.match(html,/Schwab disconnected · No trades/);
-  assert.match(html,/data-view="research"[^>]*>Case</);assert.doesNotMatch(html,/data-view="lab"|id="panel-lab"|src="\.\/(?:replay|cache|evaluations)\.js"/);
-  assert.match(html,/Experiments &amp; implementation/);
-  const source=await readFile(new URL('../portfolio/scenario.js',import.meta.url),'utf8');assert.equal((source.match(/\bfetch\(/g)||[]).length,1);assert.doesNotMatch(source,/\.innerHTML|localStorage|sessionStorage|sendBeacon|\/api\//);
-  const build=await readFile(new URL('../build.mjs',import.meta.url),'utf8');assert.match(build,/validProjectStatus\(JSON\.parse\(status\), JSON\.parse\(snapshot\), JSON\.parse\(investigations\)\)/);
+  assert.match(html,/Follow the<br><span>AI dollar/);
+  assert.match(html,/Schwab integration pending · No live trades/);
+  assert.match(html,/id="cash-explorer"/);assert.match(html,/id="agent-report"/);
+  assert.doesNotMatch(html,/data-view=|id="panel-lab"|src="\.\/(?:replay|cache|evaluations|portfolio)\.js"/);
+  for(const file of ['explorer','agent']){
+    const source=await readFile(new URL(`../portfolio/${file}.js`,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/\.innerHTML|localStorage|sessionStorage|sendBeacon|\/api\//);
+  }
 });

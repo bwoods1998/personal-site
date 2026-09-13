@@ -103,7 +103,7 @@ test('local controls update plot and exact results, preserve keyboard labels and
 test('historical calculator stays offline and is absent from the visitor case page', async () => {
   const html = await readFile(new URL('../portfolio/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /id="cache-calculator"|src="\.\/cache\.js"/);
-  assert.match(html, /Experiments &amp; implementation/);
+  assert.match(html, /GitHub ↗/);
   const source = await readFile(new URL('../portfolio/cache.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\bfetch\s*\(|localStorage|sessionStorage|sendBeacon|\.innerHTML/);
   assert.match(await readFile(new URL('../build.mjs', import.meta.url), 'utf8'), /portfolio\/cache\.js/);

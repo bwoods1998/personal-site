@@ -4,33 +4,26 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Portfolio Agent](https://blakewoods.us/portfolio/) follows the AI spending cycle across nine companies. Explore the company map, a checked cash-flow scenario, and dated research checkpoints. Technical detail lives on GitHub. Visitors cannot start paid work or access an account. Schwab is disconnected.
+[Portfolio Agent](https://blakewoods.us/portfolio/) follows the AI dollar across nine companies. Explore source-checked cash bridges, change the assumptions, and inspect a measured Sail research experiment. Technical detail lives on GitHub. Visitors cannot start paid work or access an account. Schwab is disconnected.
 
 ## Publish research
 
-The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent)
-owns research, private state, and review. From that repository, export one
-consistent saved publication:
+The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the private research ledger and reviewed public data. This site serves saved files; visits cannot start research or reach a brokerage account.
+
+The landing page uses two projections:
+
+- `portfolio/cash-map.json`: nine source-checked current/prior cash bridges. The build requires the exact dataset hash recorded in `cash-map-review.json`.
+- `portfolio/agent-state.json`: typed experiment measurements. No private draft, run ID or trace link is published.
+
+From the research repository, refresh a saved campaign checkpoint offline:
 
 ```sh
-python3 scripts/export_project.py --site ../personal-site --state checkpoint
+python3 scripts/export_presentation.py CAMPAIGN_ID --site ../personal-site
 ```
 
-This offline command derives reviewed counts and known costs from one read-only
-ledger snapshot, includes unknown usage, and validates this site's JSON contracts
-before replacing files. Use `--state running` only for a dated observation of
-work actually running. It does not publish raw drafts or deploy the site.
+This does not update the curated financial figures. Source and accounting review must precede a new cash-map publication. Historical projections remain available for compatibility; `scripts/export_project.py` refreshes those from reviewed ledger state.
 
-Review the public JSON diff, then run the site's checks, tests, build and deployment.
-A fresh clone builds without Python, Sail access or private data. Only HTML,
-hashed assets and allowlisted JSON enter the public bundle. Historical evaluation
-and replay assets remain available; the default page keeps technical detail on
-GitHub. Public visits never trigger inference.
-
-The optional `portfolio/overnight-research.json` checkpoint contains typed stage
-counts, costs and mechanical checks only. The build rejects extra fields and
-contradictory totals; absent data hides the card. Model drafts and private run
-identifiers never enter this publication.
+Review the public diff, then run `npm run check`, `npm test`, `npm run build`, and `npm run deploy`. A fresh site clone builds without Python, Sail access or private data. Only HTML, hashed assets and allowlisted JSON enter the public bundle.
 
 ## Local
 
