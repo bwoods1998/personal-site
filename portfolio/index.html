@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#151715">
-  <meta name="description" content="Portfolio Agent by Blake Woods. Research across the AI supply chain.">
+  <meta name="description" content="Portfolio Agent by Blake Woods. Follow the AI spending cycle.">
   <meta property="og:title" content="Portfolio Agent · Blake Woods">
-  <meta property="og:description" content="Research across the AI supply chain.">
+  <meta property="og:description" content="Follow the AI spending cycle.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/portfolio/">
   <link rel="canonical" href="https://blakewoods.us/portfolio/">
@@ -18,6 +18,7 @@
   <script src="./cashflow.js" type="module"></script>
   <script src="./scenario.js" type="module"></script>
   <script src="./universe.js" type="module"></script>
+  <script src="./overnight.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to project</a>
@@ -31,7 +32,7 @@
         <section class="intro" aria-labelledby="page-title">
           <div class="intro-line"><span class="eyebrow">Built in public</span><span class="status">Research only</span></div>
           <h1 id="page-title">portfolio <span>agent</span></h1>
-          <p>Research across the AI supply chain.</p>
+          <p>Follow the AI spending cycle.</p>
           <p class="intro-account">Schwab disconnected · No trades</p>
         </section>
         <div class="project-tabs" role="tablist" aria-label="Project views">
@@ -51,6 +52,7 @@
             <p class="universe-context">How much depends on the same AI spending cycle?</p>
             <div id="universe-content"></div>
           </section>
+            <section id="overnight" class="night-shift" aria-label="Overnight research checkpoint" hidden><div id="overnight-content"></div></section>
             <details class="current-case latest-case">
               <summary>Latest reviewed case · Microsoft</summary>
               <p id="now-focus" class="eyebrow sr-only"></p>

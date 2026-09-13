@@ -4,7 +4,7 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Portfolio Agent](https://blakewoods.us/portfolio/) follows public companies across the AI stack. Its page opens with an interactive company map; the first reviewed case has a checked cash-flow scenario. Technical experiments live in its repository. Visitors cannot start paid work or access an account. Schwab is disconnected.
+[Portfolio Agent](https://blakewoods.us/portfolio/) follows the AI spending cycle across nine companies. Explore the company map, a checked cash-flow scenario, and dated research checkpoints. Technical detail lives on GitHub. Visitors cannot start paid work or access an account. Schwab is disconnected.
 
 ## Publish research
 
@@ -26,6 +26,11 @@ A fresh clone builds without Python, Sail access or private data. Only HTML,
 hashed assets and allowlisted JSON enter the public bundle. Historical evaluation
 and replay assets remain available; the default page keeps technical detail on
 GitHub. Public visits never trigger inference.
+
+The optional `portfolio/overnight-research.json` checkpoint contains typed stage
+counts, costs and mechanical checks only. The build rejects extra fields and
+contradictory totals; absent data hides the card. Model drafts and private run
+identifiers never enter this publication.
 
 ## Local
 

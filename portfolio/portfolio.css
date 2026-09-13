@@ -441,6 +441,31 @@ footer a > span:first-child { color: var(--accent); }
   .universe-card h3 { font-size: 17px; }
 }
 .universe-context { margin: 14px 0 0; font-size: 11px; line-height: 1.8; color: var(--muted); }
+.night-shift { margin: 24px 0; padding: 19px 21px; border: 1px solid var(--line); background: #191c17; }
+.night-heading, .night-footer { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.night-heading h3 { margin: 0; color: var(--ink); font-size: 13px; }
+.night-state { font-size: 9px; color: var(--green); }
+.night-purpose { font-size: 10px; line-height: 1.8; color: var(--muted); margin: 13px 0; }
+.night-shift progress { display: block; appearance: none; width: 100%; height: 3px; border: 0; background: var(--line); accent-color: var(--accent); }
+.night-shift progress::-webkit-progress-bar { background: var(--line); }
+.night-shift progress::-webkit-progress-value { background: var(--accent); }
+.night-shift progress::-moz-progress-bar { background: var(--accent); }
+.night-counts { font-size: 10px; color: var(--ink); line-height: 1.8; font-variant-numeric: tabular-nums; margin: 13px 0 0; }
+.night-detail { color: var(--muted); font-size: 9px; line-height: 1.8; }
+.night-detail summary { cursor: pointer; width: fit-content; min-height: 44px; display: flex; align-items: center; gap: 9px; }
+.night-detail summary::after { content: '+'; color: var(--accent); }
+.night-detail[open] summary::after { content: '−'; }
+.night-detail > p { margin: 0 0 12px; }
+.night-companies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 24px; margin-bottom: 20px; }
+.night-companies > div { display: flex; justify-content: space-between; gap: 10px; color: var(--ink); }
+.night-companies > div > span:last-child { color: var(--muted); }
+.night-footer { color: var(--muted); font-size: 8px; line-height: 1.8; }
+.night-footer a { color: var(--green); min-height: 44px; display: inline-flex; align-items: center; }
+@media (max-width: 620px) {
+  .night-shift { padding: 16px 13px; }
+  .night-companies { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 20px; }
+  .night-counts { font-size: 9px; }
+}
 .universe-title { margin: 4px 0 21px; max-width: 670px; font-size: clamp(24px, 3vw, 34px); line-height: 1.3; letter-spacing: -.8px; text-transform: none; color: var(--ink); }
 .universe-subheading { display: flex; justify-content: space-between; gap: 15px; font-size: 9px; color: var(--muted); }
 .latest-case { border-block: 1px solid var(--line); border-left: 0; padding: 0; margin-top: 10px; }

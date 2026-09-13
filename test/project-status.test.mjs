@@ -33,7 +33,7 @@ test('Now/Case navigation keeps one panel visible and never selects nonexistent 
 
 test('visitor page keeps one research case, disconnect status, and repository-only technical experiments',async()=>{
   const html=await readFile(new URL('../portfolio/index.html',import.meta.url),'utf8');
-  assert.match(html,/Research across the AI supply chain/);
+  assert.match(html,/Follow the AI spending cycle/);
   assert.match(html,/Schwab disconnected · No trades/);
   assert.match(html,/data-view="research"[^>]*>Case</);assert.doesNotMatch(html,/data-view="lab"|id="panel-lab"|src="\.\/(?:replay|cache|evaluations)\.js"/);
   assert.match(html,/Experiments &amp; implementation/);
