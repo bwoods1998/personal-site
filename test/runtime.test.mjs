@@ -319,10 +319,51 @@ test('persistent service reports deliberate waiting without pretending epoch wor
   try {
     const root = new Node('div'); mountRuntime(state, root);
     assert.match(root.textContent, /Between research sessions/);
+    assert.match(root.textContent, /Next check/);
+    assert.doesNotMatch(root.textContent, /Next session/);
     assert.equal(root.all('a').filter(a => a.href === '/portfolio/research/').length, 1);
   } finally { globalThis.document = old; }
   state.service.private_error = 'private'; assert.equal(validRuntime(state), false); delete state.service.private_error;
   state.service.heartbeat_at = '2027-01-01T00:00:00Z'; assert.equal(validRuntime(state), false);
+});
+
+test('service credit waiting overrides a running rehearsal and hides queued work', () => {
+  const state = activeFixture();
+  state.service = { id: 'week-test', status: 'waiting', next_wake_at: null, heartbeat_at: state.published_at, week_ends_at: '2026-09-19T04:00:00Z', reason_code: 'funding_needed',
+    rehearsal: { starts_at: '2026-09-13T18:00:00Z', ends_at: '2026-09-13T23:00:00Z', status: 'running', completed_at: null } };
+  const old = globalThis.document; globalThis.document = documentStub();
+  try {
+    const root = new Node('div'); mountRuntime(state, root);
+    assert.match(root.textContent, /Awaiting research credit/);
+    assert.match(root.textContent, /Research resumes when credit is available/);
+    assert.doesNotMatch(root.textContent, /Rehearsal running|In progress|Queued/);
+    assert.match(root.textContent, /42 \/ 50/);
+    // A quiet checkpoint alone cannot establish a stall; service state remains authoritative.
+    state.service.status = 'running'; state.service.reason_code = null;
+    state.sail.activity.tasks = []; mountRuntime(state, root);
+    assert.match(root.textContent, /Rehearsal running/);
+    assert.doesNotMatch(root.textContent, /Awaiting research credit/);
+  } finally { globalThis.document = old; }
+});
+
+test('epoch coverage and missing decisions are scoped to this session, not the entire project', () => {
+  const state = activeFixture();
+  state.service = { id: 'week-test', status: 'running', next_wake_at: null, heartbeat_at: state.published_at, week_ends_at: '2026-09-19T04:00:00Z', reason_code: null };
+  state.research.question = '28 of 503 stocks researched. Which businesses justify a place in the portfolio?';
+  const old = globalThis.document; globalThis.document = documentStub();
+  try {
+    const root = new Node('div'); mountRuntime(state, root);
+    assert.match(root.textContent, /This session: 28 of 503 stocks researched/);
+    assert.match(root.textContent, /Companies this session28 \/ 503/);
+    assert.match(root.textContent, /No new allocation decision this session/);
+    state.research.question = '0 of 503 stocks researched. Which businesses justify a place in the portfolio?';
+    state.sail.activity.companies_researched = 0; mountRuntime(state, root);
+    assert.match(root.textContent, /This session: 0 of 503 stocks researched/);
+    assert.match(root.textContent, /Requests completed42 \/ 50/);
+    assert.doesNotMatch(root.textContent, /No allocation decision published yet/);
+    delete state.service; mountRuntime(state, root);
+    assert.doesNotMatch(root.textContent, /This session:|Companies this session/);
+  } finally { globalThis.document = old; }
 });
 
 test('rehearsal checkpoints show bounded work without marking the week complete', () => {

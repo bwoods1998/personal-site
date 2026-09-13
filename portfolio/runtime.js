@@ -346,10 +346,10 @@ function portfolioView(portfolio) {
   if (portfolio.status === 'suspended') section.append(element('p', 'Paper execution is paused pending a state check.', 'portfolio-note'));
   return section;
 }
-function decisionView(decision) {
+function decisionView(decision, service) {
   const section = element('section', null, 'decision');
   section.append(heading('Latest decision', decision ? time(decision.at) : null));
-  if (!decision) section.append(element('p', 'No allocation decision published yet.', 'empty-state'));
+  if (!decision) section.append(element('p', service ? 'No new allocation decision this session.' : 'No allocation decision published yet.', 'empty-state'));
   else {
     section.append(element('p', decision.summary, 'decision-summary'));
     if (decision.sources.length) {
@@ -397,13 +397,13 @@ function activityView(sail) {
   view.append(note);
   return view;
 }
-function activityDetails(sail) {
+function activityDetails(sail, service) {
   const activity = sail.activity;
   const details = element('div', null, 'activity-details');
   const stats = element('dl', null, 'run-stats');
   for (const [label, value] of [
     ['Requests completed', `${activity.completed_requests.toLocaleString('en-US')} / ${activity.total_requests.toLocaleString('en-US')}`],
-    ['Companies researched', `${activity.companies_researched} / ${activity.universe_size}`],
+    [service ? 'Companies this session' : 'Companies researched', `${activity.companies_researched} / ${activity.universe_size}`],
     ['Known inference cost', money(sail.known_cost_usd)],
   ]) stats.append(metric(label, value));
   details.append(stats);
@@ -416,17 +416,19 @@ function researchView(research, sail, service) {
   const labels = { running: 'Research running', waiting: 'Between research sessions', paused: 'Research paused', needs_attention: 'Needs attention', complete: 'Week complete' };
   const rehearsal = service?.rehearsal;
   const activeRehearsal = rehearsal && ['running', 'settling'].includes(rehearsal.status) && ['running', 'waiting'].includes(service.status);
-  const label = activeRehearsal ? rehearsal.status === 'settling' ? 'Settling rehearsal' : service.status === 'running' ? 'Rehearsal running' : 'Rehearsal waiting' : service ? labels[service.status] : RESEARCH_STATUS[research.status];
+  const fundingWait = service && ['waiting', 'needs_attention'].includes(service.status) && service.reason_code === 'funding_needed';
+  const label = fundingWait ? 'Awaiting research credit' : activeRehearsal ? rehearsal.status === 'settling' ? 'Settling rehearsal' : service.status === 'running' ? 'Rehearsal running' : 'Rehearsal waiting' : service ? labels[service.status] : RESEARCH_STATUS[research.status];
   const section = element('section', null, 'research'); section.append(heading('Current work', label));
-  section.append(element('p', research.question, 'question'));
+  const question = service ? research.question.replace(/^(\d+ of \d+ stocks researched\.)/, 'This session: $1') : research.question;
+  section.append(element('p', question, 'question'));
   if (sail.activity) section.append(activityView(service ? { ...sail, status: service.status === 'running' ? 'running' : 'complete', activity: { ...sail.activity, heartbeat_at: service.heartbeat_at, tasks: service.status === 'running' ? sail.activity.tasks : [] } } : sail));
-  section.append(element('p', research.next, 'next-step'));
+  section.append(element('p', fundingWait ? 'Research resumes when credit is available.' : research.next, 'next-step'));
   const historyLink = link('Research history →', '/portfolio/research/'); historyLink.className = 'research-history-link'; section.append(historyLink);
   if (sail.started_at !== null || service) {
     const details = element('details', null, 'run-details'); details.append(element('summary', 'Run details'));
-    if (sail.activity) details.append(activityDetails(sail));
+    if (sail.activity) details.append(activityDetails(sail, service));
     const data = element('dl');
-    const rows = service ? [['Week ends', date(service.week_ends_at, true)], ...(service.next_wake_at ? [['Next session', date(service.next_wake_at, true)]] : [])] : [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
+    const rows = service ? [['Week ends', date(service.week_ends_at, true)], ...(service.next_wake_at ? [['Next check', date(service.next_wake_at, true)]] : [])] : [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
     if (rehearsal) rows.unshift(['Rehearsal', rehearsal.status === 'complete' ? `Completed ${date(rehearsal.completed_at, true)}` : `Ends ${date(rehearsal.ends_at, true)}`]);
     if (!sail.activity) rows.push(['Known Sail cost', money(sail.known_cost_usd)], ['Unsettled requests', String(sail.unsettled_requests)]);
     for (const [label, value] of rows) data.append(element('dt', label), element('dd', value));
@@ -440,7 +442,7 @@ export function mountRuntime(data, target) {
   const checkpoint = element('div', null, 'checkpoint');
   checkpoint.append(element('span', 'Paper trading · Schwab not connected', 'phase'));
   const updated = element('span', 'Published '); updated.append(time(data.published_at, true)); checkpoint.append(updated);
-  target.replaceChildren(checkpoint, portfolioView(data.portfolio), decisionView(data.latest_decision), researchView(data.research, data.sail, data.service));
+  target.replaceChildren(checkpoint, portfolioView(data.portfolio), decisionView(data.latest_decision, data.service), researchView(data.research, data.sail, data.service));
   target.setAttribute('aria-busy', 'false');
   return target;
 }
