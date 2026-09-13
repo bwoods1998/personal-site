@@ -7,6 +7,19 @@ const money = value => typeof value === 'string' && decimal.test(value) && Numbe
 const exactKeys = (value, keys) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const publicationKeys = ['schema_version', 'published_at', 'project', 'thesis', 'costs', 'portfolio'];
 const revisionKeys = ['id', 'parent_id', 'created_at', 'evidence_as_of', 'headline', 'summary', 'stance', 'claims', 'assumptions', 'invalidation', 'open_questions', 'next_review', 'changes', 'sources', 'facts', 'context', 'reviewed_at', 'reviewer', 'research'];
+const costKeys = ['estimated_usd', 'billed_usd', 'completed_runs', 'unknown_runs', 'reserved_usd'];
+
+// Compare validated decimal strings exactly, including amounts below float precision.
+function compareMoney(left, right) {
+  const [wholeLeft, fractionLeft = ''] = left.split('.');
+  const [wholeRight, fractionRight = ''] = right.split('.');
+  if (wholeLeft.length !== wholeRight.length) return wholeLeft.length - wholeRight.length;
+  if (wholeLeft !== wholeRight) return wholeLeft < wholeRight ? -1 : 1;
+  const places = Math.max(fractionLeft.length, fractionRight.length);
+  const a = fractionLeft.padEnd(places, '0');
+  const b = fractionRight.padEnd(places, '0');
+  return a === b ? 0 : a < b ? -1 : 1;
+}
 
 export function safeSourceUrl(value) {
   try {
@@ -21,10 +34,15 @@ export function validSnapshot(data) {
   if (!exactKeys(data.project, ['name', 'repository', 'mode']) || data.project.name !== 'Portfolio Agent' || data.project.repository !== 'https://github.com/bwoods1998/portfolio-agent' || data.project.mode !== 'research') return false;
   if (!exactKeys(data.portfolio, ['status']) || data.portfolio.status !== 'not_connected') return false;
   if (!exactKeys(data.thesis, ['id', 'symbol', 'company', 'question', 'revisions']) || !text(data.thesis.id) || !text(data.thesis.question) || !text(data.thesis.company) || !text(data.thesis.symbol) || !list(data.thesis.revisions)) return false;
-  if (!exactKeys(data.costs, ['estimated_usd', 'billed_usd', 'completed_runs', 'unknown_runs', 'reserved_usd'])) return false;
+  if (!exactKeys(data.costs, costKeys) && !exactKeys(data.costs, [...costKeys, 'known_estimated_usd'])) return false;
   if (!(data.costs.estimated_usd === null || money(data.costs.estimated_usd)) || data.costs.billed_usd !== null || !money(data.costs.reserved_usd)) return false;
   if (!Number.isSafeInteger(data.costs.completed_runs) || data.costs.completed_runs < 0 || !Number.isSafeInteger(data.costs.unknown_runs) || data.costs.unknown_runs < 0) return false;
   if (data.costs.unknown_runs > 0 && data.costs.estimated_usd !== null) return false;
+  if (data.costs.estimated_usd !== null && compareMoney(data.costs.estimated_usd, data.costs.reserved_usd) > 0) return false;
+  if (Object.hasOwn(data.costs, 'known_estimated_usd')) {
+    if (!money(data.costs.known_estimated_usd) || compareMoney(data.costs.known_estimated_usd, data.costs.reserved_usd) > 0) return false;
+    if (data.costs.unknown_runs === 0 && (data.costs.estimated_usd === null || compareMoney(data.costs.known_estimated_usd, data.costs.estimated_usd) !== 0)) return false;
+  }
   const ids = new Set();
   let previousTime = -Infinity;
   for (const revision of data.thesis.revisions) {
@@ -67,10 +85,19 @@ export function formatFact(value, unit) {
 }
 
 export function formatCost(value) {
-  if (typeof value !== 'string' || !decimal.test(value) || !Number.isFinite(Number(value))) return 'Estimate pending';
+  if (!money(value)) return 'Estimate unavailable';
   const amount = Number(value);
   if (amount > 0 && amount < 0.000001) return '<$0.000001 est.';
   return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: amount < 0.01 && amount > 0 ? 4 : 2, maximumFractionDigits: 6 }).format(amount)} est.`;
+}
+
+export function formatCostSummary(costs) {
+  if (costs.unknown_runs > 0) {
+    const known = money(costs.known_estimated_usd)
+      ? formatCost(costs.known_estimated_usd).replace(' est.', ' known') : 'Estimate unavailable';
+    return `Inference · ${known} · ${costs.unknown_runs} unconfirmed`;
+  }
+  return `Inference · ${formatCost(costs.estimated_usd)}`;
 }
 
 export function formatResearch(research) {
@@ -193,7 +220,7 @@ function renderRevision(data, index) {
   for (const item of watchItems.slice(0, 2)) watch.append(element('li', item));
   document.querySelector('.watch-section').hidden = watchItems.length === 0;
   document.querySelector('#review-status').textContent = `Reviewed ${dateLabel(revision.reviewed_at)}`;
-  document.querySelector('#research-cost').textContent = `Research total · ${formatCost(data.costs.estimated_usd)}`;
+  document.querySelector('#research-cost').textContent = formatCostSummary(data.costs);
   document.querySelector('.reasoning').open = false;
   renderReasoning(revision);
 }

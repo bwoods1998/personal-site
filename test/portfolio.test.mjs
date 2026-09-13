@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validSnapshot, safeSourceUrl, formatFact, formatCost, formatResearch } from '../portfolio/portfolio.js';
+import { validSnapshot, safeSourceUrl, formatFact, formatCost, formatCostSummary, formatResearch } from '../portfolio/portfolio.js';
 
 // Test-only examples: never copied into the public site by the build.
 function fixture() {
@@ -58,13 +58,54 @@ test('no approved revisions and unknown cost are honest supported states', () =>
   data.thesis.revisions = [];
   data.costs = { estimated_usd: null, billed_usd: null, completed_runs: 0, unknown_runs: 1, reserved_usd: '0.05' };
   assert.equal(validSnapshot(data), true);
-  assert.equal(formatCost(null), 'Estimate pending');
-  assert.equal(formatCost(undefined), 'Estimate pending');
+  assert.equal(formatCost(null), 'Estimate unavailable');
+  assert.equal(formatCost(undefined), 'Estimate unavailable');
   assert.equal(formatCost('0.00011808'), '$0.000118 est.');
   assert.equal(formatCost('0.0000001'), '<$0.000001 est.');
-  assert.equal(formatCost('1e3'), 'Estimate pending');
-  assert.equal(formatCost('-1'), 'Estimate pending');
+  assert.equal(formatCost('1e3'), 'Estimate unavailable');
+  assert.equal(formatCost('-1'), 'Estimate unavailable');
   assert.equal(formatCost('0'), '$0.00 est.');
+});
+
+test('known estimates remain visible without turning unknown usage into a total', () => {
+  const data = fixture();
+  data.costs.known_estimated_usd = '0.000118080';
+  assert.equal(validSnapshot(data), true);
+  assert.equal(formatCostSummary(data.costs), 'Inference · $0.000118 est.');
+  data.costs.unknown_runs = 1;
+  data.costs.estimated_usd = null;
+  assert.equal(validSnapshot(data), true);
+  assert.equal(formatCostSummary(data.costs), 'Inference · $0.000118 known · 1 unconfirmed');
+  data.costs.known_estimated_usd = '0';
+  data.costs.unknown_runs = 2;
+  assert.equal(validSnapshot(data), true);
+  assert.equal(formatCostSummary(data.costs), 'Inference · $0.00 known · 2 unconfirmed');
+  delete data.costs.known_estimated_usd;
+  assert.equal(validSnapshot(data), true);
+  assert.equal(formatCostSummary(data.costs), 'Inference · Estimate unavailable · 2 unconfirmed');
+});
+
+test('the additive known-cost schema checks exact decimals, completeness and reservation bounds', () => {
+  for (const costs of [
+    { known_estimated_usd: '0.0001180800000000001' },
+    { known_estimated_usd: '0.00011808', estimated_usd: null },
+    { known_estimated_usd: '0.0500000000000000001', estimated_usd: null, unknown_runs: 1 },
+    { known_estimated_usd: '-0.01' },
+    { known_estimated_usd: '1e-3' },
+    { known_estimated_usd: 0.001 },
+    { known_estimated_usd: null },
+    { known_estimated_usd: '0.00011808', private_cost_note: 'private' },
+    { estimated_usd: '0.0500000000000000001' },
+  ]) {
+    const data = fixture();
+    Object.assign(data.costs, costs);
+    assert.equal(validSnapshot(data), false, JSON.stringify(costs));
+  }
+  const data = fixture();
+  Object.assign(data.costs, { known_estimated_usd: '0.05', estimated_usd: null, unknown_runs: 1 });
+  assert.equal(validSnapshot(data), true);
+  data.costs.estimated_usd = '0.05';
+  assert.equal(validSnapshot(data), false);
 });
 
 test('private or unexpected fields fail publication at every object boundary', () => {

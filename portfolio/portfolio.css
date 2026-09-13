@@ -197,3 +197,81 @@ footer a > span:first-child { color: var(--accent); }
   .evaluation-table th, .evaluation-table td { padding-inline: 5px; }
   .evaluation-table thead th { font-size: 7px; letter-spacing: 0; }
 }
+
+.replay { border-top: 1px solid var(--line); padding: 23px 0 32px; }
+.replay-selectors { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin: 23px 0; }
+.replay-selectors label { color: var(--muted); font-size: 8px; line-height: 1.8; }
+.replay-selectors select { display: block; margin-top: 5px; padding: 10px 8px; width: 100%; min-width: 0; background: #23281e; color: var(--ink); border: 1px solid #575d47; font: 10px 'Courier New', Courier, monospace; border-radius: 0; }
+.replay-selectors select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.replay-panel { background: #181c16; padding: 22px; border: 1px solid #575d47; box-shadow: 4px 4px 0 #11150f; }
+.replay-event-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 9px; font-size: 9px; color: var(--muted); line-height: 1.7; }
+.replay-gate { color: var(--accent); }
+.replay-gate.admitted { color: var(--green); }
+.replay-panel h3 { font-size: 20px; margin: 19px 0; letter-spacing: -.5px; }
+.replay-carried { font-size: 9px; line-height: 1.8; color: var(--muted); }
+.replay-values { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 10px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.replay-values th, .replay-values td { text-align: left; padding: 13px 8px; border-bottom: 1px solid var(--line); font-weight: normal; overflow-wrap: anywhere; vertical-align: top; }
+.replay-values th:first-child { padding-left: 0; width: 36%; }
+.replay-values td:last-child { padding-right: 0; }
+.replay-values thead th { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.replay-values tbody tr:last-child th, .replay-values tbody tr:last-child td { border-bottom: 0; }
+.replay-pass, .replay-miss { margin-left: 5px; white-space: nowrap; }
+.replay-pass { color: var(--green); }
+.replay-miss { color: var(--accent); }
+.replay-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.replay-controls button { background: transparent; border: 1px solid var(--line); padding: 10px 12px; color: var(--ink); font-size: 9px; cursor: pointer; }
+.replay-controls button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.replay-controls button:disabled { opacity: .35; cursor: default; }
+.replay-controls > span { color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.replay-method { margin-top: 19px; font-size: 9px; line-height: 1.9; color: var(--muted); }
+.replay-method > summary { cursor: pointer; width: fit-content; }
+.replay-method p { max-width: 760px; margin: 15px 0; }
+.cache-lab { margin-top: 24px; border-top: 1px dashed var(--line); padding-top: 18px; }
+.cache-lab > summary { color: var(--ink); font-size: 11px; cursor: pointer; line-height: 1.8; }
+.cache-lab > summary::marker { color: var(--accent); }
+.cache-lab > summary span { color: var(--muted); font-size: 9px; margin-left: 12px; }
+#cache-content { max-width: 680px; margin: 21px 0 0; padding: 20px; border: 1px solid var(--line); background: #181c16; }
+.cache-controls { display: grid; grid-template-columns: 1.25fr 1fr; gap: 17px; }
+.cache-controls label { color: var(--muted); font-size: 9px; line-height: 1.8; }
+.cache-controls select, .cache-controls input[type="number"] { display: block; width: 100%; min-width: 0; min-height: 44px; margin-top: 6px; padding: 10px; border: 1px solid #575d47; border-radius: 0; background: #23281e; color: var(--ink); font: 11px 'Courier New', Courier, monospace; }
+.cache-controls select:focus-visible, .cache-controls input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.cache-controls input[aria-invalid="true"] { border-color: var(--accent); }
+.cache-reuses { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 90px; align-items: center; column-gap: 20px; }
+.cache-reuses input[type="range"] { grid-column: 1 / -1; width: 100%; min-height: 34px; margin: 8px 0 0; accent-color: var(--accent); cursor: pointer; }
+.cache-error:empty { display: none; }
+.cache-error { font-size: 10px; line-height: 1.8; color: var(--accent); }
+.cache-values { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 17px 0 8px; font-variant-numeric: tabular-nums; }
+.cache-values dt { font-size: 9px; margin-bottom: 7px; }
+.cache-values dt::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; background: currentColor; }
+.cache-values dd { margin: 0; font-size: clamp(13px, 2vw, 21px); letter-spacing: -.5px; overflow-wrap: anywhere; }
+.cache-ordinary { color: var(--accent); }
+.cache-supercache { color: var(--green); }
+.cache-plot { display: block; width: 100%; height: 142px; margin-top: 18px; overflow: visible; }
+.cache-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 5; }
+.cache-line { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cache-dot { fill: currentColor; }
+.cache-marker { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 4; opacity: .65; }
+.cache-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 8px; }
+.cache-crossover { margin: 17px 0 0; color: var(--ink); font-size: 10px; line-height: 1.8; }
+.cache-assumptions { margin-top: 17px; color: var(--muted); font-size: 9px; line-height: 1.8; }
+.cache-assumptions summary { width: fit-content; cursor: pointer; }
+.cache-assumptions p { margin: 12px 0 0; }
+.cache-assumptions a + a { margin-left: 16px; }
+@media (max-width: 480px) {
+  #cache-content { padding: 15px 11px; }
+  .cache-controls { gap: 12px; grid-template-columns: 1fr; }
+  .cache-lab > summary span { margin-left: 5px; font-size: 8px; }
+  .cache-values { gap: 10px; }
+}
+@media (max-width: 620px) {
+  .replay > .section-heading { align-items: start; }
+  .replay > .section-heading > span { font-size: 8px; text-align: right; }
+  .replay-selectors { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .replay-selectors label:first-child { grid-column: 1 / -1; }
+  .replay-panel { padding: 17px 12px; }
+  .replay-panel h3 { font-size: 18px; }
+  .replay-values { font-size: 9px; }
+  .replay-values th, .replay-values td { padding-inline: 4px; }
+  .replay-values thead th { font-size: 7px; }
+  .replay-controls button { padding-inline: 9px; font-size: 8px; }
+}

@@ -1,0 +1,2014 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "published_at": "2026-09-13T00:00:39.931Z",
+  "report": {
+    "protocol_sha256": "8eedc0a3c6f837b93af0568cdf72c1561483dc473959f2e113a52b46896c2073",
+    "finished": true,
+    "recovery": "verified",
+    "gates": {
+      "admitted": 12,
+      "blocked": 9,
+      "paid_for_blocked": 0,
+      "executed_admitted": 48,
+      "executed_blocked": 36
+    },
+    "cost": {
+      "known_estimated_usd": "0.08635149",
+      "unknown_usage_runs": 0
+    },
+    "conditions": [
+      {
+        "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+        "policy": "full_history",
+        "planned": 12,
+        "finalized": 12,
+        "passed": 12,
+        "input_bytes": 23910,
+        "cost": {
+          "known_estimated_usd": "0.03503610",
+          "unknown_usage_runs": 0
+        }
+      },
+      {
+        "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+        "policy": "current_notebook",
+        "planned": 12,
+        "finalized": 12,
+        "passed": 12,
+        "input_bytes": 18284,
+        "cost": {
+          "known_estimated_usd": "0.04623102",
+          "unknown_usage_runs": 0
+        }
+      },
+      {
+        "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "policy": "full_history",
+        "planned": 12,
+        "finalized": 12,
+        "passed": 12,
+        "input_bytes": 23253,
+        "cost": {
+          "known_estimated_usd": "0.00239742",
+          "unknown_usage_runs": 0
+        }
+      },
+      {
+        "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "policy": "current_notebook",
+        "planned": 12,
+        "finalized": 12,
+        "passed": 12,
+        "input_bytes": 17875,
+        "cost": {
+          "known_estimated_usd": "0.00268695",
+          "unknown_usage_runs": 0
+        }
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "cedar-correction",
+        "events": [
+          {
+            "at": "2026-07-01",
+            "document_id": "cedar-correction-statement-2025",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2025",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-20",
+            "document_id": "cedar-correction-statement-2026",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-21",
+            "document_id": "cedar-correction-statement-2026",
+            "decision": "duplicate",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-22",
+            "document_id": "cedar-correction-future",
+            "decision": "future",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-25",
+            "document_id": "cedar-correction-guidance",
+            "decision": "admitted",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-01",
+            "document_id": "cedar-correction-unapproved",
+            "decision": "unapproved",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-15",
+            "document_id": "cedar-correction-correction",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": "cedar-correction-statement-2026"
+          }
+        ],
+        "runs": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "25",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "harbor-cut",
+        "events": [
+          {
+            "at": "2026-07-01",
+            "document_id": "harbor-cut-statement-2025",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2025",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-20",
+            "document_id": "harbor-cut-statement-2026",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-21",
+            "document_id": "harbor-cut-statement-2026",
+            "decision": "duplicate",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-22",
+            "document_id": "harbor-cut-future",
+            "decision": "future",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-25",
+            "document_id": "harbor-cut-guidance",
+            "decision": "admitted",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-01",
+            "document_id": "harbor-cut-unapproved",
+            "decision": "unapproved",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-15",
+            "document_id": "harbor-cut-investment-update",
+            "decision": "admitted",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": "harbor-cut-guidance"
+          }
+        ],
+        "runs": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "70",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "65",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "falling",
+                  "commitment_outlook": "cut",
+                  "capex_driver": "investment",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mesa-withdrawal",
+        "events": [
+          {
+            "at": "2026-07-01",
+            "document_id": "mesa-withdrawal-statement-2025",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2025",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-20",
+            "document_id": "mesa-withdrawal-statement-2026",
+            "decision": "admitted",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-21",
+            "document_id": "mesa-withdrawal-statement-2026",
+            "decision": "duplicate",
+            "kind": "statement",
+            "period": "FY2026",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-22",
+            "document_id": "mesa-withdrawal-future",
+            "decision": "future",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-07-25",
+            "document_id": "mesa-withdrawal-guidance",
+            "decision": "admitted",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-01",
+            "document_id": "mesa-withdrawal-unapproved",
+            "decision": "unapproved",
+            "kind": "guidance",
+            "period": "FY2027",
+            "supersedes": null
+          },
+          {
+            "at": "2026-08-15",
+            "document_id": "mesa-withdrawal-withdrawal",
+            "decision": "admitted",
+            "kind": "withdrawal",
+            "period": "FY2027",
+            "supersedes": "mesa-withdrawal-guidance"
+          }
+        ],
+        "runs": [
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "full_history",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          },
+          {
+            "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "policy": "current_notebook",
+            "steps": [
+              {
+                "event_index": 0,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "40",
+                    "unit": "USD millions",
+                    "period": "FY2025"
+                  },
+                  "cash_proxy_change": "insufficient",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 1,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 4,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "unchanged",
+                  "capex_driver": "accounting",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              },
+              {
+                "event_index": 6,
+                "state": "completed",
+                "expected": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "observed": {
+                  "cash_proxy": {
+                    "value": "55",
+                    "unit": "USD millions",
+                    "period": "FY2026"
+                  },
+                  "cash_proxy_change": "rising",
+                  "commitment_outlook": "insufficient",
+                  "capex_driver": "insufficient",
+                  "ai_return": "insufficient"
+                },
+                "checks": {
+                  "format": true,
+                  "passed": true,
+                  "cash_proxy": true,
+                  "cash_proxy_change": true,
+                  "commitment_outlook": true,
+                  "capex_driver": true,
+                  "ai_return": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
