@@ -152,12 +152,24 @@ export function validRuntime(value) {
       || !nullable(value.portfolio, validPortfolio)) return false;
     if (Object.hasOwn(value, 'service')) {
       const s = value.service;
-      if (!keys(s, ['id', 'status', 'next_wake_at', 'heartbeat_at', 'week_ends_at', 'reason_code'])
+      if (!keys(s, ['id', 'status', 'next_wake_at', 'heartbeat_at', 'week_ends_at', 'reason_code', ...(Object.hasOwn(s || {}, 'rehearsal') ? ['rehearsal'] : [])])
         || typeof s.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(s.id)
         || !['running', 'waiting', 'paused', 'needs_attention', 'complete'].includes(s.status)
         || !instant(s.heartbeat_at) || !before(s.heartbeat_at, value.published_at) || !instant(s.week_ends_at)
         || !nullable(s.next_wake_at, instant)
         || ![null, 'scheduled_wait', 'funding_needed', 'data_unavailable', 'recovering', 'manual_pause', 'week_complete', 'runtime_error'].includes(s.reason_code)) return false;
+      if (Object.hasOwn(s, 'rehearsal')) {
+        const r = s.rehearsal;
+        if (!keys(r, ['starts_at', 'ends_at', 'status', 'completed_at'])
+          || !instant(r.starts_at) || !instant(r.ends_at) || Date.parse(r.ends_at) <= Date.parse(r.starts_at)
+          || !before(r.ends_at, s.week_ends_at)
+          || !['scheduled', 'running', 'settling', 'complete'].includes(r.status)
+          || !nullable(r.completed_at, instant)
+          || (r.status === 'complete') !== (r.completed_at !== null)
+          || (r.completed_at !== null && (!before(r.ends_at, r.completed_at) || !before(r.completed_at, value.published_at)))
+          || (r.status !== 'scheduled' && !before(r.starts_at, value.published_at))
+          || (r.status === 'settling' && !before(r.ends_at, value.published_at))) return false;
+      }
     }
     if (value.portfolio && (!before(value.portfolio.created_at, value.published_at)
       || (value.portfolio.as_of && !before(value.portfolio.as_of, value.published_at)))) return false;
@@ -402,16 +414,20 @@ function activityDetails(sail) {
 }
 function researchView(research, sail, service) {
   const labels = { running: 'Research running', waiting: 'Between research sessions', paused: 'Research paused', needs_attention: 'Needs attention', complete: 'Week complete' };
-  const section = element('section', null, 'research'); section.append(heading('Current work', service ? labels[service.status] : RESEARCH_STATUS[research.status]));
+  const rehearsal = service?.rehearsal;
+  const activeRehearsal = rehearsal && ['running', 'settling'].includes(rehearsal.status) && ['running', 'waiting'].includes(service.status);
+  const label = activeRehearsal ? rehearsal.status === 'settling' ? 'Settling rehearsal' : service.status === 'running' ? 'Rehearsal running' : 'Rehearsal waiting' : service ? labels[service.status] : RESEARCH_STATUS[research.status];
+  const section = element('section', null, 'research'); section.append(heading('Current work', label));
   section.append(element('p', research.question, 'question'));
   if (sail.activity) section.append(activityView(service ? { ...sail, status: service.status === 'running' ? 'running' : 'complete', activity: { ...sail.activity, heartbeat_at: service.heartbeat_at, tasks: service.status === 'running' ? sail.activity.tasks : [] } } : sail));
   section.append(element('p', research.next, 'next-step'));
   const historyLink = link('Research history →', '/portfolio/research/'); historyLink.className = 'research-history-link'; section.append(historyLink);
-  if (sail.started_at !== null) {
+  if (sail.started_at !== null || service) {
     const details = element('details', null, 'run-details'); details.append(element('summary', 'Run details'));
     if (sail.activity) details.append(activityDetails(sail));
     const data = element('dl');
     const rows = service ? [['Week ends', date(service.week_ends_at, true)], ...(service.next_wake_at ? [['Next session', date(service.next_wake_at, true)]] : [])] : [['Started', date(sail.started_at, true)], ['Run deadline', date(sail.ends_at, true)]];
+    if (rehearsal) rows.unshift(['Rehearsal', rehearsal.status === 'complete' ? `Completed ${date(rehearsal.completed_at, true)}` : `Ends ${date(rehearsal.ends_at, true)}`]);
     if (!sail.activity) rows.push(['Known Sail cost', money(sail.known_cost_usd)], ['Unsettled requests', String(sail.unsettled_requests)]);
     for (const [label, value] of rows) data.append(element('dt', label), element('dd', value));
     details.append(data, element('p', 'Agent operating costs are tracked separately from portfolio returns.'));

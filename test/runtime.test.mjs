@@ -324,3 +324,34 @@ test('persistent service reports deliberate waiting without pretending epoch wor
   state.service.private_error = 'private'; assert.equal(validRuntime(state), false); delete state.service.private_error;
   state.service.heartbeat_at = '2027-01-01T00:00:00Z'; assert.equal(validRuntime(state), false);
 });
+
+test('rehearsal checkpoints show bounded work without marking the week complete', () => {
+  const state = activeFixture();
+  state.service = { id: 'week-test', status: 'running', next_wake_at: null, heartbeat_at: state.published_at, week_ends_at: '2026-09-19T04:00:00Z', reason_code: null,
+    rehearsal: { starts_at: '2026-09-13T18:00:00Z', ends_at: '2026-09-13T23:00:00Z', status: 'running', completed_at: null } };
+  assert(validRuntime(state));
+  const old = globalThis.document; globalThis.document = documentStub();
+  try {
+    const root = new Node('div'); mountRuntime(state, root);
+    assert.match(root.textContent, /Rehearsal running/);
+    assert.match(root.textContent, /Week ends/);
+    state.published_at = state.service.heartbeat_at = '2026-09-13T23:05:00Z';
+    state.service.status = 'waiting'; state.service.next_wake_at = '2026-09-14T04:00:00Z';
+    state.service.rehearsal.status = 'complete'; state.service.rehearsal.completed_at = state.published_at;
+    state.sail.status = 'complete';
+    assert(validRuntime(state)); mountRuntime(state, root);
+    assert.match(root.textContent, /Between research sessions/);
+    assert.match(root.textContent, /Completed/);
+    assert.doesNotMatch(root.textContent, /Week complete/);
+  } finally { globalThis.document = old; }
+  for (const mutate of [
+    r => { r.private_error = 'not public'; },
+    r => { r.completed_at = null; },
+    r => { r.completed_at = '2026-09-13T22:00:00Z'; },
+    r => { r.completed_at = '2026-09-14T04:00:00Z'; },
+    r => { r.status = 'running'; },
+  ]) {
+    const changed = structuredClone(state); mutate(changed.service.rehearsal);
+    assert.equal(validRuntime(changed), false);
+  }
+});
