@@ -4,27 +4,28 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Portfolio Agent](https://blakewoods.us/portfolio/) is a separate research project: an investigator with source evidence, reviewed memory, and measured model comparisons. Its public page reads static research and evaluation snapshots; visitors cannot start paid work or access an account. Schwab is not connected.
+[Portfolio Agent](https://blakewoods.us/portfolio/) follows public companies across the AI stack. Its page opens with an interactive company map; the first reviewed case has a checked cash-flow scenario. Technical experiments live in its repository. Visitors cannot start paid work or access an account. Schwab is disconnected.
 
 ## Publish research
 
-The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns research, private state, and review. After reviewing research there, export its public projections from that repository:
+The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent)
+owns research, private state, and review. From that repository, export one
+consistent saved publication:
 
 ```sh
-python3 portfolio.py export ../personal-site/portfolio/snapshot.json
-python3 investigator.py export ../personal-site/portfolio/investigations.json
-python3 evaluation_campaign.py export-all public/research-evaluation.json CAMPAIGN_ID
+python3 scripts/export_project.py --site ../personal-site --state checkpoint
 ```
 
-Pass every desired campaign ID to `export-all`. Then run this command in the personal-site repository:
+This offline command derives reviewed counts and known costs from one read-only
+ledger snapshot, includes unknown usage, and validates this site's JSON contracts
+before replacing files. Use `--state running` only for a dated observation of
+work actually running. It does not publish raw drafts or deploy the site.
 
-```sh
-node scripts/publish-evaluations.mjs ../portfolio-agent/public/research-evaluation.json
-```
-
-The small evaluation projection keeps model comparisons and paired critic experiments separate. Re-export the thesis snapshot too: its Research total covers all calls in the shared project ledger, including failed attempts and evaluations.
-
-Review the JSON diffs, then run this site's checks, tests, build, and deployment below. Committed snapshots make a fresh checkout buildable without Python, Sail access, or private account data. Builds reject unknown fields and malformed snapshots. Only HTML, hashed assets, and the explicitly exported JSON enter the public bundle. Public requests do not trigger inference.
+Review the public JSON diff, then run the site's checks, tests, build and deployment.
+A fresh clone builds without Python, Sail access or private data. Only HTML,
+hashed assets and allowlisted JSON enter the public bundle. Historical evaluation
+and replay assets remain available; the default page keeps technical detail on
+GitHub. Public visits never trigger inference.
 
 ## Local
 

@@ -100,11 +100,10 @@ test('local controls update plot and exact results, preserve keyboard labels and
   }
 });
 
-test('optional UI starts collapsed and published build hooks expose only the static script', async () => {
+test('historical calculator stays offline and is absent from the visitor case page', async () => {
   const html = await readFile(new URL('../portfolio/index.html', import.meta.url), 'utf8');
-  const details = html.match(/<details\b[^>]*id="cache-calculator"[^>]*>/)?.[0];
-  assert.ok(details); assert.doesNotMatch(details, /\bopen(?:\s|=|>)/);
-  assert.match(html, /src="\.\/cache\.js" type="module"/);
+  assert.doesNotMatch(html, /id="cache-calculator"|src="\.\/cache\.js"/);
+  assert.match(html, /Experiments &amp; implementation/);
   const source = await readFile(new URL('../portfolio/cache.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\bfetch\s*\(|localStorage|sessionStorage|sendBeacon|\.innerHTML/);
   assert.match(await readFile(new URL('../build.mjs', import.meta.url), 'utf8'), /portfolio\/cache\.js/);

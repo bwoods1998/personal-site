@@ -165,6 +165,7 @@ async function load() {
       });
       tabs.append(button);
     });
+    document.dispatchEvent(new CustomEvent('portfolio:reviewed-count', { detail: data.investigations.length }));
     document.querySelector('#investigation-count').textContent = `${data.investigations.length} reviewed`;
     const latestTools = data.investigations.findLastIndex(run => run.mode === 'tools');
     renderRun(data, latestTools < 0 ? data.investigations.length - 1 : latestTools);

@@ -261,6 +261,120 @@ function render(data) {
   document.querySelector('#method-note').textContent = `Published ${dateLabel(data.published_at)}. ${runLabel}. Cost estimates include all research attempts, including incomplete or failed runs; they are not reconciled bills.${unknown} Public visits read this saved snapshot and do not trigger model calls.`;
 }
 
+const statusStates = { checkpoint: 'Checkpoint', running: 'Research running', awaiting_review: 'Awaiting review', needs_attention: 'Needs attention', idle: 'Idle' };
+const statusText = (v, max) => typeof v === 'string' && v.length > 0 && v.length <= max && !/[\u0000-\u001f]/.test(v);
+const statusCount = v => Number.isSafeInteger(v) && v >= 0 && v <= 1000000;
+const statusMoney = v => money(v) && v.length <= 28 && Number(v) <= 100000;
+const statusStamp = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().replace('.000Z', 'Z') === v;
+function statusUrl(value, kind) {
+  if (!statusText(value, 300)) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' && !u.username && !u.password && !u.port && !u.search && !u.hash && (kind === 'sail'
+      ? u.hostname === 'docs.sailresearch.com' && /^\/[a-z0-9/-]*$/.test(u.pathname)
+      : u.hostname === 'github.com' && /^\/bwoods1998\/portfolio-agent\/blob\/main\/(?:docs\/[A-Za-z0-9_-]+\.md|data\/experiments\/[a-z0-9-]+\.json)$/.test(u.pathname));
+  } catch { return false; }
+}
+export function validProjectStatus(data, snapshot = null, investigations = null) {
+  if (!exactKeys(data, ['schema_version', 'saved_at', 'state', 'current_focus', 'next_milestone', 'costs', 'reviewed', 'sail', 'links']) || data.schema_version !== 1 || !statusStamp(data.saved_at) || !Object.hasOwn(statusStates, data.state)) return false;
+  if (!exactKeys(data.current_focus, ['company', 'symbol', 'question']) || data.current_focus.company !== 'Microsoft' || data.current_focus.symbol !== 'MSFT' || !statusText(data.current_focus.question, 240) || !statusText(data.next_milestone, 240)) return false;
+  if (!exactKeys(data.costs, ['inference_known_usd', 'inference_unknown_requests', 'compute_known_usd', 'compute_unknown_items']) || !statusMoney(data.costs.inference_known_usd) || !statusMoney(data.costs.compute_known_usd) || !statusCount(data.costs.inference_unknown_requests) || !statusCount(data.costs.compute_unknown_items)) return false;
+  if (!exactKeys(data.reviewed, ['theses', 'investigations']) || !Object.values(data.reviewed).every(statusCount)) return false;
+  if (!Array.isArray(data.sail) || data.sail.length < 1 || data.sail.length > 3 || new Set(data.sail.map(row => row?.product)).size !== data.sail.length) return false;
+  if (!data.sail.every(row => exactKeys(row, ['product', 'status', 'detail', 'docs_url']) && ['inference', 'voyages', 'sailbox'].includes(row.product) && ['used', 'planned'].includes(row.status) && statusText(row.detail, 220) && statusUrl(row.docs_url, 'sail'))) return false;
+  if (!Array.isArray(data.links) || data.links.length < 1 || data.links.length > 3 || !data.links.every(row => exactKeys(row, ['label', 'href']) && statusText(row.label, 40) && statusUrl(row.href, 'provenance'))) return false;
+  if (snapshot && (!validSnapshot(snapshot) || Date.parse(data.saved_at) < Date.parse(snapshot.published_at) || data.reviewed.theses !== snapshot.thesis.revisions.length || data.costs.inference_unknown_requests !== snapshot.costs.unknown_runs || compareMoney(data.costs.inference_known_usd, snapshot.costs.known_estimated_usd ?? snapshot.costs.estimated_usd ?? '0') !== 0)) return false;
+  if (investigations && data.reviewed.investigations !== investigations.investigations?.length) return false;
+  return true;
+}
+
+export function overviewModel(snapshot, status = null, investigationCount = null) {
+  if (!validSnapshot(snapshot)) throw new TypeError('Invalid reviewed snapshot');
+  const current = snapshot.thesis.revisions.at(-1);
+  const checked = status && validProjectStatus(status, snapshot) ? status : null;
+  return { savedAt: checked?.saved_at ?? snapshot.published_at, state: checked ? `Recorded · ${statusStates[checked.state]}` : 'Published research',
+    focus: `Reviewed case · ${snapshot.thesis.company} · ${snapshot.thesis.symbol}`, question: snapshot.thesis.question,
+    summary: current?.summary ?? 'First reviewed finding pending.', reviewedAt: current?.reviewed_at ?? null,
+    invalidation: current?.invalidation[0] ?? 'No reviewed conditions yet.',
+    next: checked?.next_milestone ?? current?.open_questions[0] ?? 'Publish the first reviewed finding.',
+    reviewed: checked?.reviewed.investigations ?? investigationCount,
+    inferenceKnown: checked?.costs.inference_known_usd ?? snapshot.costs.known_estimated_usd ?? snapshot.costs.estimated_usd,
+    inferenceUnknown: checked?.costs.inference_unknown_requests ?? snapshot.costs.unknown_runs,
+    computeKnown: checked?.costs.compute_known_usd ?? null, computeUnknown: checked?.costs.compute_unknown_items ?? null,
+    status: checked };
+}
+
+export function activateProjectView(name, doc = document, focus = false) {
+  if (!['now', 'research'].includes(name)) return false;
+  const button = doc.querySelector(`#view-${name}`), panel = doc.querySelector(`#panel-${name}`);
+  if (!button || !panel) return false;
+  for (const id of ['now', 'research']) {
+    const selected = id === name, item = doc.querySelector(`#view-${id}`);
+    item.setAttribute('aria-selected', String(selected)); item.tabIndex = selected ? 0 : -1;
+    doc.querySelector(`#panel-${id}`).hidden = !selected;
+  }
+  if (focus) button.focus();
+  return true;
+}
+function setupProjectViews() {
+  document.querySelectorAll('[data-view]').forEach((button, index) => {
+    button.addEventListener('click', () => activateProjectView(button.dataset.view));
+    button.addEventListener('keydown', event => {
+      if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const target = event.key === 'Home' ? 'now' : event.key === 'End' ? 'research' : ['now', 'research'][(index + 1) % 2];
+      activateProjectView(target, document, true);
+    });
+  });
+  document.querySelectorAll('[data-open-view]').forEach(button => button.addEventListener('click', () => {
+    activateProjectView(button.dataset.openView, document, true);
+    document.querySelector('.project-tabs').scrollIntoView({ block: 'start' });
+  }));
+}
+let publishedSnapshot = null, projectStatus = null, publishedInvestigationCount = null;
+function overviewDollars(value) {
+  if (value === null) return '—';
+  const amount = Number(value);
+  return amount > 0 && amount < 0.01 ? '<$0.01' : amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function renderOverview() {
+  if (!publishedSnapshot) return;
+  const v = overviewModel(publishedSnapshot, projectStatus, publishedInvestigationCount);
+  for (const [id, value] of [['now-state', v.state], ['now-focus', v.focus], ['now-question', v.question], ['now-finding', v.summary], ['now-invalidation', v.invalidation], ['now-next', v.next]]) document.getElementById(id).textContent = value;
+  const saved = document.querySelector('#now-saved'); saved.dateTime = v.savedAt;
+  saved.textContent = `Saved ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(new Date(v.savedAt))} UTC`;
+  document.querySelector('#now-reviewed').textContent = v.reviewedAt ? `Reviewed ${shortDate(v.reviewedAt)}` : 'Review pending';
+  const metrics = document.querySelector('#now-metrics'); metrics.replaceChildren();
+  for (const [label, value, note] of [
+    ['Reviewed reports', v.reviewed === null ? '—' : String(v.reviewed), 'Published findings'],
+    ['Inference', overviewDollars(v.inferenceKnown), v.inferenceUnknown ? `Known · ${v.inferenceUnknown} unconfirmed` : 'Known estimate'],
+    ['Compute', overviewDollars(v.computeKnown), v.computeUnknown === null ? 'Not published' : v.computeUnknown ? `Known · ${v.computeUnknown} unconfirmed` : 'Known estimate'],
+  ]) {
+    const row = element('div'); row.append(element('dt', label), element('dd', value), element('small', note)); metrics.append(row);
+  }
+  const usage = document.querySelector('#sail-usage'); usage.hidden = !v.status;
+  if (v.status) {
+    const products = document.querySelector('#sail-products'); products.replaceChildren();
+    for (const product of v.status.sail) {
+      const p = element('p'); const a = element('a', { inference: 'Inference', voyages: 'Voyages', sailbox: 'Sailbox' }[product.product] + (product.status === 'planned' ? ' · Planned' : ''));
+      a.href = product.docs_url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      p.append(a, element('span', ` — ${product.detail}`)); products.append(p);
+    }
+    const links = document.querySelector('#status-provenance'); links.replaceChildren();
+    for (const item of v.status.links) { const a = element('a', item.label + ' ↗'); a.href = item.href; a.target = '_blank'; a.rel = 'noopener noreferrer'; links.append(a); }
+  }
+  document.querySelector('#now-content').hidden = false;
+}
+async function loadProjectStatus() {
+  try {
+    const response = await fetch('./project-status.json', { cache: 'no-cache', signal: AbortSignal.timeout(12000) });
+    if (!response.ok) return;
+    const body = await response.text(); if (body.length > 12000) return;
+    const data = JSON.parse(body); if (!validProjectStatus(data)) return;
+    projectStatus = data; renderOverview();
+  } catch { /* Existing reviewed research remains useful without a status publication. */ }
+}
+
 async function load() {
   const status = document.querySelector('#load-state');
   const research = document.querySelector('#research');
@@ -268,7 +382,7 @@ async function load() {
   research.hidden = true;
   retry.hidden = true;
   status.hidden = false;
-  status.textContent = 'Opening the research ledger…';
+  status.textContent = 'Opening the research snapshot…';
   try {
     const response = await fetch('./snapshot.json', { cache: 'no-cache', signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error('Snapshot unavailable');
@@ -276,6 +390,7 @@ async function load() {
     if (body.length > 2_000_000) throw new Error('Snapshot too large');
     const data = JSON.parse(body);
     if (!validSnapshot(data)) throw new Error('Invalid snapshot');
+    publishedSnapshot = data; renderOverview();
     if (!data.thesis.revisions.length) {
       status.textContent = 'First review in progress. The ledger opens with the first published thesis.';
       return;
@@ -290,6 +405,10 @@ async function load() {
 }
 
 if (typeof document !== 'undefined') {
+  setupProjectViews();
+  document.addEventListener('portfolio:open-case', () => { activateProjectView('research', document, true); document.querySelector('.project-tabs').scrollIntoView({ block: 'start' }); });
+  document.addEventListener('portfolio:reviewed-count', event => { if (statusCount(event.detail)) { publishedInvestigationCount = event.detail; renderOverview(); } });
+  loadProjectStatus();
   document.querySelector('#retry').addEventListener('click', load);
   load();
 }

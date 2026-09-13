@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "company": "Microsoft",
+  "period": "FY2026",
+  "unit": "USD millions",
+  "scope": "company_wide",
+  "basis": "annual_unaudited",
+  "operating_cash_flow": "182935",
+  "cash_ppe": "115948",
+  "cash_after_ppe": "66987",
+  "source": {
+    "id": "fy26-results",
+    "title": "Microsoft FY2026 results \u00b7 Cash flow statements (unaudited)",
+    "url": "https://www.microsoft.com/en-us/investor/earnings/fy-2026-q4/press-release-webcast",
+    "published_at": "2026-07-29",
+    "fetched_at": "2026-09-12T22:38:09Z",
+    "sha256": "6e6918e055dbd54df109ce2da8e3e628fb923c7c35315eafba34ec7a248c02a8"
+  },
+  "rubric_sha256": "21649dd53e1b00e10c2092e4aec40b318197879c8d1e21ad2507f2d13f9632fa"
+}
