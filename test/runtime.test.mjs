@@ -117,6 +117,47 @@ test('allocation weights are fractional and constrained to available capital', (
   p.pending_decisions[0].targets[1].symbol = 'MSFT'; assert.equal(validPortfolio(p), false);
 });
 
+test('unpaid dividends count in total value and returns without becoming cash', () => {
+  const state = fixture(); state.portfolio = invested();
+  const p = state.portfolio;
+  state.published_at = '2026-09-14T15:00:00Z';
+  p.dividend_receivable = '20'; p.equity = '100070';
+  p.performance.investment_pnl = '70'; p.performance.time_weighted_return_pct = '0.07';
+  p.performance.benchmark.excess_return_percentage_points = '-0.03';
+  p.history.at(-1).equity = '100070'; p.history.at(-1).time_weighted_return_pct = '0.07';
+  assert(validRuntime(state));
+  const oldDocument = globalThis.document;
+  globalThis.document = documentStub();
+  try {
+    const target = new Node('main'); mountRuntime(state, target);
+    assert(target.textContent.includes('Cash$90,000.00'));
+    assert(target.textContent.includes('Dividends pending$20.00'));
+    assert.equal(p.net_deposits, '0');
+  } finally { globalThis.document = oldDocument; }
+  for (const mutate of [
+    x => { x.cash = '90020'; }, // Cannot count the same dividend as cash and receivable.
+    x => { x.equity = '100050'; }, // Cannot omit the earned entitlement from value.
+    x => { x.performance.investment_pnl = '50'; },
+    x => { x.history.at(-1).equity = '100050'; },
+  ]) { const invalid = structuredClone(p); mutate(invalid); assert.equal(validPortfolio(invalid), false); }
+});
+
+test('dividend publication remains compatible with old checkpoints and rejects malformed receivables', () => {
+  const p = portfolio(); assert(validPortfolio(p));
+  p.dividend_receivable = '0'; assert(validPortfolio(p));
+  for (const amount of [null, 0, '-1', '2e1', 'NaN', '1.000000000000001', {}]) {
+    assert.equal(validPortfolio({ ...p, dividend_receivable: amount }), false);
+  }
+  assert.equal(validPortfolio({ ...p, dividend_payment_details: {} }), false);
+  const oldDocument = globalThis.document;
+  globalThis.document = documentStub();
+  try {
+    const state = fixture(); state.portfolio = p;
+    const target = new Node('main'); mountRuntime(state, target);
+    assert(!target.textContent.includes('Dividends pending'));
+  } finally { globalThis.document = oldDocument; }
+});
+
 test('source navigation excludes private or active URLs and unrelated hosts', () => {
   assert.equal(sourceUrl('https://www.sec.gov/Archives/edgar/data/1/report.htm'), 'https://www.sec.gov/Archives/edgar/data/1/report.htm');
   for (const value of ['http://www.sec.gov/report', 'javascript:alert(1)', 'https://www.sec.gov.evil.test/', 'https://key:secret@www.sec.gov/', 'https://127.0.0.1/', 'https://www.sec.gov/report?token=private', 'https://www.sec.gov/report#private', 'https://github.com/other/repo', null]) assert.equal(sourceUrl(value), null);
@@ -364,6 +405,27 @@ test('epoch coverage and missing decisions are scoped to this session, not the e
     delete state.service; mountRuntime(state, root);
     assert.doesNotMatch(root.textContent, /This session:|Companies this session/);
   } finally { globalThis.document = old; }
+});
+
+test('retained research coverage has an explicit scope while older session checkpoints stay valid', () => {
+  const state = activeFixture();
+  state.service = { id: 'week-test', status: 'waiting', next_wake_at: null, heartbeat_at: state.published_at, week_ends_at: '2026-09-19T04:00:00Z', reason_code: 'scheduled_wait' };
+  state.sail.activity.coverage_scope = 'retained';
+  state.sail.activity.companies_researched = 180;
+  state.research.question = '180 of 503 stocks researched.';
+  assert(validRuntime(state));
+  const old = globalThis.document; globalThis.document = documentStub();
+  try {
+    const root = new Node('div'); mountRuntime(state, root);
+    assert.match(root.textContent, /180 of 503 stocks researched/);
+    assert.match(root.textContent, /Retained company research180 \/ 503/);
+    assert.doesNotMatch(root.textContent, /This session:|Companies this session/);
+    state.sail.activity.coverage_scope = 'session'; mountRuntime(state, root);
+    assert.match(root.textContent, /This session: 180 of 503/);
+  } finally { globalThis.document = old; }
+  for (const scope of [null, 'current_facts_verified', 1, {}]) {
+    state.sail.activity.coverage_scope = scope; assert.equal(validRuntime(state), false);
+  }
 });
 
 test('rehearsal checkpoints show bounded work without marking the week complete', () => {

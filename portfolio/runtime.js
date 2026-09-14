@@ -48,7 +48,8 @@ function percentValue(value) { return decimal(value, { signed: true, fraction: 1
 function before(left, right) { return Date.parse(left) <= Date.parse(right); }
 function count(value, max = 100000) { return Number.isSafeInteger(value) && value >= 0 && value <= max; }
 function validActivity(activity, publishedAt) {
-  if (!keys(activity, ['heartbeat_at', 'completed_requests', 'total_requests', 'companies_researched', 'universe_size', 'reserved_cost_usd', 'tasks'])
+  if (!keys(activity, ['heartbeat_at', 'completed_requests', 'total_requests', 'companies_researched', 'universe_size', 'reserved_cost_usd', 'tasks', ...(Object.hasOwn(activity || {}, 'coverage_scope') ? ['coverage_scope'] : [])])
+    || (Object.hasOwn(activity, 'coverage_scope') && !['session', 'retained'].includes(activity.coverage_scope))
     || !nullable(activity.heartbeat_at, instant) || (activity.heartbeat_at !== null && !before(activity.heartbeat_at, publishedAt))
     || !count(activity.completed_requests) || !count(activity.total_requests) || activity.completed_requests > activity.total_requests
     || !count(activity.companies_researched, 600) || !count(activity.universe_size, 600) || activity.universe_size < 1
@@ -72,11 +73,12 @@ export function sourceUrl(value) {
 }
 
 export function validPortfolio(p) {
-  if (!keys(p, PORTFOLIO_KEYS) || p.schema_version !== 1 || p.mode !== 'paper' || p.currency !== 'USD'
+  if (!keys(p, [...PORTFOLIO_KEYS, ...(Object.hasOwn(p || {}, 'dividend_receivable') ? ['dividend_receivable'] : [])]) || p.schema_version !== 1 || p.mode !== 'paper' || p.currency !== 'USD'
     || !['cash', 'pending', 'invested', 'suspended'].includes(p.status)
     || !instant(p.created_at) || !nullable(p.as_of, instant)
     || (p.as_of !== null && !before(p.created_at, p.as_of))) return false;
   for (const field of ['initial_cash', 'cash', 'trading_fees']) if (!decimal(p[field])) return false;
+  if (Object.hasOwn(p, 'dividend_receivable') && !decimal(p.dividend_receivable)) return false;
   if (scaled(p.initial_cash) <= 0n || !decimal(p.net_deposits, { signed: true }) || !nullable(p.equity, decimal)) return false;
   if (!Array.isArray(p.holdings) || p.holdings.length > 600 || new Set(p.holdings.map(h => h?.symbol)).size !== p.holdings.length) return false;
   for (const h of p.holdings) {
@@ -87,7 +89,7 @@ export function validPortfolio(p) {
     if (h.price !== null && scaled(h.quantity) * scaled(h.price) !== scaled(h.market_value) * DECIMAL_SCALE) return false;
   }
   const allMarked = p.holdings.every(h => h.market_value !== null);
-  if (allMarked && p.equity !== null && scaled(p.equity) !== scaled(p.cash) + p.holdings.reduce((sum, h) => sum + scaled(h.market_value), 0n)) return false;
+  if (allMarked && p.equity !== null && scaled(p.equity) !== scaled(p.cash) + scaled(p.dividend_receivable ?? '0') + p.holdings.reduce((sum, h) => sum + scaled(h.market_value), 0n)) return false;
   if (!allMarked && p.equity !== null) return false;
   if (!Array.isArray(p.pending_decisions) || p.pending_decisions.length > 100) return false;
   const decisionIds = new Set();
@@ -332,6 +334,11 @@ function portfolioView(portfolio) {
     row.append(element('span', holding.symbol), element('span', `${holding.quantity} shares · ${money(holding.market_value)}`)); allocation.append(row);
   }
   const cash = element('div', null, 'allocation-row'); cash.append(element('span', 'Cash'), element('span', money(portfolio.cash))); allocation.append(cash);
+  if (scaled(portfolio.dividend_receivable ?? '0') > 0n) {
+    const dividends = element('div', null, 'allocation-row');
+    dividends.append(element('span', 'Dividends pending'), element('span', money(portfolio.dividend_receivable)));
+    allocation.append(dividends);
+  }
   section.append(allocation);
   if (portfolio.pending_decisions.length) {
     const pending = element('div', null, 'pending'); pending.append(element('h3', 'Pending allocation'));
@@ -403,7 +410,7 @@ function activityDetails(sail, service) {
   const stats = element('dl', null, 'run-stats');
   for (const [label, value] of [
     ['Requests completed', `${activity.completed_requests.toLocaleString('en-US')} / ${activity.total_requests.toLocaleString('en-US')}`],
-    [service ? 'Companies this session' : 'Companies researched', `${activity.companies_researched} / ${activity.universe_size}`],
+    [activity.coverage_scope === 'retained' ? 'Retained company research' : service ? 'Companies this session' : 'Companies researched', `${activity.companies_researched} / ${activity.universe_size}`],
     ['Known inference cost', money(sail.known_cost_usd)],
   ]) stats.append(metric(label, value));
   details.append(stats);
@@ -419,7 +426,7 @@ function researchView(research, sail, service) {
   const fundingWait = service && ['waiting', 'needs_attention'].includes(service.status) && service.reason_code === 'funding_needed';
   const label = fundingWait ? 'Awaiting research credit' : activeRehearsal ? rehearsal.status === 'settling' ? 'Settling rehearsal' : service.status === 'running' ? 'Rehearsal running' : 'Rehearsal waiting' : service ? labels[service.status] : RESEARCH_STATUS[research.status];
   const section = element('section', null, 'research'); section.append(heading('Current work', label));
-  const question = service ? research.question.replace(/^(\d+ of \d+ stocks researched\.)/, 'This session: $1') : research.question;
+  const question = service && sail.activity?.coverage_scope !== 'retained' ? research.question.replace(/^(\d+ of \d+ stocks researched\.)/, 'This session: $1') : research.question;
   section.append(element('p', question, 'question'));
   if (sail.activity) section.append(activityView(service ? { ...sail, status: service.status === 'running' ? 'running' : 'complete', activity: { ...sail.activity, heartbeat_at: service.heartbeat_at, tasks: service.status === 'running' ? sail.activity.tasks : [] } } : sail));
   section.append(element('p', fundingWait ? 'Research resumes when credit is available.' : research.next, 'next-step'));
