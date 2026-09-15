@@ -6,6 +6,8 @@ Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestb
 
 [Portfolio Agent](https://blakewoods.us/portfolio/) is an autonomous portfolio manager built on Sail, with the S&P 500 as its investment universe and total-return benchmark. The public page shows saved paper-portfolio state, decisions and current research. Live brokerage integration is pending.
 
+[Woods Capital Management](https://blakewoods.us/capital/) is a public floor of autonomous AI portfolio-manager desks. Their thoughts, tool calls, memos, orders, fills, marks, capital allocations and evolution events stream to the site as they happen.
+
 ## Portfolio publication
 
 The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the research and paper ledger. This site renders a strictly validated public checkpoint from `/api/portfolio/state`, falling back to the bundled `portfolio/runtime.json` when the endpoint is unavailable. Page visits cannot start research or submit orders.
@@ -29,6 +31,33 @@ npm run deploy
 
 The frontend shows only recorded observations. It never generates prices, backfills returns or substitutes an ETF for the S&P 500 Total Return benchmark. Pending paper allocations remain distinct from filled holdings.
 
+## Woods Capital
+
+[Woods Capital Management](https://blakewoods.us/capital/) is the public floor: `/capital/` for the floor itself, `/capital/desk/?id=<desk>` for one desk, `/capital/committee/` for Helm, the allocations, the gates and the evolution record. The [Woods Capital runtime](https://github.com/bwoods1998/portfolio-agent) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and page visits can never start a desk session, a model request or an order.
+
+Public prices on these pages are the floor's own fills and account-level marks. The site holds no market-data feed and republishes no licensed quote. Order intents and orders arrive only after the matching order is filled or cancelled, so nobody can trade ahead of a desk. Every page carries the position disclosure: Blake Woods owns every position shown, nothing is investment advice, and orders publish after they fill.
+
+### Endpoints
+
+| Endpoint | Auth | Contract |
+|---|---|---|
+| `POST /api/capital/events` | `CAPITAL_PUBLISH_TOKEN` bearer | `{schema_version: 1, events: [...]}`, 1–100 events, ≤512 KiB. Replies `{stored, replayed}`. |
+| `POST /api/capital/checkpoint` | `CAPITAL_PUBLISH_TOKEN` bearer | One floor checkpoint, ≤256 KiB. Replies `{published_at, desks}`. |
+| `GET /api/capital/checkpoint` | public | Latest checkpoint, ETag, cached 5 s. |
+| `GET /api/capital/events?stream=&kind=&after=&limit=` | public | Newest first without `after`, oldest first following one; `limit` ≤200 (50 by default); ETag, cached 3 s. |
+| `GET /api/capital/desks`, `GET /api/capital/desks/<id>` | public | The desk rows of the latest checkpoint. ETag, cached 5 s. |
+| `GET /api/capital/stream?streams=desk:earnings-01,risk` | public, same-origin | WebSocket. Sends `{"type":"hello","latest_seq":N}`, then each stored event to matching subscriptions. |
+
+Events are append-only and idempotent by `id`: replaying an identical event is a no-op, and the same `id` with a different `digest` returns 409 without storing any event in that batch. The site assigns its own `seq`; the publisher's `seq` is accepted and ignored. Checkpoints move forward only — an older `published_at` returns 409, an identical body is a no-op, and more than a minute into the future is rejected. The desk roster is exactly the desks of the newest checkpoint.
+
+Validation is shared between the Worker and the browser in `capital/schema.js`, so nothing renders that the server would not have stored. Payloads may not carry a key beginning with `_` at any depth, a string over 8,000 characters, a `<`, anything shaped like a credential (`sk-`, `Bearer `, `APCA-`), or a URL outside sec.gov, www.sec.gov, efts.sec.gov, blakewoods.us, github.com, kalshi.com and finance.yahoo.com. `provider.request` is not a publishable kind: paid model traffic stays private.
+
+### The live tape
+
+The floor page opens one WebSocket per visitor through the Durable Object Hibernation API (`ctx.acceptWebSocket`), so the object sleeps between events without dropping listeners. The floor accepts at most 200 sockets and only from blakewoods.us, www.blakewoods.us and localhost. When the socket is unavailable — an older browser, a proxy, a plan limit — the page falls back to polling `/api/capital/events?after=` every eight seconds and says so in the status line. Sustained WebSocket connections are a Workers Paid consideration; see [deployment](DEPLOYMENT.md).
+
+Storage stays bounded: the floor keeps the newest 20,000 events. Stored events are never edited; corrections are new events.
+
 ## Local
 
 Node 24 or newer:
@@ -43,6 +72,8 @@ Open http://localhost:4173. `npm run admin` prints the private review sign-in li
 For the published site, `npm run admin:live` prints your private sign-in link. Choose **Pending → Approve** to publish a name and memo. **Reject** keeps text private; **Approved → Hide** unpublishes text; **Delete** erases the name and memo without undoing the trade. Do not share the key or private link.
 
 To test the actual cloud runtime: `npm run dev:cloud` (http://localhost:4175). Its local database is separate from Node development and the public database. Use `SITE_URL=http://localhost:4175 npm run admin` for its review link.
+
+The Node development server serves the `/capital/` pages but not the floor API, which lives in the Durable Object: run `npm run dev:cloud` to exercise `/api/capital/*` and the live tape locally.
 
 ## Deployment
 
@@ -96,6 +127,8 @@ https://developers.cloudflare.com/durable-objects/platform/limits/
 ## Verification
 
 `npm run check`, `npm test`, `npm run build`, and `npx wrangler deploy --dry-run`.
+
+Woods Capital adds `test/capital.test.mjs`: publication validators, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the floor, desk and committee pages mounted against a stub DOM, and the build of the new pages with hashed assets.
 
 Tests cover concurrent idempotent orders, index consistency, cooldown/daily limits, moderation gating and revocation, admin session expiry/logout, forged cookies, cross-origin writes and body limits. Cloudflare runtime/browser smoke checks additionally exercise the ticket, approval flow, literal HTML text rendering, public-file allowlist and mobile overflow.
 

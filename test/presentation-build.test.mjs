@@ -9,7 +9,7 @@ import { createServer } from '../server.mjs';
 test('public build validates the runtime and removes retired reports from a previous build', async () => {
   const root = await mkdtemp(join(tmpdir(), 'portfolio-public-build-'));
   try {
-    for (const name of ['build.mjs', 'package.json', 'index.html', 'styles.css', 'app.js', 'chart.js', 'favicon.svg', 'admin', 'portfolio']) {
+    for (const name of ['build.mjs', 'package.json', 'index.html', 'styles.css', 'app.js', 'chart.js', 'favicon.svg', 'admin', 'portfolio', 'capital']) {
       await cp(new URL('../' + name, import.meta.url), join(root, name), { recursive: true });
     }
     const build = () => spawnSync(process.execPath, ['build.mjs'], { cwd: root, encoding: 'utf8' });
@@ -41,10 +41,11 @@ test('static server serves only active public files and denies historical and pr
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
   try {
-    for (const path of ['/portfolio/', '/portfolio/runtime.js', '/portfolio/runtime.css', '/portfolio/runtime.json', '/portfolio/research/', '/portfolio/research/research.js', '/portfolio/research/schema.js', '/portfolio/research/research.css']) {
+    for (const path of ['/portfolio/', '/portfolio/runtime.js', '/portfolio/runtime.css', '/portfolio/runtime.json', '/portfolio/research/', '/portfolio/research/research.js', '/portfolio/research/schema.js', '/portfolio/research/research.css',
+      '/capital/', '/capital/desk/', '/capital/committee/', '/capital/capital.js', '/capital/capital.css', '/capital/schema.js']) {
       assert.equal((await fetch(origin + path)).status, 200, path);
     }
-    for (const path of ['/portfolio/explorer.js', '/portfolio/agent.js', '/portfolio/project.css', '/portfolio/cash-map.json', '/portfolio/agent-state.json', '/portfolio/social.png', '/portfolio/snapshot.json', '/portfolio/cash-map-review.json', '/.env', '/.data/credentials.json', '/portfolio/private.json']) {
+    for (const path of ['/capital/runtime.json', '/capital/desk/capital.js', '/capital/private.json', '/portfolio/explorer.js', '/portfolio/agent.js', '/portfolio/project.css', '/portfolio/cash-map.json', '/portfolio/agent-state.json', '/portfolio/social.png', '/portfolio/snapshot.json', '/portfolio/cash-map-review.json', '/.env', '/.data/credentials.json', '/portfolio/private.json']) {
       assert.equal((await fetch(origin + path)).status, 404, path);
     }
   } finally { await new Promise(resolve => server.close(resolve)); }

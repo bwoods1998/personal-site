@@ -4,6 +4,9 @@ import { createPortfolioNotifier } from './lib/portfolio-notify.mjs';
 import { createPortfolioJournal } from './lib/portfolio-journal.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
+import { Capital, CAPITAL_OBJECT } from './lib/capital.mjs';
+
+export { Capital };
 
 export class Exchange extends DurableObject {
   constructor(ctx, env) {
@@ -47,6 +50,21 @@ export default {
     if (url.protocol === 'http:' && !['localhost', '127.0.0.1'].includes(url.hostname)) {
       url.protocol = 'https:';
       return Response.redirect(url.href, 308);
+    }
+    if (url.pathname === '/api/capital' || url.pathname.startsWith('/api/capital/')) {
+      // The live tape upgrades to a WebSocket; only the public JSON reads are cacheable.
+      const floorRead = ['GET', 'HEAD'].includes(request.method) && url.pathname !== '/api/capital/stream';
+      const cacheKey = floorRead ? new Request(url.href) : null;
+      if (cacheKey) {
+        const hit = await caches.default.match(cacheKey);
+        if (hit) {
+          if (request.headers.get('If-None-Match') === hit.headers.get('ETag')) return new Response(null, { status: 304, headers: hit.headers });
+          return request.method === 'HEAD' ? new Response(null, hit) : hit;
+        }
+      }
+      const response = await env.CAPITAL.get(env.CAPITAL.idFromName(CAPITAL_OBJECT)).fetch(request);
+      if (cacheKey && request.method === 'GET' && response.status === 200) ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+      return response;
     }
     if (['/api/portfolio/state', '/api/portfolio/notifications', '/api/portfolio/notifications/test', '/api/portfolio/research'].includes(url.pathname) || url.pathname.startsWith('/api/portfolio/research/')) {
       const journalRead = url.pathname.startsWith('/api/portfolio/research') && ['GET', 'HEAD'].includes(request.method);

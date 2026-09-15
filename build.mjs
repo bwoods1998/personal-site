@@ -12,16 +12,18 @@ if (!validRuntime(JSON.parse(runtime))) {
 }
 
 // Both directories are generated. Clearing them also retires old public reports.
-for (const directory of ['assets/', 'portfolio/']) {
+for (const directory of ['assets/', 'portfolio/', 'capital/']) {
   await rm(new URL(directory, output), { recursive: true, force: true });
   await mkdir(new URL(directory, output), { recursive: true });
 }
 await mkdir(new URL('admin/', output), { recursive: true });
 await mkdir(new URL('portfolio/research/', output), { recursive: true });
+for (const directory of ['capital/desk/', 'capital/committee/']) await mkdir(new URL(directory, output), { recursive: true });
 const assets = new Map();
 for (const filename of [
   'chart.js', 'styles.css', 'app.js', 'favicon.svg', 'admin/admin.js',
   'portfolio/runtime.css', 'portfolio/runtime.js', 'portfolio/research/research.css', 'portfolio/research/schema.js', 'portfolio/research/research.js',
+  'capital/capital.css', 'capital/schema.js', 'capital/capital.js',
 ]) {
   let content = await readFile(new URL(filename, root));
   if (filename === 'app.js') {
@@ -30,6 +32,7 @@ for (const filename of [
     ));
   }
   if (filename === 'portfolio/research/research.js') content = Buffer.from(content.toString().replace('./schema.js', './' + assets.get('portfolio/research/schema.js').split('/').at(-1)));
+  if (filename === 'capital/capital.js') content = Buffer.from(content.toString().replace('./schema.js', './' + assets.get('capital/schema.js').split('/').at(-1)));
   const digest = createHash('sha256').update(content).digest('hex').slice(0, 12);
   const name = filename.split('/').at(-1);
   const dot = name.lastIndexOf('.');
@@ -37,7 +40,7 @@ for (const filename of [
   assets.set(filename, asset);
   await writeFile(new URL(asset, output), content);
 }
-for (const filename of ['index.html', 'admin/index.html', 'portfolio/index.html', 'portfolio/research/index.html']) {
+for (const filename of ['index.html', 'admin/index.html', 'portfolio/index.html', 'portfolio/research/index.html', 'capital/index.html', 'capital/desk/index.html', 'capital/committee/index.html']) {
   let html = await readFile(new URL(filename, root), 'utf8');
   const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
   for (const [source, target] of assets) {
@@ -55,16 +58,17 @@ for (const filename of ['index.html', 'admin/index.html', 'portfolio/index.html'
 await writeFile(new URL('portfolio/runtime.json', output), runtime);
 
 // Prevent analytics injection outside the self-only script policy.
-const publicHtmlHeaders = ['/', '/index.html', '/portfolio/', '/portfolio/index.html', '/portfolio/research/', '/portfolio/research/index.html']
+const publicHtmlHeaders = ['/', '/index.html', '/portfolio/', '/portfolio/index.html', '/portfolio/research/', '/portfolio/research/index.html',
+  '/capital/', '/capital/index.html', '/capital/desk/', '/capital/desk/index.html', '/capital/committee/', '/capital/committee/index.html']
   .map(path => `${path}\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n`)
   .join('');
 await writeFile(new URL('_headers', output), `/*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' wss://blakewoods.us wss://www.blakewoods.us; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 /admin/*
   X-Robots-Tag: noindex, nofollow
 /portfolio/runtime.json
   Cache-Control: no-cache
 ${publicHtmlHeaders}`);
-console.log('Built personal site, public portfolio checkpoint, and review shell → dist/');
+console.log('Built personal site, public portfolio checkpoint, review shell, and the Woods Capital floor → dist/');

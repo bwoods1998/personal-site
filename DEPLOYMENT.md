@@ -14,6 +14,30 @@ Portfolio Agent: https://blakewoods.us/portfolio/. The sibling project publishes
 
 Public `GET /api/portfolio/research` returns 12 summaries with an opaque `next_cursor`; pass it as `?cursor=` for the next page. `GET /api/portfolio/research/<id>` returns the selected finding. Both support ETags and HEAD. No API read starts research. Records are stored in the existing PortfolioState Durable Object; no new migration or paid provider credential is required for the website.
 
+## Woods Capital publication
+
+Public pages: https://blakewoods.us/capital/, https://blakewoods.us/capital/desk/?id=<desk>, https://blakewoods.us/capital/committee/.
+
+The floor lives in its own SQLite Durable Object: binding `CAPITAL`, class `Capital`, migration tag `v3`, singleton object `capital-v1`. Keep all four intact on every later deployment or the event log, the checkpoint and the desk roster are orphaned. The existing `EXCHANGE` (`v1`) and `PORTFOLIO_STATE` (`v2`) objects are untouched by this addition.
+
+Create the publication secret once, with a value of at least 32 characters, distinct from `PORTFOLIO_PUBLISH_TOKEN`:
+
+```sh
+npx wrangler secret put CAPITAL_PUBLISH_TOKEN
+```
+
+The Woods Capital runtime sends that token as `Authorization: Bearer <token>` to `POST /api/capital/events` and `POST /api/capital/checkpoint`. Both are compared in constant time and both refuse a token under 32 characters. Never put the token in a URL, a page, or a browser request. Reads are public and unauthenticated: `GET /api/capital/checkpoint` (ETag, 5 s), `GET /api/capital/events?stream=&kind=&after=&limit=` (ETag, 3 s, limit ≤200) and `GET /api/capital/desks[/<id>]` (ETag, 5 s). Public GETs are also cached at the edge for their max-age; the WebSocket route is never cached.
+
+Events are immutable and idempotent by `id`. Replaying a batch is safe; reusing an `id` with a different `digest` returns 409 and stores nothing from that batch, so a publisher crash cannot rewrite public history. Checkpoints only move forward; an older `published_at` returns 409.
+
+`GET /api/capital/stream?streams=desk:earnings-01,risk` upgrades to a WebSocket served by the Durable Object Hibernation API. It accepts only the blakewoods.us, www.blakewoods.us and localhost origins, at most 200 concurrent sockets, and treats client messages as keepalives only. Durable Object WebSockets bill for duration while connected: review the plan before announcing the floor, since sustained WebSocket work is documented under Workers Paid. Hibernation keeps that cost near zero between events, and the pages fall back to polling automatically if the socket is refused, so a plan limit degrades the tape instead of breaking the page.
+
+Current Durable Object pricing and limits:
+https://developers.cloudflare.com/durable-objects/platform/pricing/
+https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+
+Site assets for `/capital/` are hashed at build time and served under the same self-only policy as the rest of the site, with `wss://blakewoods.us` named in `connect-src` so the tape does not depend on how a browser reads `'self'` for WebSockets. No external script, font or analytics is loaded.
+
 ## Portfolio email alerts
 
 Onboard `blakewoods.us` in Cloudflare Email Service and verify the owner's destination address through Email Routing. [Sending to verified destinations is free](https://developers.cloudflare.com/email-service/configuration/email-routing-addresses/). The Worker uses a restricted `EMAIL` binding and a private `NOTIFICATION_EMAIL` secret; it cannot accept visitor-supplied recipients or messages.
