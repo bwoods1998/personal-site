@@ -878,9 +878,9 @@ test('the infrastructure block is optional, typed, and rendered from what it car
 });
 
 test('a desk may say when it next sits down, or that it never does', () => {
-  assert.equal(validCheckpoint(checkpoint({ desks: [desk({ next_session_at: '2026-09-15T19:30:00.000Z' })] })), true);
-  assert.equal(validCheckpoint(checkpoint({ desks: [desk({ next_session_at: null })] })), true);
-  assert.equal(validCheckpoint(checkpoint({ desks: [desk({ next_session_at: 'soon' })] })), false);
+  assert.equal(validCheckpoint(checkpoint({ desks: [desk('rosenfeld', { next_session_at: '2026-09-15T19:30:00.000Z' })] })), true);
+  assert.equal(validCheckpoint(checkpoint({ desks: [desk('rosenfeld', { next_session_at: null })] })), true);
+  assert.equal(validCheckpoint(checkpoint({ desks: [desk('rosenfeld', { next_session_at: 'soon' })] })), false);
 });
 
 test('the runway spend policy is accepted, rendered, and refused when it is not arithmetic', () => {
