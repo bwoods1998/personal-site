@@ -14,6 +14,9 @@ const TAPE_TEXT_LIMIT = 140;
 const NOW_TEXT_LIMIT = 90;
 const SPARK_POINTS = 40;
 const CARD_MARKS = 60;
+// The floor's own balance marks: kind, payload field, and how many of them the page holds.
+const FLOOR_MARK = { kind: 'floor.mark', field: 'account_equity' };
+const FLOOR_MARK_LIMIT = 200;
 const MAX_CARDS = 12;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
@@ -61,7 +64,7 @@ export const TAPE_FILTERS = [
 ];
 const FILTER_GROUPS = {
   thoughts: ['desk.session_started', 'desk.thought', 'desk.tool_call', 'desk.tool_result', 'desk.memo', 'desk.postmortem', 'desk.session_ended'],
-  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark', 'desk.outcome'],
+  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark', 'floor.mark', 'desk.outcome'],
   risk: ['risk.decision', 'risk.review', 'risk.breaker', 'ops.alert', 'ops.budget'],
   committee: ['committee.allocation', 'committee.memo', 'committee.gate'],
   evolution: ['evolution.spawned', 'evolution.retired', 'evolution.promoted', 'desk.playbook_updated', 'lab.hypothesis', 'lab.result'],
@@ -242,6 +245,8 @@ const DETAILS = {
   'broker.fill': p => join(`${show(p.side)} ${quantity(p.quantity)} ${show(p.instrument)}`.trim(), p.price ? `@ ${money(show(p.price), 4)}` : '', p.fee ? `fee ${money(show(p.fee), 4)}` : ''),
   'broker.reconciled': p => join(show(p.venue), p.matches === undefined ? '' : `${show(p.matches)} matched`, Array.isArray(p.mismatches) ? `${p.mismatches.length} mismatched` : ''),
   'ledger.mark': p => join(p.equity ? `Equity ${money(show(p.equity))}` : '', p.cash ? `Cash ${money(show(p.cash))}` : '', p.daily_pnl ? `Day ${money(show(p.daily_pnl))}` : '', Array.isArray(p.positions) ? `${p.positions.length} positions` : ''),
+  'floor.mark': p => join(p.account_equity ? `Balance ${money(show(p.account_equity))}` : '',
+    Array.isArray(p.venues) ? p.venues.map(row => `${venueLabel(row?.venue)} ${money(show(row?.equity), 2)}${row?.stale === true ? ' (stale)' : ''}`).join(', ') : ''),
   'committee.allocation': p => {
     const allocations = p.allocations && typeof p.allocations === 'object' ? Object.entries(p.allocations) : [];
     return join(`${allocations.length} desks funded`, allocations.slice(0, 3).map(([id, usd]) => `${partnerName(id)} ${money(show(usd), 0)}`).join(', '));
@@ -276,16 +281,18 @@ export function tapeLine(event) {
   };
 }
 
-function markPoints(events) {
+// A published mark series, read as points: a desk's own `ledger.mark`, or the floor's
+// `floor.mark`, which carries the real account balance instead of the ledger's equity.
+function markPoints(events, { kind = 'ledger.mark', field = 'equity' } = {}) {
   return (Array.isArray(events) ? events : [])
-    .filter(event => event?.kind === 'ledger.mark')
-    .map(event => ({ at: Date.parse(event.at), equity: Number(event.payload?.equity) }))
+    .filter(event => event?.kind === kind)
+    .map(event => ({ at: Date.parse(event.at), equity: Number(event.payload?.[field]) }))
     .filter(point => Number.isFinite(point.at) && Number.isFinite(point.equity))
     .sort((left, right) => left.at - right.at);
 }
 // Equity from the desk's own marks. No interpolation, no generated points.
-export function markSeries(events) {
-  const points = markPoints(events);
+export function markSeries(events, selector) {
+  const points = markPoints(events, selector);
   if (points.length < 2) return null;
   const values = points.map(point => point.equity);
   let min = Math.min(...values);
@@ -304,8 +311,8 @@ export function markSeries(events) {
   };
 }
 // The card line: the newest forty marks, scaled to their own range.
-export function sparkline(events, { width = 148, height = 34, limit = SPARK_POINTS } = {}) {
-  const points = markPoints(events).slice(-limit);
+export function sparkline(events, { width = 148, height = 34, limit = SPARK_POINTS, selector } = {}) {
+  const points = markPoints(events, selector).slice(-limit);
   if (points.length < 2) return null;
   const values = points.map(point => point.equity);
   let min = Math.min(...values);
@@ -658,6 +665,43 @@ function partnerGrid(desks, records) {
 // The masthead is real money. A shadow desk's book is a score, and the floor never adds it in.
 export const floorEquity = floor => (numeric(floor?.live_equity) ? floor.live_equity : floor?.equity);
 export const floorDaily = floor => (numeric(floor?.live_daily_pnl) ? floor.live_daily_pnl : floor?.daily_pnl);
+
+// ------------------------------------------------- the accounts the money actually sits in
+// `live_equity` is the ledger's number, and it is what attributes a gain to a desk. This is what
+// Kalshi and Coinbase say the balance is, which is what the owner sees when they open the app.
+export const accountEquity = floor => (numeric(floor?.account_equity) ? floor.account_equity : null);
+// "kalshi" is what the runtime publishes; "Kalshi" is what the account is called.
+export const venueLabel = value => { const name = show(value); return name ? name[0].toUpperCase() + name.slice(1) : ''; };
+export function accountVenues(floor) {
+  return (Array.isArray(floor?.venues) ? floor.venues : [])
+    .filter(row => row && typeof row === 'object' && numeric(row.equity))
+    .map(row => ({
+      venue: show(row.venue), name: venueLabel(row.venue), equity: row.equity,
+      cash: numeric(row.cash) ? row.cash : null, at: show(row.as_of), stale: row.stale === true,
+    }));
+}
+// The headline's label, built from the accounts the checkpoint actually carried.
+export function portfolioLabel(floor) {
+  const names = accountVenues(floor).map(row => row.name).filter(Boolean);
+  return names.length ? `Portfolio · ${names.join(' + ')}` : 'Portfolio';
+}
+export const venueChipText = row => `${row.name} ${money(row.equity, 2)}`;
+// The real balance history, folded from the floor's own `floor.mark` records.
+export const floorBalancePoints = events => markPoints(events, FLOOR_MARK);
+export const floorBalanceSeries = events => markSeries(events, FLOOR_MARK);
+// What the portfolio has done since the floor's first published balance.
+export function sinceStart(events) {
+  const points = floorBalancePoints(events);
+  if (!points.length) return null;
+  const first = points[0];
+  const last = points.at(-1);
+  const change = last.equity - first.equity;
+  return {
+    first, last, change, amount: signedMoney(String(change.toFixed(2)), 2),
+    text: `since start ${signedMoney(String(change.toFixed(2)), 2)}`,
+    tone: change > 0 ? 'positive' : change < 0 ? 'negative' : '',
+  };
+}
 export function floorCounts(checkpoint) {
   const floor = checkpoint?.floor || {};
   const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
@@ -675,13 +719,61 @@ export function deskCountLine(checkpoint) {
 function headlineNumbers(checkpoint) {
   const floor = checkpoint.floor;
   const daily = floorDaily(floor);
+  const account = accountEquity(floor);
   const numbers = element('dl', null, 'headline');
   numbers.append(
-    metric('Floor equity', money(floorEquity(floor), 0), '', 'live desks only'),
+    // The headline is the real balance when the venues answered, and the ledger's live equity
+    // when they did not. Today's number stays the ledger's: the venues do not keep a day's P&L.
+    account === null
+      ? metric('Floor equity', money(floorEquity(floor), 0), '', 'live desks only')
+      : metric(portfolioLabel(floor), money(account, 2), '', 'real account balances'),
     metric('Today', signedMoney(daily, 0), signOf(daily)),
     metric('Inference today', `${money(checkpoint.budget.spent_today_usd, 2)} / ${money(checkpoint.budget.cap_usd, 0)}`, '', 'spent of the daily cap'),
   );
   return numbers;
+}
+// One chip per account, under the headline, so the total is always shown broken into its parts.
+function venueChips(floor) {
+  const rows = accountVenues(floor);
+  if (!rows.length) return null;
+  const line = element('p', null, 'venue-chips');
+  rows.forEach((row, index) => {
+    if (index) line.append(element('span', '·', 'venue-separator'));
+    const chip = element('span', null, row.stale ? 'venue-chip venue-chip-stale' : 'venue-chip');
+    chip.append(element('b', row.name), element('span', money(row.equity, 2)));
+    if (row.stale) {
+      // A venue that stopped answering keeps its last balance and says so, rather than
+      // disappearing and making the portfolio look smaller than it is.
+      chip.append(element('i', 'stale'));
+      chip.setAttribute('title', `${row.name} did not answer the last balance request. Showing the reading from ${row.at ? date(row.at) : 'its last successful read'}.`);
+    }
+    line.append(chip);
+  });
+  return line;
+}
+// The floor's real balance over time, drawn from `floor.mark` and nothing else.
+function balanceChart(events) {
+  const change = sinceStart(events);
+  const series = floorBalanceSeries(events);
+  if (!series) {
+    return element('p', change
+      ? `${money(String(change.last.equity.toFixed(2)), 2)} now. The balance line starts at the second published mark.`
+      : 'The real balance line appears with the floor\u2019s first published mark.', 'empty-state');
+  }
+  const figure = element('figure', null, 'pnl-chart');
+  const svg = svgElement('svg', {
+    viewBox: '0 0 760 190', preserveAspectRatio: 'none', role: 'img',
+    'aria-label': 'The floor\u2019s real account balance, from its own published marks.',
+  });
+  for (const tick of series.ticks) svg.append(svgElement('line', { x1: 2, x2: 748, y1: tick.y, y2: tick.y, class: 'chart-grid' }));
+  svg.append(svgElement('path', { d: series.path, class: 'chart-equity' }));
+  figure.append(svg);
+  const caption = element('figcaption', null, 'chart-caption');
+  caption.append(element('span', `${money(String(series.first.equity.toFixed(2)), 2)} \u2192 ${money(String(series.last.equity.toFixed(2)), 2)}`));
+  caption.append(element('span', change.text, change.tone));
+  caption.append(element('span', `${date(new Date(series.first.at).toISOString())} \u2013 ${date(new Date(series.last.at).toISOString())}`));
+  figure.append(caption);
+  return figure;
 }
 
 // ---------------------------------------------------------------- the box the floor runs on
@@ -728,13 +820,19 @@ async function startFloor(root) {
   const status = root.querySelector('#floor-status');
   const numbers = root.querySelector('#floor-numbers');
   const infra = root.querySelector('#floor-infra');
+  const history = root.querySelector('#floor-history');
   const partners = root.querySelector('#floor-partners');
   const filters = root.querySelector('#tape-filters');
   const tape = root.querySelector('#floor-tape');
   const state = {
-    checkpoint: null, events: [], mode: 'loading', records: new Map(),
+    checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [],
     active: new Set(TAPE_FILTERS.map(filter => filter.key)), expanded: new Set(),
     redraw: () => renderTape(tape, state.events, state),
+  };
+  const drawBalance = () => {
+    if (!history) return;
+    history.replaceChildren(balanceChart(state.floorMarks));
+    history.setAttribute('aria-busy', 'false');
   };
   const drawChips = () => filters.replaceChildren(filterChips(state, () => { drawChips(); state.redraw(); }));
   statusLine(status, state.mode, null);
@@ -748,8 +846,10 @@ async function startFloor(root) {
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
+      const chips = venueChips(state.checkpoint.floor);
       numbers.replaceChildren(
         headlineNumbers(state.checkpoint),
+        ...(chips ? [chips] : []),
         element('p', deskCountLine(state.checkpoint), 'desk-counts'),
       );
       numbers.setAttribute('aria-busy', 'false');
@@ -771,6 +871,13 @@ async function startFloor(root) {
     }
   }
   await refresh();
+  // The floor's real balance history: its own marks of the venue accounts, nothing else.
+  if (history) {
+    const marks = await loadEvents({ stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT })
+      .catch(() => ({ events: [] }));
+    state.floorMarks = marks.events;
+    drawBalance();
+  }
   // Each card carries its own equity line and its own latest thought.
   if (state.checkpoint) {
     await Promise.all(orderDesks(state.checkpoint.desks).slice(0, MAX_CARDS).map(async desk => {
@@ -800,7 +907,13 @@ async function startFloor(root) {
     onEvents: events => {
       state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2);
       let cards = false;
+      let balance = false;
       for (const event of events) {
+        if (event.kind === FLOOR_MARK.kind) {
+          state.floorMarks = [...state.floorMarks, event].slice(-FLOOR_MARK_LIMIT);
+          balance = true;
+          continue;
+        }
         const id = typeof event.stream === 'string' && event.stream.includes(':') ? event.stream.slice(event.stream.indexOf(':') + 1) : null;
         const record = id ? state.records.get(id) : null;
         if (!record) continue;
@@ -808,6 +921,7 @@ async function startFloor(root) {
         if (event.kind === 'desk.thought' || event.kind === 'desk.memo') { record.now = nowLine([event]); cards = true; }
       }
       if (cards) drawPartners();
+      if (balance) drawBalance();
       state.redraw();
     },
   });

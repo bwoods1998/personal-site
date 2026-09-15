@@ -10,13 +10,15 @@ import { retiredRoute, RETIRED_TARGET } from '../lib/retired.mjs';
 import { createServer } from '../server.mjs';
 import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
-  socketMatches, parseStreamTags, sourceUrl, deskMode, isLive, EVENT_KINDS, MAX_BATCH_BYTES,
+  validVenues, validVenueBalance, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
+  EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES,
 } from '../capital/schema.js';
 import {
   tapeLine, markSeries, sparkline, nowLine, latestPlaybook, diffLines, allocationSeries, orderDesks,
   partnerOf, partnerName, partnerRole, filterGroup, matchesFilters, truncate, lineage, fillRows, bookRows,
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
   floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge,
+  accountEquity, accountVenues, portfolioLabel, venueLabel, venueChipText, floorBalanceSeries, sinceStart,
 } from '../capital/capital.js';
 
 const token = 'woods-capital-test-publication-token-01';
@@ -494,7 +496,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
   assert.match(floorHtml, /Six AI portfolio managers\. Real money\. Every thought public\./);
   assert.match(floorHtml, /Named after the fund that blew up in 1998, as a warning\. No affiliation\./);
-  for (const id of ['floor-numbers', 'floor-partners', 'tape-filters', 'floor-tape', 'floor-status']) assert.match(floorHtml, new RegExp(`id="${id}"`));
+  for (const id of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape', 'floor-status']) assert.match(floorHtml, new RegExp(`id="${id}"`));
   for (const tile of ['Think', 'Check', 'Fund', 'Evolve']) assert.match(floorHtml, new RegExp(`<h3>${tile}</h3>`));
   assert.match(floorHtml, /Read more about the loop/);
   const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
@@ -953,4 +955,147 @@ test('the pages say shadow, never paper', async () => {
   const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
   assert.match(css, /\.badge-shadow/);
   assert.match(css, /prefers-reduced-motion[\s\S]{0,80}badge-dot/);
+});
+
+// ---------------------------------------------------------------- the owner's real balances
+const venueRow = (name = 'kalshi', overrides = {}) => ({
+  venue: name, equity: '492.29', cash: '492.29', as_of: '2026-09-15T14:00:00.000Z', ...overrides,
+});
+const COINBASE = { equity: '487.40', cash: '12.60' };
+const accountFloor = (overrides = {}) => ({
+  ...checkpoint().floor, account_equity: '979.69', account_cash: '504.89',
+  venues: [venueRow(), venueRow('coinbase', COINBASE)], ...overrides,
+});
+function floorMark(index = 0, equity = '979.69', overrides = {}) {
+  const at = `2026-09-15T13:0${index}:00.000Z`;
+  return {
+    seq: 300 + index, id: `ops.floor.mark.${index}`, stream: 'ops', kind: 'floor.mark', at,
+    digest: (300 + index).toString(16).padStart(64, '0'),
+    payload: {
+      account_equity: equity, account_cash: '504.89', as_of: at,
+      venues: [venueRow('kalshi', { as_of: at }), venueRow('coinbase', { ...COINBASE, as_of: at })],
+    },
+    ...overrides,
+  };
+}
+
+test('the floor publishes its real venue balances, and only in one exact shape', async () => {
+  const { capital } = floor();
+  // floor.mark is the one kind whose name does not name its stream: it is the whole floor's.
+  assert.equal(KIND_STREAMS['floor.mark'], 'ops');
+  assert.equal(validEvent(floorMark()), true);
+  assert.equal((await post(capital, '/api/capital/events', batch(floorMark()))).status, 200);
+  const stale = floorMark(1, '979.69');
+  stale.payload.venues[0].stale = true;
+  assert.equal(validEvent(stale), true, 'a venue that stopped answering still publishes its last row');
+  assert.equal((await post(capital, '/api/capital/events', batch(stale))).status, 200);
+
+  assert.equal(validVenueBalance(venueRow()), true);
+  assert.equal(validVenues([venueRow(), venueRow('coinbase', COINBASE)]), true);
+  assert.equal(validVenues([]), false, 'no venue means no block, never an empty one');
+  assert.equal(validVenues([venueRow(), venueRow()]), false, 'one row per venue');
+
+  const broken = [
+    ['off its stream', e => { e.stream = 'ledger:mullins'; }],
+    ['on a desk stream', e => { e.stream = 'desk:mullins'; }],
+    ['missing a field', e => { delete e.payload.account_cash; }],
+    ['an extra field', e => { e.payload.note = 'read at noon'; }],
+    ['a signed total', e => { e.payload.account_equity = '-1.00'; }],
+    ['a numeric total', e => { e.payload.account_equity = 979.69; }],
+    ['a stamp without milliseconds', e => { e.payload.as_of = '2026-09-15T13:00:00Z'; }],
+    ['no venues at all', e => { e.payload.venues = []; }],
+    ['a venue row missing its stamp', e => { delete e.payload.venues[0].as_of; }],
+    ['an unnamed venue', e => { e.payload.venues[0].venue = 'Kalshi'; }],
+    ['a signed venue balance', e => { e.payload.venues[0].equity = '-1'; }],
+    ['a stale flag that is not a flag', e => { e.payload.venues[0].stale = 'yes'; }],
+    ['an unknown venue field', e => { e.payload.venues[0].token = 'secret'; }],
+    ['more venues than the floor can hold', e => { e.payload.venues = Array.from({ length: 9 }, (_, i) => venueRow(`venue-${i}`)); }],
+  ];
+  for (const [why, damage] of broken) {
+    const event = floorMark(2);
+    damage(event);
+    assert.equal(validEvent(event), false, why);
+    assert.equal((await post(capital, '/api/capital/events', batch(event))).status, 400, why);
+  }
+  // The exception is floor.mark's alone: every other kind still has to match its stream.
+  assert.equal(validEvent({ ...event(), stream: 'ops', kind: 'ledger.mark' }), false);
+});
+
+test('the checkpoint carries the account balances beside the ledger, or not at all', async () => {
+  const { capital } = floor();
+  const body = checkpoint({ floor: accountFloor() });
+  assert.equal(validCheckpoint(body), true);
+  assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200);
+  assert.equal(accountEquity(body.floor), '979.69');
+  assert.equal(portfolioLabel(body.floor), 'Portfolio · Kalshi + Coinbase');
+  assert.deepEqual(accountVenues(body.floor).map(venueChipText), ['Kalshi $492.29', 'Coinbase $487.40']);
+  assert.equal(venueLabel('coinbase'), 'Coinbase');
+  // A checkpoint from a box with no live venue says nothing about an account, and the page
+  // falls back to the ledger's own number rather than showing a zero balance.
+  assert.equal(accountEquity(checkpoint().floor), null);
+  assert.deepEqual(accountVenues(checkpoint().floor), []);
+  assert.equal(portfolioLabel(checkpoint().floor), 'Portfolio');
+
+  for (const invalid of [
+    checkpoint({ floor: { ...checkpoint().floor, account_equity: '979.69' } }),
+    checkpoint({ floor: accountFloor({ account_cash: undefined }) }),
+    checkpoint({ floor: accountFloor({ account_equity: '-1' }) }),
+    checkpoint({ floor: accountFloor({ venues: [] }) }),
+    checkpoint({ floor: accountFloor({ venues: [venueRow('kalshi', { as_of: '2026-09-15T23:00:00.000Z' })] }) }),
+    checkpoint({ floor: accountFloor({ venues: [venueRow('kalshi', { balance: '1' })] }) }),
+  ]) {
+    assert.equal(validCheckpoint(invalid), false);
+    assert.equal((await post(capital, '/api/capital/checkpoint', invalid)).status, 400);
+  }
+});
+
+test('the floor page leads with the portfolio, its venue chips and the real balance line', async () => {
+  const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')];
+  assert.equal(floorBalanceSeries([marks[0]]), null, 'a line needs a second mark');
+  assert.equal(sinceStart(marks).amount, '+$29.69');
+  assert.equal(sinceStart([]), null);
+
+  const line = tapeLine(floorMark());
+  assert.equal(line.label, 'Floor balance');
+  assert.equal(line.group, 'trades', 'the balance belongs with the money, not with the alerts');
+  assert.match(line.text, /Balance \$979\.69/);
+  assert.match(line.text, /Kalshi \$492\.29, Coinbase \$487\.40/);
+
+  const board = [desk('mullins', { name: 'Mullins', family: 'mullins', mode: 'live', equity: '210.55', gate: null })];
+  const routes = (body, events) => path => {
+    if (path.startsWith('/api/capital/checkpoint')) return body;
+    if (path.includes('kind=floor.mark')) return { schema_version: 1, latest_seq: 302, events };
+    return { schema_version: 1, latest_seq: 302, events: [] };
+  };
+  const root = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape']);
+  await withBrowser('', routes(checkpoint({ desks: board, floor: accountFloor() }), marks), async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const numbers = root.querySelector('#floor-numbers').textContent;
+    assert.match(numbers, /Portfolio · Kalshi \+ Coinbase/, 'the headline names the accounts it added up');
+    assert.match(numbers, /\$979\.69/, 'the real balance, not the ledger equity');
+    assert.match(numbers, /real account balances/);
+    assert.match(numbers, /Kalshi \$492\.29 · Coinbase \$487\.40/, 'one chip per account');
+    assert.match(numbers, /−\$250/, "today's P&L still comes from the ledger");
+
+    const history = root.querySelector('#floor-history');
+    assert.equal(history.getAttribute('aria-busy'), 'false');
+    const [chart] = history.find('svg');
+    assert.equal(chart.find('path').length, 1, 'one real-balance line');
+    assert.match(history.textContent, /\$950\.00 → \$979\.69/);
+    assert.match(history.textContent, /since start \+\$29\.69/);
+  });
+
+  // A venue that stopped answering keeps its last balance on the chip and says it is stale.
+  const stale = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape']);
+  const outage = accountFloor({ venues: [venueRow('kalshi', { stale: true }), venueRow('coinbase', COINBASE)] });
+  await withBrowser('', routes(checkpoint({ desks: board, floor: outage }), []), async () => {
+    const feed = await startCapital(stale);
+    feed.stop();
+    const numbers = stale.querySelector('#floor-numbers');
+    assert.match(numbers.textContent, /Kalshi \$492\.29 stale/, 'the stale account is still counted, and labelled');
+    const [chip] = numbers.withClass('venue-chip-stale');
+    assert.match(chip.getAttribute('title'), /Kalshi did not answer the last balance request/);
+    assert.match(stale.querySelector('#floor-history').textContent, /appears with the floor’s first published mark/);
+  });
 });
