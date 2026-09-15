@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { openDatabase } from './lib/database.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
+import { retiredRoute } from './lib/retired.mjs';
 
 export function createServer(api, { built = false, origin = 'http://localhost:4173' } = {}) {
   const root = new URL(built ? './dist/' : './', import.meta.url);
@@ -11,6 +12,9 @@ export function createServer(api, { built = false, origin = 'http://localhost:41
     const url = new URL(req.url, origin);
     if (url.origin !== origin) { res.writeHead(400); res.end(); return; }
     try {
+      // The retired Portfolio Agent answers here exactly as it does on the Worker.
+      const retired = retiredRoute(url.pathname);
+      if (retired) { res.writeHead(retired.status, retired.headers); res.end(retired.body || undefined); return; }
       if (url.pathname.startsWith('/api/')) {
         const request = new Request(url, { method: req.method, headers: req.headers, ...(req.method === 'POST' ? { body: req, duplex: 'half' } : {}) });
         const response = await api(request, req.socket.remoteAddress || 'unknown');
@@ -18,15 +22,13 @@ export function createServer(api, { built = false, origin = 'http://localhost:41
       }
       if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }
       if (url.pathname === '/admin') { res.writeHead(308, { Location: './admin/' }); res.end(); return; }
-      if (url.pathname === '/portfolio') { res.writeHead(308, { Location: './portfolio/' }); res.end(); return; }
-      if (url.pathname === '/portfolio/research') { res.writeHead(308, { Location: '/portfolio/research/' }); res.end(); return; }
       if (['/capital', '/capital/desk', '/capital/committee'].includes(url.pathname)) { res.writeHead(308, { Location: url.pathname + '/' }); res.end(); return; }
       const path = url.pathname;
-      const pages = { '/': 'index.html', '/admin/': 'admin/index.html', '/portfolio/': 'portfolio/index.html', '/portfolio/research/': 'portfolio/research/index.html', '/capital/': 'capital/index.html', '/capital/desk/': 'capital/desk/index.html', '/capital/committee/': 'capital/committee/index.html' };
+      const pages = { '/': 'index.html', '/admin/': 'admin/index.html', '/capital/': 'capital/index.html', '/capital/desk/': 'capital/desk/index.html', '/capital/committee/': 'capital/committee/index.html' };
       let filename = pages[path] || path.slice(1);
       const allowed = built
-        ? /^(index\.html|(?:admin|portfolio|portfolio\/research|capital|capital\/desk|capital\/committee)\/index\.html|portfolio\/runtime\.json|assets\/(?:(?:styles|runtime|research|capital)\.[a-f0-9]{12}\.css|(?:app|admin|chart|runtime|research|schema|capital)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/
-        : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|portfolio\/(index\.html|runtime\.(?:css|js|json)|research\/(?:index\.html|research\.(?:css|js)|schema\.js))|capital\/(index\.html|capital\.(?:css|js)|schema\.js|(?:desk|committee)\/index\.html))$/;
+        ? /^(index\.html|(?:admin|capital|capital\/desk|capital\/committee)\/index\.html|assets\/(?:(?:styles|capital)\.[a-f0-9]{12}\.css|(?:app|admin|chart|schema|capital)\.[a-f0-9]{12}\.js|favicon\.[a-f0-9]{12}\.svg))$/
+        : /^(index\.html|styles\.css|app\.js|chart\.js|favicon\.svg|admin\/(index\.html|admin\.js)|capital\/(index\.html|capital\.(?:css|js)|schema\.js|(?:desk|committee)\/index\.html))$/;
       if (!allowed.test(filename)) { res.writeHead(404); res.end('Not found'); return; }
       const content = await readFile(new URL(filename, root));
       const type = filename.endsWith('.html') ? 'text/html' : filename.endsWith('.css') ? 'text/css' : filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.json') ? 'application/json' : filename.endsWith('.png') ? 'image/png' : 'image/svg+xml';

@@ -1,10 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
-import { createPortfolioState } from './lib/portfolio-state.mjs';
-import { createPortfolioNotifier } from './lib/portfolio-notify.mjs';
-import { createPortfolioJournal } from './lib/portfolio-journal.mjs';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
 import { Capital, CAPITAL_OBJECT } from './lib/capital.mjs';
+import { retiredRoute } from './lib/retired.mjs';
 
 export { Capital };
 
@@ -30,15 +28,16 @@ export class Exchange extends DurableObject {
   fetch(request) { return this.api(request, request.headers.get('CF-Connecting-IP') || 'unknown'); }
 }
 
+const retired = pathname => {
+  const route = retiredRoute(pathname);
+  return route ? new Response(route.body || null, { status: route.status, headers: route.headers }) : null;
+};
+
+// Retired. Portfolio Agent is now Long Term Capital Management and nothing routes here, but the
+// binding and its v2 migration stay declared so the deployment keeps its existing stored object.
 export class PortfolioState extends DurableObject {
-  constructor(ctx, env) {
-    super(ctx, env);
-    this.notifications = createPortfolioNotifier(ctx.storage, env);
-    this.api = createPortfolioState(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN, () => Date.now(), this.notifications);
-    this.journal = createPortfolioJournal(ctx.storage, env.PORTFOLIO_PUBLISH_TOKEN);
-  }
-  fetch(request) { return new URL(request.url).pathname.startsWith('/api/portfolio/research') ? this.journal(request) : this.api(request); }
-  alarm() { return this.notifications.alarm(); }
+  fetch(request) { return retired(new URL(request.url).pathname) ?? retired('/api/portfolio'); }
+  async alarm() { await this.ctx.storage.deleteAlarm(); }
 }
 
 export default {
@@ -51,6 +50,9 @@ export default {
       url.protocol = 'https:';
       return Response.redirect(url.href, 308);
     }
+    // The Portfolio Agent pages and API are retired: one project, one address.
+    const gone = retired(url.pathname);
+    if (gone) return gone;
     if (url.pathname === '/api/capital' || url.pathname.startsWith('/api/capital/')) {
       // The live tape upgrades to a WebSocket; only the public JSON reads are cacheable.
       const floorRead = ['GET', 'HEAD'].includes(request.method) && url.pathname !== '/api/capital/stream';
@@ -63,20 +65,6 @@ export default {
         }
       }
       const response = await env.CAPITAL.get(env.CAPITAL.idFromName(CAPITAL_OBJECT)).fetch(request);
-      if (cacheKey && request.method === 'GET' && response.status === 200) ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
-      return response;
-    }
-    if (['/api/portfolio/state', '/api/portfolio/notifications', '/api/portfolio/notifications/test', '/api/portfolio/research'].includes(url.pathname) || url.pathname.startsWith('/api/portfolio/research/')) {
-      const journalRead = url.pathname.startsWith('/api/portfolio/research') && ['GET', 'HEAD'].includes(request.method);
-      const cacheKey = journalRead ? new Request(url.href) : null;
-      if (cacheKey) {
-        const hit = await caches.default.match(cacheKey);
-        if (hit) {
-          if (request.headers.get('If-None-Match') === hit.headers.get('ETag')) return new Response(null, { status: 304, headers: hit.headers });
-          return request.method === 'HEAD' ? new Response(null, hit) : hit;
-        }
-      }
-      const response = await env.PORTFOLIO_STATE.get(env.PORTFOLIO_STATE.idFromName('portfolio-v1')).fetch(request);
       if (cacheKey && request.method === 'GET' && response.status === 200) ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
       return response;
     }

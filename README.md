@@ -4,38 +4,23 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Portfolio Agent](https://blakewoods.us/portfolio/) is an autonomous portfolio manager built on Sail, with the S&P 500 as its investment universe and total-return benchmark. The public page shows saved paper-portfolio state, decisions and current research. Live brokerage integration is pending.
+[Long Term Capital Management](https://blakewoods.us/capital/) is the other half of the site: six AI portfolio managers trading real money in public. Their thoughts, tool calls, memos, order intents, fills, marks, risk reviews, capital allocations and evolution events stream to the site as they happen.
 
-[Woods Capital Management](https://blakewoods.us/capital/) is a public floor of autonomous AI portfolio-manager desks. Their thoughts, tool calls, memos, orders, fills, marks, capital allocations and evolution events stream to the site as they happen.
+## Long Term Capital Management
 
-## Portfolio publication
+`/capital/` is the floor, `/capital/desk/?id=<desk>` is one partner, `/capital/committee/` is Meriwether — the allocations, the gates and the evolution record. The [runtime](https://github.com/bwoods1998/portfolio-agent) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and a page visit can never start a desk session, a model request or an order.
 
-The [Portfolio Agent repository](https://github.com/bwoods1998/portfolio-agent) owns the research and paper ledger. This site renders a strictly validated public checkpoint from `/api/portfolio/state`, falling back to the bundled `portfolio/runtime.json` when the endpoint is unavailable. Page visits cannot start research or submit orders.
-
-Current tasks and heartbeat stay visible; counts, costs and timing sit inside **Run details**. A quiet **Research history** link opens timestamped findings, evidence, questions and decisions. Each finding has a stable link; financial figures link to the exact SEC filing. Failed checks remain visible without publishing their unsupported claims.
-
-The history API is an append-only public projection. Authenticated batches contain at most 20 strictly validated records; public reads paginate 12 summaries at a time, with full detail fetched only on demand. Retries cannot rewrite old findings. No raw prompts, internal reasoning or credentials enter the public journal.
-
-Cloudflare alarms notify the owner on one-off run completion or missing updates, independently of the research host. Persistent weekday sessions use their separate supervisor for service health and funding alerts; routine session completion does not send another email. Delivery requires the `EMAIL` binding, the private `NOTIFICATION_EMAIL` secret, an onboarded email domain and a verified destination. See [deployment](DEPLOYMENT.md) for setup and private delivery checks.
-
-Only the portfolio and research-history interfaces plus the initial validated checkpoint are deployed for this project. Retired portfolio interfaces, reports and publisher scripts are preserved in Git history. Old generated reports are removed on every build.
-
-A fresh clone builds without Python, Sail credentials or private data. Validate and review a new checkpoint before deploying:
-
-```sh
-npm run check
-npm test
-npm run build
-npm run deploy
-```
-
-The frontend shows only recorded observations. It never generates prices, backfills returns or substitutes an ETF for the S&P 500 Total Return benchmark. Pending paper allocations remain distinct from filled holdings.
-
-## Woods Capital
-
-[Woods Capital Management](https://blakewoods.us/capital/) is the public floor: `/capital/` for the floor itself, `/capital/desk/?id=<desk>` for one desk, `/capital/committee/` for Helm, the allocations, the gates and the evolution record. The [Woods Capital runtime](https://github.com/bwoods1998/portfolio-agent) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and page visits can never start a desk session, a model request or an order.
+The six partners are named after the people at the original fund, as a warning rather than a tribute: Merton (filings, long horizon, Alpaca), Rosenfeld, Hawkins and Krasker (earnings drift, run on DeepSeek, Kimi and GLM so the family can be scored against itself), Mullins (Fed and economic events, Kalshi) and Hilibrand (BTC and ETH, Coinbase). The committee publishes as Meriwether. There is no affiliation with the 1998 fund.
 
 Public prices on these pages are the floor's own fills and account-level marks. The site holds no market-data feed and republishes no licensed quote. Order intents and orders arrive only after the matching order is filled or cancelled, so nobody can trade ahead of a desk. Every page carries the position disclosure: Blake Woods owns every position shown, nothing is investment advice, and orders publish after they fill.
+
+### The pages
+
+The floor opens with one screen that explains itself: the masthead line, three live numbers from the checkpoint (floor equity, today's P&L signed and coloured, inference spent today against the daily cap), the 1998 note and the disclosure. Below it the six partners appear as cards — surname, the person's first name and mandate, a paper/live badge, equity, return since inception, a 40-point equity sparkline built from that desk's own `ledger.mark` events, and a one-line "now" carrying its latest thought or memo title. Then the tape: one line per event with time, partner, a kind glyph and short text, long thoughts cut to about 140 characters with click-to-expand, and chip filters for thoughts, trades, risk, committee and evolution. Four tiles close the page with the loop — desks think and propose, a deterministic risk engine approves or blocks, Meriwether moves capital by track record, and every night each desk rewrites its own playbook while families breed and retire variants.
+
+A desk page carries the partner's name and role, the mandate in a details block, the equity chart, a Playbook panel with the latest `desk.playbook_updated` diff and its reason, the book, the blotter, gate status, lineage, and the live stream of that desk's thinking. Diffs render as monospace with `+`/`-` colouring. The committee page leads with Meriwether's latest memo, then allocations now and over time, gates, and every promotion and retirement.
+
+Every page is one column under 720 px, uses `textContent` for all text, loads no external script or font, and keeps the dark editorial system with Courier New for numbers and labels.
 
 ### Endpoints
 
@@ -46,17 +31,25 @@ Public prices on these pages are the floor's own fills and account-level marks. 
 | `GET /api/capital/checkpoint` | public | Latest checkpoint, ETag, cached 5 s. |
 | `GET /api/capital/events?stream=&kind=&after=&limit=` | public | Newest first without `after`, oldest first following one; `limit` ≤200 (50 by default); ETag, cached 3 s. |
 | `GET /api/capital/desks`, `GET /api/capital/desks/<id>` | public | The desk rows of the latest checkpoint. ETag, cached 5 s. |
-| `GET /api/capital/stream?streams=desk:earnings-01,risk` | public, same-origin | WebSocket. Sends `{"type":"hello","latest_seq":N}`, then each stored event to matching subscriptions. |
+| `GET /api/capital/stream?streams=desk:merton,risk` | public, same-origin | WebSocket. Sends `{"type":"hello","latest_seq":N}`, then each stored event to matching subscriptions. |
 
 Events are append-only and idempotent by `id`: replaying an identical event is a no-op, and the same `id` with a different `digest` returns 409 without storing any event in that batch. The site assigns its own `seq`; the publisher's `seq` is accepted and ignored. Checkpoints move forward only — an older `published_at` returns 409, an identical body is a no-op, and more than a minute into the future is rejected. The desk roster is exactly the desks of the newest checkpoint.
 
 Validation is shared between the Worker and the browser in `capital/schema.js`, so nothing renders that the server would not have stored. Payloads may not carry a key beginning with `_` at any depth, a string over 8,000 characters, a `<`, anything shaped like a credential (`sk-`, `Bearer `, `APCA-`), or a URL outside sec.gov, www.sec.gov, efts.sec.gov, blakewoods.us, github.com, kalshi.com and finance.yahoo.com. `provider.request` is not a publishable kind: paid model traffic stays private.
+
+Most kinds carry a free-form payload. `risk.review` is the exception and is checked exactly: `{intent_id, desk_id, verdict, reason, model}` and nothing else, with `verdict` either `approve` or `block`, `desk_id` a desk id, `reason` at most 2,000 characters and `model` at most 80. It publishes on the `risk` stream and reads on the tape as `review · <partner> · approve/block · reason`.
 
 ### The live tape
 
 The floor page opens one WebSocket per visitor through the Durable Object Hibernation API (`ctx.acceptWebSocket`), so the object sleeps between events without dropping listeners. The floor accepts at most 200 sockets and only from blakewoods.us, www.blakewoods.us and localhost. When the socket is unavailable — an older browser, a proxy, a plan limit — the page falls back to polling `/api/capital/events?after=` every eight seconds and says so in the status line. Sustained WebSocket connections are a Workers Paid consideration; see [deployment](DEPLOYMENT.md).
 
 Storage stays bounded: the floor keeps the newest 20,000 events. Stored events are never edited; corrections are new events.
+
+## Retired: Portfolio Agent
+
+Portfolio Agent is retired and folded into Long Term Capital Management. `/portfolio/` and everything under it answers 301 to `/capital/`; `/api/portfolio/*` answers 410 so a stale publisher fails loudly instead of writing somewhere nobody reads. Both behaviours live in `lib/retired.mjs` and are shared by the Worker and the development server. The pages, the research journal, the notifier and the bundled runtime checkpoint are removed from the working tree and preserved in Git history.
+
+The `PORTFOLIO_STATE` binding and its `v2` migration stay declared in `wrangler.jsonc`, with an inert exported class in `worker.mjs`, so the deployment keeps its existing stored object instead of orphaning it. Nothing routes to it.
 
 ## Local
 
@@ -77,7 +70,7 @@ The Node development server serves the `/capital/` pages but not the floor API, 
 
 ## Deployment
 
-Live at **https://blakewoods.us**, also available at https://www.blakewoods.us. Hosting uses Cloudflare Workers Free with a SQLite-backed Durable Object; the custom domain renews separately. The old `workers.dev` address and preview URLs are disabled.
+Live at **https://blakewoods.us**, also available at https://www.blakewoods.us. Hosting uses Cloudflare Workers Free with SQLite-backed Durable Objects; the custom domain renews separately. The old `workers.dev` address and preview URLs are disabled.
 
 For updates from this repository:
 
@@ -88,15 +81,15 @@ npx wrangler login # only when authentication is needed
 npm run deploy
 ```
 
-`npm run deploy` builds and publishes the site. Hosted orders survive deployments and remain separate from local test data. Keep the `EXCHANGE` binding, `Exchange` class, `bw-exchange-v1` object name, and existing migration intact to preserve the ledger.
+`npm run deploy` builds and publishes the site. Hosted orders survive deployments and remain separate from local test data. Keep the `EXCHANGE` binding, `Exchange` class, `bw-exchange-v1` object name, and existing migration intact to preserve the ledger; keep `CAPITAL`, `Capital`, `capital-v1` and `v3` intact to preserve the floor.
 
-Cloudflare stores `ADMIN_KEY` and `SESSION_SECRET` as encrypted secrets. Normal deployments do not replace them. `npm run publish:first` is a one-time bootstrap helper that uploads local secrets; do not use it for routine updates. Changing the admin password invalidates existing admin sessions; changing `SESSION_SECRET` invalidates visitor cookies.
+Cloudflare stores `ADMIN_KEY`, `SESSION_SECRET` and `CAPITAL_PUBLISH_TOKEN` as encrypted secrets. Normal deployments do not replace them. `npm run publish:first` is a one-time bootstrap helper that uploads local secrets; do not use it for routine updates. Changing the admin password invalidates existing admin sessions; changing `SESSION_SECRET` invalidates visitor cookies.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the live moderation link. Free-plan quotas still apply; review usage before enabling paid hosting.
 
 Published source/assets are explicitly selected. Resume, archives, `.dev.vars`, `.data`, tests and server internals are not public assets. The admin HTML/JS shell is public but every queue and moderation endpoint requires a server-verified admin session.
 
-Public HTML uses `Cache-Control: no-transform` to prevent Cloudflare from injecting analytics scripts outside the site's self-only script policy. Hashed assets retain their normal caching; the public portfolio checkpoint revalidates. See [Cloudflare's injection behavior](https://developers.cloudflare.com/web-analytics/faq/).
+Public HTML uses `Cache-Control: no-transform` to prevent Cloudflare from injecting analytics scripts outside the site's self-only script policy. Hashed assets retain their normal caching. See [Cloudflare's injection behavior](https://developers.cloudflare.com/web-analytics/faq/).
 
 ## Price chart and memos
 
@@ -114,7 +107,8 @@ The on-screen symbol is **$WOODS**, for **Blake Woods Stock**. The price is a pl
 - One order per minute, five per visitor/day, thirty per network/day. Signed, HttpOnly cookies; HMAC network identifiers rather than stored raw IPs. Limits deter casual spam, not determined multi-network attackers.
 - A unique request reference makes order retries idempotent. Atomic transactions serialize changes to the shared market.
 - EVERY visitor name and note is pending by default. Public SQL projects approved text only. Reject or hide text without changing the numeric trade. Text is rendered with `textContent`, including in the private queue.
-- Manual approval costs no model/API fees. There are no paid market-data feeds, websocket connections, polling loops or keep-alive services. One daily Cron Trigger creates the fictional cameo buy.
+- Manual approval costs no model/API fees. The exchange has no paid market-data feed, socket or keep-alive service; one daily Cron Trigger creates the fictional cameo buy.
+- The floor's tape is the site's only socket: one hibernating Durable Object WebSocket per visitor, at most 200 at once, with an eight-second polling fallback. It bills for connected duration, which is a Workers Paid consideration.
 - Public snapshots can be cached for three seconds, so prices and moderation changes may take that long to appear across visitors. Refresh is explicit. Private endpoints are never cached.
 - One SQLite Durable Object is the consistent shared ledger. It handles a personal site's market, not exchange-scale trading. Quotas and a single ledger's throughput still apply. CDN-served pages scale independently.
 - Static files can remain accessible if the exchange reaches a quota. Expect to review storage/retention if the project becomes popular.
@@ -128,7 +122,7 @@ https://developers.cloudflare.com/durable-objects/platform/limits/
 
 `npm run check`, `npm test`, `npm run build`, and `npx wrangler deploy --dry-run`.
 
-Woods Capital adds `test/capital.test.mjs`: publication validators, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the floor, desk and committee pages mounted against a stub DOM, and the build of the new pages with hashed assets.
+`test/capital.test.mjs` covers the publication validators including the `risk.review` payload contract, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the retirement routes, the partner/sparkline/now-line/playbook/allocation projections, the floor, desk and committee pages mounted against a stub DOM, the public-file allowlist, and the build with hashed assets.
 
 Tests cover concurrent idempotent orders, index consistency, cooldown/daily limits, moderation gating and revocation, admin session expiry/logout, forged cookies, cross-origin writes and body limits. Cloudflare runtime/browser smoke checks additionally exercise the ticket, approval flow, literal HTML text rendering, public-file allowlist and mobile overflow.
 

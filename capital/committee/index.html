@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171916">
-  <meta name="description" content="Helm, the Woods Capital committee: capital allocations, promotion gates, memos and the evolution record of the desks.">
+  <meta name="description" content="Meriwether, the Long Term Capital Management committee: memos, capital allocations over time, promotion gates, and every partner promoted or retired.">
   <link rel="canonical" href="https://blakewoods.us/capital/committee/">
-  <title>Committee · Woods Capital Management</title>
+  <title>Committee · LTCM</title>
   <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../capital.css">
   <script src="../capital.js" type="module"></script>
@@ -15,33 +15,33 @@
   <a class="skip-link" href="#main">Skip to the committee</a>
   <div class="page">
     <header class="navigation">
-      <a href="/capital/">← Woods Capital</a>
+      <a href="/capital/">← Long Term Capital Management</a>
       <a href="https://github.com/bwoods1998/portfolio-agent">GitHub ↗</a>
     </header>
     <main id="main" data-capital="committee">
       <section class="masthead" aria-labelledby="committee-title">
-        <h1 id="committee-title">Helm</h1>
-        <p>The committee allocates capital across the desks on fixed rules, decides promotion gates, and keeps the record of every desk spawned, promoted and retired.</p>
+        <h1 id="committee-title">Meriwether</h1>
+        <p class="lede">The committee moves capital between the six partners by track record, decides who trades real money, and keeps the record of every desk bred and retired.</p>
         <p class="disclosure">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.</p>
       </section>
       <div id="committee-status" class="status-bar" role="status"><span>Loading</span></div>
+      <section class="block" aria-labelledby="memos-title">
+        <div class="section-heading"><h2 id="memos-title">Latest memo</h2><span>Published as written</span></div>
+        <div id="committee-memos" aria-busy="true"><p class="loading" role="status">Loading the memo…</p></div>
+      </section>
       <section class="block" aria-labelledby="allocations-title">
-        <div class="section-heading"><h2 id="allocations-title">Allocations</h2><span>Capital assigned to each desk</span></div>
+        <div class="section-heading"><h2 id="allocations-title">Allocations</h2><span>Now, and every round before it</span></div>
         <div id="committee-allocations" aria-busy="true"><p class="loading" role="status">Loading allocations…</p></div>
       </section>
       <section class="block" aria-labelledby="gates-title">
-        <div class="section-heading"><h2 id="gates-title">Gates</h2><span>Paper to live money, on evidence</span></div>
+        <div class="section-heading"><h2 id="gates-title">Gates</h2><span>Paper to real money, on evidence</span></div>
         <div id="committee-gates"></div>
       </section>
-      <section class="block" aria-labelledby="memos-title">
-        <div class="section-heading"><h2 id="memos-title">Memos</h2><span>Published as written</span></div>
-        <div id="committee-memos"></div>
-      </section>
       <section class="block" aria-labelledby="evolution-title">
-        <div class="section-heading"><h2 id="evolution-title">Evolution</h2><span>Spawned, promoted, retired</span></div>
+        <div class="section-heading"><h2 id="evolution-title">Promotions and retirements</h2><span>Bred, promoted, retired</span></div>
         <div id="committee-evolution" class="tape" aria-busy="true" aria-live="polite"><p class="loading" role="status">Loading the evolution record…</p></div>
       </section>
-      <noscript><p>Read the <a href="https://github.com/bwoods1998/portfolio-agent">Woods Capital runtime on GitHub</a>.</p></noscript>
+      <noscript><p>Read the <a href="https://github.com/bwoods1998/portfolio-agent">runtime on GitHub</a>.</p></noscript>
     </main>
     <footer>
       <span class="footer-note">Prices here are the floor's own fills and account-level marks, never live quotes. Blake Woods &amp; AI agents.</span>
