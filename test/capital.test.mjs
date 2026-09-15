@@ -11,6 +11,7 @@ import { createServer } from '../server.mjs';
 import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
+  validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
   EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES,
 } from '../capital/schema.js';
 import {
@@ -19,6 +20,9 @@ import {
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
   floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge, creditLine,
   accountEquity, accountVenues, portfolioLabel, venueLabel, venueChipText, floorBalanceSeries, sinceStart,
+  positionRows, exitChips, liveSessionText, watchLine, lineageGrid, mutationBadges, experimentRows, changeSummary,
+  curveSeries, curveReading, tradeStories, latestCalibration, familyCalibrations, reliabilitySeries, probabilityText,
+  instrumentLabel, profileName, LOOPS, runClock, portfolioLine, positionRationale, storyAnchor, storyHref,
 } from '../capital/capital.js';
 
 const token = 'woods-capital-test-publication-token-01';
@@ -503,9 +507,15 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
   assert.match(floorHtml, /Six AI portfolio managers\. Real money\. Every thought public\./);
   assert.match(floorHtml, /Named after the fund that blew up in 1998, as a warning\. No affiliation\./);
-  for (const id of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape', 'floor-status']) assert.match(floorHtml, new RegExp(`id="${id}"`));
-  for (const tile of ['Think', 'Check', 'Fund', 'Evolve']) assert.match(floorHtml, new RegExp(`<h3>${tile}</h3>`));
+  for (const id of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape', 'floor-status',
+    'floor-positions', 'floor-watch', 'floor-lineage', 'floor-lab', 'floor-run']) assert.match(floorHtml, new RegExp(`id="${id}"`));
+  // The explainer is the three loops, in reading order, and one line of what cannot change.
+  for (const loop of LOOPS) assert.match(floorHtml, new RegExp(`<h3>${loop.label}</h3>`));
+  assert.ok(floorHtml.indexOf('<h3>Trade</h3>') < floorHtml.indexOf('<h3>Desk</h3>') && floorHtml.indexOf('<h3>Desk</h3>') < floorHtml.indexOf('<h3>Floor</h3>'));
+  assert.match(floorHtml, /What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch\./);
+  assert.ok(floorHtml.indexOf('id="floor-positions"') < floorHtml.indexOf('id="floor-history"'), 'the book sits near the top');
   assert.match(floorHtml, /Read more about the loop/);
+  for (const id of ['committee-lab', 'committee-calibration']) assert.match(await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8'), new RegExp(`id="${id}"`));
   const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
   assert.match(committeeHtml, /<h1 id="committee-title">Meriwether<\/h1>/);
   assert.ok(committeeHtml.indexOf('id="committee-memos"') < committeeHtml.indexOf('id="committee-allocations"'), 'the memo leads the committee page');
@@ -1126,5 +1136,457 @@ test('the floor page leads with the portfolio, its venue chips and the real bala
     const [chip] = numbers.withClass('venue-chip-stale');
     assert.match(chip.getAttribute('title'), /Kalshi did not answer the last balance request/);
     assert.match(stale.querySelector('#floor-history').textContent, /appears with the floor’s first published mark/);
+  });
+});
+
+// ------------------------------------------------------------------ contract v2: the leap
+const position = (overrides = {}) => ({
+  instrument: { symbol: 'BTC-USD', asset_class: 'crypto', venue: 'coinbase' }, side: 'long', quantity: '0.0100',
+  entry_price: '76800.00', mark_price: '77210.50', market_value: '772.10', unrealized_pnl: '4.10', opened_at: '2026-09-15T13:00:00.000Z',
+  thesis: 'Trend continuation on the daily bars; invalid under 75,500.', target_price: '80000', stop_price: '75500',
+  time_stop_at: '2026-09-18T13:00:00.000Z', exit_orders: [{ id: 'o-tp', kind: 'target', price: '80000' }, { id: 'o-sl', kind: 'stop', price: '75500' }],
+  ...overrides,
+});
+const mutation = (overrides = {}) => ({
+  model_profile: 'pro_flex', reasoning_effort: 'high', session_shift_minutes: 45, memory_limit: 80,
+  persona_trait: 'Prefers fewer, larger decisions and says so when the evidence is thin.', model_changed: false, ...overrides,
+});
+const liveSession = (overrides = {}) => ({ session_id: 'hilibrand:20260915-1400:cadence:14:00', trigger: 'cadence:14:00', started_at: '2026-09-15T14:00:00.000Z', ...overrides });
+const experiment = (overrides = {}) => ({
+  experiment_id: 'exp-0123456789ab', hypothesis: 'Mullins trades better with a slot before the close.', family: 'kalshi', parent_id: 'mullins',
+  change: { 'cadence.sessions': ['08:10', '13:30', '16:30'], 'model.reasoning_effort': 'high' }, variant_desk_id: 'mullins-4', status: 'running',
+  proposed_at: '2026-09-15T02:00:00.000Z', evaluate_after: '2026-09-18T02:00:00.000Z', ...overrides,
+});
+const curveRow = (generation, overrides = {}) => ({
+  generation, desks: 2, decisions: 14, cost_usd: '1.20', pnl_usd: '12.50', cost_adjusted_excess_pct: '1.2', brier: '0.21', pnl_per_inference_usd: '10.4', ...overrides,
+});
+const lab = (overrides = {}) => ({ experiments: [experiment()], curve: [curveRow(1), curveRow(2, { cost_adjusted_excess_pct: '2.1', brier: '0.18' })], calibration: { n: 12, brier: '0.18' }, ...overrides });
+const watch = (overrides = {}) => ({ triggers_today: 12, wakes_today: 3, last_trigger_at: '2026-09-15T14:02:00.000Z', cost_today_usd: '0.31', ...overrides });
+const forecast = (overrides = {}) => ({
+  id: 'mullins:20260915-1829:cadence:13:30:e0020', stream: 'desk:mullins', kind: 'desk.forecast', at: '2026-09-15T18:32:00.000Z', digest: 'd'.repeat(64),
+  payload: { session_id: 'mullins:20260915-1829:cadence:13:30', market: 'KXFEDDECISION-26SEP-H25', venue: 'kalshi', probability: '0.93', market_price: '0.89', side: 'yes', resolves_at: '2026-09-16T18:00:00.000Z', reasoning: 'Reuters poll and a hot CPI; the market is a few cents shy of the evidence.' },
+  ...overrides,
+});
+const exitPlan = (overrides = {}) => ({
+  id: 'hilibrand:20260915-1830:cadence:18:30:e0030', stream: 'desk:hilibrand', kind: 'desk.exit_plan', at: '2026-09-15T18:40:00.000Z', digest: 'e'.repeat(64),
+  payload: { intent_id: 'oi-abc123', instrument: { symbol: 'BTC-USD', asset_class: 'crypto', venue: 'coinbase' }, target_price: '80000', stop_price: '75500', time_stop_at: '2026-09-18T13:00:00.000Z', venue_native: true, order_ids: ['tp-1', 'sl-1'] },
+  ...overrides,
+});
+const calibration = (overrides = {}) => ({
+  id: 'lab:calibration:mullins:2026-09-15', stream: 'lab', kind: 'lab.calibration', at: '2026-09-15T21:00:00.000Z', digest: 'f'.repeat(64),
+  payload: { scope: 'desk', desk_id: 'mullins', family: 'kalshi', generation: 1, n: 12, brier: '0.18',
+    reliability: [{ bin: '0.8-0.9', forecast_mean: '0.86', outcome_rate: '0.83', n: 6 }, { bin: '0.9-1.0', forecast_mean: '0.93', outcome_rate: '1', n: 6 }],
+    as_of: '2026-09-15T21:00:00.000Z', since: '2026-09-10T00:00:00.000Z' },
+  ...overrides,
+});
+
+test('contract v2: forecasts, exit plans and calibration carry fixed shapes; the other new kinds publish free-form', async () => {
+  const { capital } = floor();
+  for (const kind of ['desk.watch', 'desk.forecast', 'desk.exit_plan', 'desk.code_run', 'lab.calibration', 'lab.experiment', 'lab.verdict']) {
+    assert.ok(EVENT_KINDS[kind], kind);
+  }
+  assert.equal(validEvent(forecast()), true);
+  assert.equal(validEvent(exitPlan()), true);
+  assert.equal(validEvent(calibration()), true);
+  assert.deepEqual(await (await post(capital, '/api/capital/events', batch(forecast(), exitPlan(), calibration()))).json(), { stored: 3, replayed: 0 });
+  const refused = [
+    ['a probability above one', forecast({ payload: { ...forecast().payload, probability: '1.2' } })],
+    ['an unknown side', forecast({ payload: { ...forecast().payload, side: 'maybe' } })],
+    ['a forecast with an extra field', forecast({ payload: { ...forecast().payload, confidence: 'high' } })],
+    ['an exit plan without an instrument venue', exitPlan({ payload: { ...exitPlan().payload, instrument: { symbol: 'BTC-USD', asset_class: 'crypto' } } })],
+    ['an exit plan whose bracket flag is a string', exitPlan({ payload: { ...exitPlan().payload, venue_native: 'yes' } })],
+    ['calibration outside its scopes', calibration({ payload: { ...calibration().payload, scope: 'universe' } })],
+    ['calibration with a rate above one', calibration({ payload: { ...calibration().payload, reliability: [{ bin: 'x', forecast_mean: '0.5', outcome_rate: '1.5', n: 1 }] } })],
+    ['a forecast on the wrong stream', forecast({ stream: 'lab' })],
+  ];
+  for (const [label, candidate] of refused) {
+    assert.equal(validEvent(candidate), false, label);
+    assert.equal((await post(capital, '/api/capital/events', batch({ ...candidate, id: `${candidate.id}:${label.replace(/\W/g, '')}` }))).status, 400, label);
+  }
+  // Free-form kinds keep the ordinary payload rules and nothing more.
+  const watchEvent = published(7, { id: 'hilibrand:watch:1', stream: 'desk:hilibrand', kind: 'desk.watch', payload: { trigger: 'price_move', detail: 'BTC fell 2.1% in an hour', decision: 'wake', reason: 'A held thesis is under its invalidation.', cost_usd: '0.0007' } });
+  assert.equal(validEvent(watchEvent), true);
+  assert.equal(validEvent(published(8, { id: 'lab:exp:1', stream: 'lab', kind: 'lab.experiment', payload: experiment() })), true);
+  assert.equal(validEvent(published(9, { id: 'lab:verdict:1', stream: 'lab', kind: 'lab.verdict', payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', evidence: {}, reason: 'Beat its parent on cost-adjusted return for four days.', as_of: '2026-09-19T02:00:00.000Z' } })), true);
+  assert.equal(validEvent(published(10, { id: 'lab:exp:bad', stream: 'desk:mullins', kind: 'lab.experiment', payload: experiment() })), false, 'a lab kind stays on the lab stream');
+});
+
+test('the checkpoint carries positions, mutations, live sessions, the lab and the watch, or nothing at all', () => {
+  const rich = checkpoint({
+    desks: [desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [position()], live_session: liveSession(), calibration: { n: 3, brier: '0.12', since: '2026-09-10T00:00:00.000Z' } }),
+      desk('hilibrand-2', { name: 'Hilibrand II', family: 'crypto', generation: 2, parent_id: 'hilibrand', mode: 'shadow', venues: ['coinbase'], positions: [], mutation: mutation() })],
+    lab: lab(), watch: watch(),
+  });
+  assert.equal(validCheckpoint(rich), true);
+  assert.equal(validCheckpoint(checkpoint()), true, 'an older floor publishes none of it');
+  assert.equal(validPosition(position(), '2026-09-15T14:05:00.000Z'), true);
+  const badPositions = [
+    ['an unknown side', position({ side: 'flat' })],
+    ['an extra field', position({ leverage: '2' })],
+    ['too many exit orders', position({ exit_orders: Array.from({ length: 9 }, (_, index) => ({ id: `o${index}`, kind: 'target', price: '1' })) })],
+    ['an exit order of an unknown kind', position({ exit_orders: [{ id: 'o', kind: 'hope', price: '1' }] })],
+    ['a P&L that is not a number', position({ unrealized_pnl: 'up' })],
+    ['a thesis with markup', position({ thesis: '<b>buy</b>' })],
+    ['opened after the checkpoint', position({ opened_at: '2026-09-15T15:00:00.000Z' })],
+  ];
+  for (const [label, candidate] of badPositions) assert.equal(validPosition(candidate, '2026-09-15T14:05:00.000Z'), false, label);
+  assert.equal(validPosition(position({ thesis: '', target_price: null, stop_price: null, time_stop_at: null, exit_orders: [] }), '2026-09-15T14:05:00.000Z'), true, 'a bare position is still a position');
+  assert.equal(validMutation(mutation()), true);
+  assert.equal(validMutation(mutation({ session_shift_minutes: 5000 })), false);
+  assert.equal(validMutation(mutation({ model_changed: 'no' })), false);
+  assert.equal(validLiveSession(liveSession(), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validLiveSession(liveSession({ started_at: '2026-09-15T14:06:00.000Z' }), '2026-09-15T14:05:00.000Z'), false, 'a session cannot start after the checkpoint that reports it');
+  assert.equal(validExperiment(experiment()), true);
+  assert.equal(validExperiment(experiment({ verdict_reason: 'Beat its parent.' })), true);
+  assert.equal(validExperiment(experiment({ experiment_id: 'exp-1' })), false);
+  assert.equal(validExperiment(experiment({ status: 'maybe' })), false);
+  assert.equal(validExperiment(experiment({ change: { _secret: 1 } })), false, 'no private keys in a change');
+  assert.equal(validCurveRow(curveRow(3)), true);
+  assert.equal(validCurveRow(curveRow(3, { brier: null })), true);
+  assert.equal(validCurveRow(curveRow(3, { pnl_usd: 'lots' })), false);
+  assert.equal(validLab(lab()), true);
+  assert.equal(validLab(lab({ curve: [curveRow(1), curveRow(1)] })), false, 'one row per generation');
+  assert.equal(validLab(lab({ experiments: [experiment(), experiment()] })), false, 'one row per experiment');
+  assert.equal(validWatch(watch(), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validWatch(watch({ wakes_today: 13 }), '2026-09-15T14:05:00.000Z'), false, 'a desk cannot be woken more often than it was looked at');
+  assert.equal(validWatch(watch({ last_trigger_at: null }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validCheckpoint(checkpoint({ lab: { experiments: [], curve: [] } })), false, 'the lab block is exact');
+  assert.equal(validCheckpoint(checkpoint({ desks: [desk('x', { positions: [position({ side: 'flat' })] })] })), false);
+  assert.equal(validCalibration(calibration().payload), true);
+  assert.equal(validCalibration({ ...calibration().payload, since: '2026-09-16T00:00:00.000Z' }), false, 'since cannot follow as_of');
+});
+
+test('the book, the lineage and the lab project from the checkpoint', () => {
+  const board = checkpoint({
+    desks: [
+      desk('mullins-2', { name: 'Mullins II', family: 'kalshi', generation: 2, parent_id: 'mullins', mode: 'shadow', venues: ['kalshi'], mutation: mutation({ model_profile: 'kimi_flex', model_changed: true, session_shift_minutes: -45 }),
+        positions: [position({ instrument: { symbol: 'KXFED-26SEP-T3.75', asset_class: 'event', venue: 'kalshi' }, side: 'yes', quantity: '10', entry_price: '0.89', mark_price: '0.91', market_value: '9.10', unrealized_pnl: '0.20', thesis: 'A hike is 93% likely.', target_price: null, stop_price: null, time_stop_at: null, exit_orders: [] })] }),
+      desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [position()], live_session: liveSession() }),
+      desk('mullins', { name: 'Mullins', family: 'kalshi', mode: 'live', venues: ['kalshi'], positions: [] }),
+    ],
+    lab: lab(), watch: watch(),
+  });
+  const rows = positionRows(board);
+  assert.deepEqual(rows.map(row => [row.desk, row.live, row.instrument, row.side]), [['hilibrand', true, 'BTC-USD', 'long'], ['mullins-2', false, 'KXFED-26SEP-T3.75', 'yes']], 'live first');
+  assert.equal(rows[0].pnl, '4.10');
+  assert.equal(rows[0].tone, 'positive');
+  assert.equal(rows[0].venue, 'Coinbase');
+  assert.deepEqual(rows[0].chips.map(chip => chip.kind), ['target', 'stop', 'time_stop', 'resting']);
+  assert.deepEqual(rows[1].chips.map(chip => chip.text), ['no exit plan']);
+  assert.deepEqual(exitChips(position({ exit_orders: [] })).map(chip => chip.kind), ['target', 'stop', 'time_stop', 'floor']);
+  assert.equal(exitChips(position()).find(chip => chip.kind === 'stop').text, 'stop $75,500.00');
+  assert.equal(exitChips(position({ stop_price: '0.4', exit_orders: [] }))[1].text, 'stop $0.4000', 'contract prices keep four places');
+  assert.deepEqual(positionRows(checkpoint()), []);
+  assert.equal(liveSessionText(board.desks[1]), 'live now · cadence 14 00');
+  assert.equal(liveSessionText(board.desks[2]), '');
+  assert.match(watchLine(board), /^12 looks today · 3 woke a desk · last \d\d:\d\d:\d\d · \$0\.31 spent$/);
+  assert.equal(watchLine(checkpoint()), null);
+  assert.match(watchLine(checkpoint({ watch: watch({ triggers_today: 0, wakes_today: 0, last_trigger_at: null }) })), /0 looks today · 0 woke a desk · quiet so far/);
+
+  const grid = lineageGrid(board.desks);
+  assert.deepEqual(grid.families, ['kalshi', 'crypto'], 'founders lead, in partner order');
+  assert.deepEqual(grid.generations, [1, 2]);
+  assert.deepEqual(grid.rows[0].cells.map(cell => cell.desks.map(d => d.id)), [['mullins'], ['hilibrand']]);
+  assert.deepEqual(grid.rows[1].cells.map(cell => cell.desks.map(d => d.id)), [['mullins-2'], []]);
+  const badges = mutationBadges(board.desks[0].mutation);
+  assert.deepEqual(badges.map(badge => badge.text), ['Kimi K2.6', 'effort high', '−45 min', 'memory 80', 'Prefers fewer, larger decisions and says so when the…']);
+  assert.equal(badges[0].changed, true);
+  assert.deepEqual(mutationBadges(null), []);
+  assert.equal(profileName('glm_flash_asap'), 'GLM-5.3 Flash');
+  assert.equal(profileName('k3'), 'Kimi K3');
+  assert.equal(profileName('mystery'), 'mystery');
+
+  const experiments = experimentRows(board.lab);
+  assert.equal(experiments.length, 1);
+  assert.equal(experiments[0].variantName, 'Mullins 4');
+  assert.equal(experiments[0].change, 'cadence sessions 08:10, 13:30, 16:30 · effort high');
+  assert.equal(changeSummary({ 'model.profile': 'kimi_flex', limits: { max_position_pct: '0.2' }, playbook_note: 'x' }), 'profile Kimi K2.6 · limits max position pct 0.2 · house view added');
+  const series = curveSeries(board.lab.curve);
+  assert.deepEqual(series.map(metric => metric.key), ['cost_adjusted_excess_pct', 'brier', 'pnl_per_inference_usd']);
+  assert.equal(series[0].points.length, 2);
+  assert.match(series[0].path, /^M12\.00,\d+\.\d\d L228\.00,10\.00$/, 'the better generation sits at the top');
+  assert.equal(series[0].points[1].text, '+2.10%');
+  assert.equal(curveSeries([{ generation: 1, desks: 1, decisions: 0, cost_usd: '0', pnl_usd: '0', cost_adjusted_excess_pct: '0', brier: null, pnl_per_inference_usd: '0' }])[1].empty, true);
+  assert.equal(curveReading(board.lab.curve), 'Generation 2 beats generation 1 on cost-adjusted return by 0.90%; forecasts sharper.');
+  assert.equal(curveReading([curveRow(1)]), 'One generation so far (2 desks). The curve needs a second to say anything.');
+  assert.match(curveReading([]), /appears with the first generation/);
+  assert.equal(curveReading([curveRow(1), curveRow(2, { cost_adjusted_excess_pct: '0.5', brier: null })]), 'Generation 2 trails generation 1 on cost-adjusted return by 0.70%.');
+  assert.equal(probabilityText('0.93'), '93%');
+  assert.equal(probabilityText('1'), '100%');
+  assert.equal(probabilityText('93'), '—');
+  assert.equal(instrumentLabel({ symbol: 'ETH-USD', asset_class: 'crypto', venue: 'coinbase' }), 'ETH-USD');
+  assert.equal(instrumentLabel('MSFT'), 'MSFT');
+});
+
+test('trade stories fold intent, risk, order, fills, exit plan and outcome; calibration and tape lines read the lab', () => {
+  const instrument = { symbol: 'BTC-USD', asset_class: 'crypto', venue: 'coinbase' };
+  const events = [
+    { seq: 1, id: 'intent:oi-abc123', stream: 'desk:hilibrand', kind: 'desk.intent', at: '2026-09-15T18:31:00.000Z', payload: { intent_id: 'oi-abc123', desk_id: 'hilibrand', instrument, side: 'buy', quantity: '0.01', order_type: 'limit', limit_price: '76800', rationale: 'Trend continuation on the daily bars.' } },
+    { seq: 2, id: 'risk:oi-abc123:1', stream: 'risk', kind: 'risk.decision', at: '2026-09-15T18:31:01.000Z', payload: { intent_id: 'oi-abc123', desk_id: 'hilibrand', approved: true, reasons: [] } },
+    { seq: 3, id: 'order:ord-1:filled', stream: 'broker:coinbase', kind: 'broker.order', at: '2026-09-15T18:31:05.000Z', payload: { order_id: 'ord-1', intent_id: 'oi-abc123', desk_id: 'hilibrand', status: 'filled', filled_quantity: '0.01', average_price: '76800.5' } },
+    { seq: 4, id: 'fill:coinbase:f1', stream: 'broker:coinbase', kind: 'broker.fill', at: '2026-09-15T18:31:06.000Z', payload: { fill_id: 'f1', order_id: 'ord-1', desk_id: 'hilibrand', instrument, side: 'buy', quantity: '0.01', price: '76800.5', fee: '1.92' } },
+    exitPlan({ seq: 5 }),
+    { seq: 6, id: 'outcome:hilibrand:BTC-USD', stream: 'desk:hilibrand', kind: 'desk.outcome', at: '2026-09-17T10:00:00.000Z', payload: { instrument: 'BTC-USD', market_id: null, result: 'target', entry_price: '76800.5', exit_price: '80000', quantity: '0.01', pnl: '31.99', held_for_hours: 40 } },
+    { seq: 7, id: 'intent:oi-blocked', stream: 'desk:hilibrand', kind: 'desk.intent', at: '2026-09-15T19:00:00.000Z', payload: { intent_id: 'oi-blocked', desk_id: 'hilibrand', instrument, side: 'buy', quantity: '1', order_type: 'market', limit_price: null, rationale: 'Too big.' } },
+    { seq: 8, id: 'risk:oi-blocked:1', stream: 'risk', kind: 'risk.decision', at: '2026-09-15T19:00:01.000Z', payload: { intent_id: 'oi-blocked', desk_id: 'hilibrand', approved: false, reasons: ['order notional above the desk limit'] } },
+    { seq: 9, id: 'intent:other', stream: 'desk:mullins', kind: 'desk.intent', at: '2026-09-15T19:30:00.000Z', payload: { intent_id: 'oi-other', desk_id: 'mullins', instrument: { symbol: 'KXFED', asset_class: 'event', venue: 'kalshi' }, side: 'buy', quantity: '5', order_type: 'limit', limit_price: '0.9', rationale: 'Edge.' } },
+  ];
+  const stories = tradeStories(events, 'hilibrand');
+  assert.deepEqual(stories.map(story => [story.id, story.state]), [['oi-blocked', 'blocked'], ['oi-abc123', 'closed']], 'newest first, another desk left out');
+  const closed = stories[1];
+  assert.deepEqual(closed.steps.map(step => step.key), ['thesis', 'risk', 'order', 'fill', 'exit', 'outcome']);
+  assert.match(closed.steps[0].text, /^buy 0\.01 BTC-USD · limit \$76,800\.00 · Trend continuation/);
+  assert.equal(closed.steps[1].text, 'approved');
+  assert.equal(closed.steps[1].tone, 'positive');
+  assert.equal(closed.steps[2].text, 'filled · filled 0.01 · avg $76,800.50');
+  assert.equal(closed.steps[3].text, 'buy 0.01 · @ $76,800.50 · fee $1.9200');
+  assert.match(closed.steps[4].text, /^BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · bracket held at the venue$/);
+  assert.equal(closed.steps[5].text, 'resolved target · P&L +$31.99 · 40h held');
+  assert.equal(closed.steps[5].tone, 'positive');
+  assert.equal(stories[0].steps[1].text, 'blocked · order notional above the desk limit');
+  assert.equal(tradeStories(events).length, 3, 'no filter keeps every desk');
+  assert.deepEqual(tradeStories([]), []);
+
+  assert.equal(latestCalibration([calibration()], { scope: 'desk', desk_id: 'mullins' }).n, 12);
+  assert.equal(latestCalibration([calibration()], { scope: 'desk', desk_id: 'hilibrand' }), null);
+  const families = familyCalibrations([
+    calibration({ id: 'c1', payload: { ...calibration().payload, scope: 'family', desk_id: null, family: 'kalshi', n: 20, brier: '0.2' } }),
+    calibration({ id: 'c2', at: '2026-09-16T21:00:00.000Z', payload: { ...calibration().payload, scope: 'family', desk_id: null, family: 'kalshi', n: 25, brier: '0.19', as_of: '2026-09-16T21:00:00.000Z' } }),
+    calibration({ id: 'c3', payload: { ...calibration().payload, scope: 'family', desk_id: null, family: 'crypto', n: 2, brier: '0.3' } }),
+  ]);
+  assert.deepEqual(families.map(row => [row.family, row.n]), [['crypto', 2], ['kalshi', 25]], 'the newest per family');
+  const reliability = reliabilitySeries(calibration().payload.reliability);
+  assert.equal(reliability.points.length, 2);
+  assert.deepEqual(reliability.points.map(point => point.forecast), ['86%', '93%']);
+  assert.equal(reliability.points[1].y.toFixed(1), '10.0', 'a 100% outcome rate sits at the top');
+  assert.equal(reliabilitySeries([]).points.length, 0);
+
+  assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:hilibrand', payload: { trigger: 'price_move', detail: 'BTC fell 2.1% in an hour', decision: 'wake', reason: 'A held thesis is under its invalidation.' } }).text,
+    'price move → woke the desk · BTC fell 2.1% in an hour · A held thesis is under its invalidation.');
+  assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:hilibrand', payload: { trigger: 'headline', decision: 'ignore', reason: 'Old news.' } }).text, 'headline → let it pass · Old news.');
+  assert.equal(tapeLine(forecast()).text, 'puts 93% on KXFEDDECISION-26SEP-H25 yes · market 89% · Reuters poll and a hot CPI; the market is a few cents shy of the evidence.');
+  assert.match(tapeLine(exitPlan()).text, /^BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · bracket held at the venue$/);
+  assert.equal(tapeLine({ kind: 'desk.exit_plan', stream: 'desk:mullins', payload: { ...exitPlan().payload, venue_native: false, order_ids: ['a'] } }).text.split(' · ').at(-1), '1 exit order resting');
+  assert.equal(tapeLine({ kind: 'desk.exit_plan', stream: 'desk:mullins', payload: { ...exitPlan().payload, venue_native: false, order_ids: [] } }).text.split(' · ').at(-1), 'the floor enforces it');
+  assert.equal(tapeLine({ kind: 'desk.code_run', stream: 'desk:mullins', payload: { session_id: 's', code_sha256: 'x', language: 'python', stdout: 'brier 0.18\nn 12', exit_code: 0, seconds: '1.4', sandbox: null } }).text, 'ran · 1.4s · brier 0.18');
+  assert.equal(tapeLine(calibration()).text, 'Mullins · 12 forecasts · Brier 0.18');
+  assert.equal(tapeLine({ kind: 'lab.experiment', stream: 'lab', payload: experiment() }).text, 'running · Mullins trades better with a slot before the close. · variant Mullins 4');
+  assert.equal(tapeLine({ kind: 'lab.verdict', stream: 'lab', payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', reason: 'Beat its parent.' } }).text, 'adopted · exp-0123456789ab · Beat its parent.');
+  assert.equal(tapeLine({ kind: 'broker.order', stream: 'broker:coinbase', payload: { status: 'filled', purpose: 'exit', exit_reason: 'time_stop', filled_quantity: '0.01', average_price: '77000' } }).text, 'exit on time stop · filled · filled 0.01 · avg $77,000.0000');
+  assert.equal(tapeLine({ kind: 'desk.forecast', stream: 'desk:mullins', payload: forecast().payload }).tone, 'forecast');
+  assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:mullins', payload: {} }).icon, '◉');
+});
+
+test('the floor page mounts the book, the night desk, the lineage tree and the lab', async () => {
+  const ids = ['floor-status', 'floor-numbers', 'floor-positions', 'floor-watch', 'floor-partners', 'floor-lineage', 'floor-lab', 'tape-filters', 'floor-tape'];
+  const root = stubPage('floor', ids);
+  const board = checkpoint({
+    desks: [
+      desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [position()], live_session: liveSession() }),
+      desk('hilibrand-2', { name: 'Hilibrand II', family: 'crypto', generation: 2, parent_id: 'hilibrand', mode: 'shadow', venues: ['coinbase'], mutation: mutation(), positions: [position({ thesis: 'Shadow copy of the same setup.', exit_orders: [] })] }),
+    ],
+    lab: lab(), watch: watch(),
+  });
+  await withBrowser('', path => (path.startsWith('/api/capital/checkpoint') ? board : { schema_version: 1, latest_seq: 3, events: [] }), async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const positions = root.querySelector('#floor-positions');
+    assert.equal(positions.getAttribute('aria-busy'), 'false');
+    const cards = positions.withClass('position');
+    assert.equal(cards.length, 2);
+    assert.match(cards[0].textContent, /Hilibrand.*live.*long · BTC-USD · Coinbase/s);
+    assert.match(cards[0].textContent, /\+\$4\.10/);
+    assert.match(cards[0].textContent, /target \$80,000\.00.*stop \$75,500\.00.*out by.*2 resting/s);
+    assert.match(cards[1].textContent, /shadow/);
+    assert.match(cards[1].textContent, /floor enforces/);
+    assert.ok(cards[1].className.includes('position-shadow'));
+    assert.deepEqual(positions.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=hilibrand-2']);
+    assert.match(root.querySelector('#floor-watch').textContent, /Night desk.*12 looks today · 3 woke a desk/s);
+    const tree = root.querySelector('#floor-lineage');
+    assert.match(tree.textContent, /crypto family/);
+    const nodes = tree.withClass('lineage-node');
+    assert.equal(nodes.length, 2);
+    assert.match(nodes[0].textContent, /Hilibrand.*live now · cadence 14 00/s);
+    assert.match(nodes[1].textContent, /Hilibrand 2.*DeepSeek V4 Pro.*effort high.*\+45 min/s);
+    assert.deepEqual(nodes.map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=hilibrand-2']);
+    const labBox = root.querySelector('#floor-lab');
+    assert.match(labBox.textContent, /Experiments.*running.*kalshi family · variant Mullins 4.*Mullins trades better/s);
+    assert.match(labBox.textContent, /The improvement curve.*cost-adjusted excess.*Brier score.*P&L per inference/s);
+    assert.match(labBox.textContent, /Generation 2 beats generation 1 on cost-adjusted return by 0\.90%; forecasts sharper\./);
+    assert.equal(labBox.find('svg').length, 3, 'three small multiples');
+    assert.equal(labBox.find('circle').length, 6);
+  });
+  // A floor with nothing open says so, and an older checkpoint mounts no lab at all.
+  const quiet = stubPage('floor', ids);
+  await withBrowser('', path => (path.startsWith('/api/capital/checkpoint') ? checkpoint() : { schema_version: 1, latest_seq: 3, events: [] }), async () => {
+    const feed = await startCapital(quiet);
+    feed.stop();
+    assert.match(quiet.querySelector('#floor-positions').textContent, /Flat\. Every desk is in cash/);
+    assert.equal(quiet.querySelector('#floor-watch').children.length, 0);
+    assert.match(quiet.querySelector('#floor-lab').textContent, /has not proposed an experiment yet.*appears with the first generation/s);
+    assert.equal(quiet.querySelector('#floor-lineage').withClass('lineage-node').length, 1, 'a founder alone is still a tree');
+  });
+});
+
+test('a desk page tells its trade stories, shows its calibration and mutation, and says when it is live now', async () => {
+  const root = stubPage('desk', ['desk-header', 'desk-detail', 'desk-tape', 'desk-status']);
+  const instrument = { symbol: 'KXFED-26SEP-T3.75', asset_class: 'event', venue: 'kalshi' };
+  const deskEvents = [
+    { seq: 1, id: 'intent:oi-fed', stream: 'desk:mullins-2', kind: 'desk.intent', at: '2026-09-15T13:31:00.000Z', digest: 'a'.repeat(64), payload: { intent_id: 'oi-fed', desk_id: 'mullins-2', instrument, side: 'buy', quantity: '10', order_type: 'limit', limit_price: '0.89', rationale: 'A hike is 93% likely; the market says 89.' } },
+    forecast({ seq: 2, id: 'mullins-2:forecast:1', stream: 'desk:mullins-2' }),
+  ];
+  const decisions = [{ seq: 3, id: 'risk:oi-fed:1', stream: 'risk', kind: 'risk.decision', at: '2026-09-15T13:31:01.000Z', digest: 'b'.repeat(64), payload: { intent_id: 'oi-fed', desk_id: 'mullins-2', approved: true, reasons: [] } }];
+  const orders = [{ seq: 4, id: 'order:sh-1:filled', stream: 'broker:shadow', kind: 'broker.order', at: '2026-09-15T13:31:02.000Z', digest: 'c'.repeat(64), payload: { order_id: 'sh-1', intent_id: 'oi-fed', desk_id: 'mullins-2', status: 'filled', filled_quantity: '10', average_price: '0.89', shadow: true } }];
+  const labEvents = [calibration({ seq: 5, id: 'lab:cal:mullins-2', payload: { ...calibration().payload, desk_id: 'mullins-2', generation: 2 } })];
+  await withBrowser('?id=mullins-2', path => {
+    if (path.startsWith('/api/capital/desks/')) return desk('mullins-2', { name: 'Mullins II', family: 'kalshi', generation: 2, parent_id: 'mullins', mode: 'shadow', venues: ['kalshi'], mutation: mutation({ model_profile: 'kimi_flex', model_changed: true }), live_session: liveSession({ trigger: 'event_resolution', started_at: '2026-09-15T13:50:00.000Z' }), calibration: { n: 12, brier: '0.18', since: '2026-09-10T00:00:00.000Z' } });
+    if (path.includes('kind=risk.decision')) return { schema_version: 1, latest_seq: 9, events: decisions };
+    if (path.includes('kind=broker.order')) return { schema_version: 1, latest_seq: 9, events: orders };
+    if (path.includes('stream=lab')) return { schema_version: 1, latest_seq: 9, events: labEvents };
+    if (path.includes('desk%3Amullins-2')) return { schema_version: 1, latest_seq: 9, events: deskEvents };
+    return { schema_version: 1, latest_seq: 9, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const header = root.querySelector('#desk-header').textContent;
+    assert.match(header, /live now · event resolution/);
+    assert.match(header, /Kimi K2\.6.*effort high.*\+45 min.*memory 80/s);
+    const detail = root.querySelector('#desk-detail');
+    const text = detail.textContent;
+    assert.match(text, /Trade stories.*buy KXFED-26SEP-T3\.75.*open.*Thesis.*A hike is 93% likely.*Risk engine.*approved.*Order.*filled · filled 10 · avg \$0\.8900 · shadow, never sent/s);
+    assert.match(text, /Calibration.*Forecasts scored.*12.*Brier score.*0\.18 · 0 is perfect, 0\.25 is a coin/s);
+    assert.match(text, /said → happened/);
+    assert.equal(detail.find('circle').length, 2, 'one dot per reliability bin');
+    assert.ok(text.indexOf('Trade stories') < text.indexOf('Book'), 'stories come before the book');
+    assert.match(root.querySelector('#desk-tape').textContent, /puts 93% on KXFEDDECISION-26SEP-H25 yes · market 89%/);
+  });
+});
+
+test('the committee page lists experiments, verdicts and calibration by family', async () => {
+  const root = stubPage('committee', ['committee-status', 'committee-memos', 'committee-allocations', 'committee-gates', 'committee-lab', 'committee-calibration', 'committee-evolution']);
+  const labEvents = [
+    { seq: 1, id: 'lab:exp:1', stream: 'lab', kind: 'lab.experiment', at: '2026-09-15T02:00:00.000Z', digest: 'a'.repeat(64), payload: experiment() },
+    { seq: 2, id: 'lab:verdict:1', stream: 'lab', kind: 'lab.verdict', at: '2026-09-15T03:00:00.000Z', digest: 'b'.repeat(64), payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', evidence: {}, reason: 'Beat its parent on cost-adjusted return for four days.', as_of: '2026-09-15T03:00:00.000Z' } },
+    calibration({ seq: 3, id: 'lab:cal:kalshi', payload: { ...calibration().payload, scope: 'family', desk_id: null, family: 'kalshi', n: 20, brier: '0.2' } }),
+  ];
+  await withBrowser('', path => {
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ lab: lab({ experiments: [experiment({ status: 'adopted', verdict_reason: 'Beat its parent on cost-adjusted return for four days.' })] }) });
+    if (path.includes('stream=lab')) return { schema_version: 1, latest_seq: 3, events: labEvents };
+    return { schema_version: 1, latest_seq: 3, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const labBox = root.querySelector('#committee-lab');
+    assert.match(labBox.textContent, /adopted.*kalshi family · variant Mullins 4.*Mullins trades better.*Beat its parent/s);
+    assert.equal(labBox.find('table').length, 1, 'the verdict record');
+    assert.match(labBox.find('table')[0].textContent, /exp-0123456789ab.*adopted/s);
+    assert.match(root.querySelector('#committee-calibration').textContent, /kalshi family.*20.*0\.2/s);
+    assert.equal(root.querySelector('#committee-calibration').getAttribute('aria-busy'), 'false');
+  });
+});
+
+const run = (overrides = {}) => ({
+  started_at: '2026-09-12T10:00:00.000Z', uptime_seconds: 93784, availability_7d_pct: '99.2', sessions_total: 412, sessions_today: 18, decisions_total: 57,
+  sail_model_spend_today_usd: '3.10', sail_model_spend_total_usd: '41.20', sail_infra_spend_total_usd: '0.77', sail_spend_total_usd: '41.97',
+  pnl_total_usd: '63.40', pnl_per_sail_dollar: '1.51', models_used: ['DeepSeek V4 Pro', 'Kimi K2.6', 'GLM-5.3'], ...overrides,
+});
+
+test('the run clock validates like the rest of the checkpoint and reads as elapsed time, cost and profit per Sail dollar', () => {
+  assert.equal(validRun(run(), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validCheckpoint(checkpoint({ run: run() })), true);
+  assert.equal(validCheckpoint(checkpoint()), true, 'an older floor publishes no run clock');
+  const refused = [
+    ['started after the checkpoint', run({ started_at: '2026-09-15T15:00:00.000Z' })],
+    ['availability above 100', run({ availability_7d_pct: '101' })],
+    ['more sessions today than ever', run({ sessions_today: 500 })],
+    ['a P&L that is not a number', run({ pnl_total_usd: 'lots' })],
+    ['too many models', run({ models_used: Array.from({ length: 9 }, (_, i) => `m${i}`) })],
+    ['an extra field', run({ mood: 'good' })],
+  ];
+  for (const [label, candidate] of refused) assert.equal(validRun(candidate, '2026-09-15T14:05:00.000Z'), false, label);
+  assert.equal(validRun(run({ availability_7d_pct: null, sail_infra_spend_total_usd: null, pnl_per_sail_dollar: null }), '2026-09-15T14:05:00.000Z'), true, 'unknowns are null, not guesses');
+
+  const clock = runClock(run(), Date.parse('2026-09-15T14:05:00.000Z'));
+  assert.equal(clock.elapsed, '3d 4h');
+  assert.equal(clock.since, 'Sep 12, 2026');
+  assert.equal(clock.availability, '99.2% of the last 7 days');
+  assert.equal(clock.sessions, '412 (18 today)');
+  assert.equal(clock.decisions, '57');
+  assert.equal(clock.spendToday, '$3.10');
+  assert.equal(clock.spendTotal, '$41.97');
+  assert.equal(clock.spendNote, 'models $41.20 · box $0.77, about a cent an hour');
+  assert.equal(clock.pnl, '+$63.40');
+  assert.equal(clock.pnlTone, 'positive');
+  assert.equal(clock.perDollar, '+$1.51');
+  assert.equal(clock.perDollarTone, 'positive');
+  assert.equal(clock.models, 'DeepSeek V4 Pro, Kimi K2.6, GLM-5.3');
+  const early = runClock(run({ availability_7d_pct: null, sail_infra_spend_total_usd: null, pnl_per_sail_dollar: null, pnl_total_usd: '-4.20' }), Date.parse('2026-09-12T10:42:00.000Z'));
+  assert.equal(early.elapsed, '42m');
+  assert.equal(early.availability, 'measuring');
+  assert.equal(early.perDollar, 'not yet');
+  assert.equal(early.pnl, '−$4.20');
+  assert.equal(early.pnlTone, 'negative');
+  assert.equal(early.spendNote, 'models $41.20 · box about a cent an hour');
+  assert.equal(runClock(null), null);
+});
+
+test('the portfolio leads with the accounts and each holding carries the desk’s own reason and a link to its story', async () => {
+  const floorBlock = { equity: '979.60', cash: '979.60', daily_pnl: '0', capital_usd: '979', since_inception_pct: '0', benchmark: null,
+    account_equity: '979.60', account_cash: '979.60', venues: [{ venue: 'kalshi', equity: '492.29', cash: '492.29', as_of: '2026-09-15T14:00:00.000Z' }, { venue: 'coinbase', equity: '487.31', cash: '487.31', as_of: '2026-09-15T14:00:00.000Z' }] };
+  assert.equal(portfolioLine(floorBlock), 'Portfolio $979.60 · Kalshi $492.29 · Coinbase $487.31');
+  assert.equal(portfolioLine({ equity: '1' }), '');
+  const held = position({ intent_id: 'oi-abc123', session_id: 'hilibrand:20260915-1830:cadence:18:30' });
+  assert.equal(validPosition(held, '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validPosition(position({ intent_id: 'x'.repeat(121) }), '2026-09-15T14:05:00.000Z'), false);
+  const board = checkpoint({ floor: floorBlock, desks: [
+    desk('hilibrand-2', { name: 'Hilibrand II', family: 'crypto', generation: 2, parent_id: 'hilibrand', mode: 'shadow', venues: ['coinbase'], positions: [position({ market_value: '5000', intent_id: 'oi-shadow' })] }),
+    desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [held, position({ instrument: { symbol: 'ETH-USD', asset_class: 'crypto', venue: 'coinbase' }, market_value: '900', intent_id: 'oi-eth' })] }),
+  ], run: run() });
+  const rows = positionRows(board);
+  assert.deepEqual(rows.map(row => [row.desk, row.instrument]), [['hilibrand', 'ETH-USD'], ['hilibrand', 'BTC-USD'], ['hilibrand-2', 'BTC-USD']], 'live sleeves first, then by market value');
+  assert.equal(rows[1].story, '/capital/desk/?id=hilibrand#story-oi-abc123');
+  assert.equal(rows[1].thesis, 'Trend continuation on the daily bars; invalid under 75,500.');
+  assert.equal(storyAnchor('intent:oi/abc'), 'story-intent-oi-abc');
+  assert.equal(storyHref('mullins', 'oi-1'), '/capital/desk/?id=mullins#story-oi-1');
+  const intent = { kind: 'desk.intent', at: '2026-09-15T13:31:00.000Z', payload: { intent_id: 'oi-abc123', rationale: 'Daily close above the 20-day; invalidation 75,500; out by Friday.' } };
+  const decision = { kind: 'risk.decision', at: '2026-09-15T13:31:01.000Z', payload: { intent_id: 'oi-abc123', approved: true, reasons: ['inside the position cap'] } };
+  assert.deepEqual(positionRationale([intent, decision], 'oi-abc123'), {
+    rationale: 'Daily close above the 20-day; invalidation 75,500; out by Friday.', at: '2026-09-15T13:31:00.000Z', decision: 'approved',
+    reasons: ['inside the position cap'], text: 'risk engine approved · inside the position cap',
+  });
+  assert.equal(positionRationale([intent], 'oi-nope'), null);
+
+  const ids = ['floor-status', 'floor-numbers', 'floor-run', 'floor-positions', 'floor-watch', 'floor-partners', 'floor-lineage', 'floor-lab', 'tape-filters', 'floor-tape'];
+  const root = stubPage('floor', ids);
+  await withBrowser('', path => {
+    if (path.startsWith('/api/capital/checkpoint')) return board;
+    if (path.includes('kind=desk.intent')) return { schema_version: 1, latest_seq: 9, events: [published(1, { id: 'intent:oi-abc123', stream: 'desk:hilibrand', kind: 'desk.intent', payload: intent.payload })] };
+    if (path.includes('kind=risk.decision')) return { schema_version: 1, latest_seq: 9, events: [published(2, { id: 'risk:oi-abc123:1', stream: 'risk', kind: 'risk.decision', payload: decision.payload })] };
+    return { schema_version: 1, latest_seq: 9, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const clock = root.querySelector('#floor-run');
+    assert.equal(clock.getAttribute('aria-busy'), 'false');
+    assert.match(clock.textContent, /Run clock.*running \d+d \d+h.*since Sep 12, 2026.*Profit per Sail dollar.*\+\$1\.51.*P&L.*\+\$63\.40.*Sail spend.*\$41\.97.*\$3\.10 today · models \$41\.20 · box \$0\.77, about a cent an hour/s);
+    assert.match(clock.textContent, /Up.*99\.2% of the last 7 days.*Sessions.*412 \(18 today\).*Decisions.*57.*Models.*DeepSeek V4 Pro, Kimi K2\.6, GLM-5\.3/s);
+    assert.match(clock.textContent, /The desks stop only when the credit does\./);
+    const positions = root.querySelector('#floor-positions');
+    assert.match(positions.withClass('portfolio-line')[0].textContent, /^Portfolio \$979\.60 · Kalshi \$492\.29 · Coinbase \$487\.31$/);
+    const cards = positions.withClass('position');
+    assert.equal(cards.length, 3);
+    assert.match(cards[2].textContent, /shadow · scored, never sent/);
+    const why = cards[1].find('button')[0];
+    assert.equal(why.textContent, 'why the desk holds it');
+    assert.equal(why.getAttribute('aria-expanded'), 'false');
+    why.click();
+    for (let i = 0; i < 20; i += 1) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(why.getAttribute('aria-expanded'), 'true');
+    const body = cards[1].withClass('position-why-body')[0];
+    assert.match(body.textContent, /Daily close above the 20-day; invalidation 75,500; out by Friday\./);
+    assert.match(body.textContent, /risk engine approved · inside the position cap/);
+    assert.deepEqual(body.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand#story-oi-abc123']);
+    why.click();
+    assert.equal(why.getAttribute('aria-expanded'), 'false');
   });
 });

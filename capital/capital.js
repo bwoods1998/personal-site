@@ -2,6 +2,12 @@ import {
   EVENT_KINDS, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, deskId, deskMode, isLive,
   validCheckpoint, validDesk, validPublicEvent, socketMatches,
 } from './schema.js';
+// The three loops the floor turns, in the order a visitor should read them.
+export const LOOPS = [
+  { key: 'trade', label: 'Trade', pace: 'minutes to hours', text: 'see, decide, act, outcome' },
+  { key: 'desk', label: 'Desk', pace: 'days', text: 'post-mortem, playbook, tools' },
+  { key: 'floor', label: 'Floor', pace: 'weeks', text: 'variants, evidence, capital' },
+];
 
 // Long Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
 // fills and marks; the page never contacts a quote vendor and never starts work on a desk.
@@ -63,18 +69,45 @@ export const TAPE_FILTERS = [
   { key: 'evolution', label: 'evolution' },
 ];
 const FILTER_GROUPS = {
-  thoughts: ['desk.session_started', 'desk.thought', 'desk.tool_call', 'desk.tool_result', 'desk.memo', 'desk.postmortem', 'desk.session_ended'],
-  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark', 'floor.mark', 'desk.outcome'],
+  thoughts: ['desk.session_started', 'desk.thought', 'desk.tool_call', 'desk.tool_result', 'desk.memo', 'desk.postmortem', 'desk.session_ended',
+    'desk.watch', 'desk.forecast', 'desk.code_run'],
+  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark', 'floor.mark', 'desk.outcome', 'desk.exit_plan'],
   risk: ['risk.decision', 'risk.review', 'risk.breaker', 'ops.alert', 'ops.budget'],
   committee: ['committee.allocation', 'committee.memo', 'committee.gate'],
-  evolution: ['evolution.spawned', 'evolution.retired', 'evolution.promoted', 'desk.playbook_updated', 'lab.hypothesis', 'lab.result'],
+  evolution: ['evolution.spawned', 'evolution.retired', 'evolution.promoted', 'desk.playbook_updated', 'lab.hypothesis', 'lab.result',
+    'lab.calibration', 'lab.experiment', 'lab.verdict'],
 };
 const GROUP_OF_KIND = Object.fromEntries(Object.entries(FILTER_GROUPS).flatMap(([group, kinds]) => kinds.map(kind => [kind, group])));
 // A glyph per tone, so a line reads at a glance without another typeface or an image request.
 const TONE_ICONS = {
   thought: '~', tool: '>', memo: '¶', order: '→', fill: '●', mark: '=', risk: '!',
-  committee: '§', evolution: '*', lab: '?', ops: '·', session: '○', playbook: '¶',
+  committee: '§', evolution: '*', lab: '?', ops: '·', session: '○', playbook: '¶', watch: '◉', forecast: '%',
 };
+// Sail's model profiles, as a visitor would name them. Unknown profiles keep the runtime's id.
+const PROFILE_NAMES = [
+  ['pro', 'DeepSeek V4 Pro'], ['flash', 'DeepSeek V4 Flash'], ['kimi', 'Kimi K2.6'], ['k3', 'Kimi K3'],
+  ['glm_flash', 'GLM-5.3 Flash'], ['glm', 'GLM-5.3'], ['oss', 'gpt-oss-120b'],
+];
+export function profileName(value) {
+  const id = typeof value === 'string' ? value : '';
+  const found = PROFILE_NAMES.find(([prefix]) => id === prefix || id.startsWith(`${prefix}_`));
+  return found ? found[1] : id;
+}
+// "price_move" reads as "price move"; the runtime's ids are for the log, not the page.
+const humanize = value => (typeof value === 'string' ? value.replace(/[_:]+/g, ' ').trim() : '');
+// An instrument is published as {symbol, asset_class, venue}; older events carried a string.
+export function instrumentLabel(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) return typeof value.symbol === 'string' ? value.symbol : '';
+  return '';
+}
+// A probability as the desk stated it: "0.93" reads as 93%.
+export function probabilityText(value) {
+  if (typeof value !== 'string' || !/^(?:0|1)(?:\.\d{1,8})?$/.test(value)) return '—';
+  return `${Math.round(Number(value) * 100)}%`;
+}
+// Event contracts trade in cents, coins in dollars: four places under a dollar, two above.
+export const priceText = value => (typeof value === 'string' && /^-?\d/.test(value) && Math.abs(Number(value)) < 1 ? money(value, 4) : money(value, 2));
 
 function scaled(value) {
   const negative = value.startsWith('-');
@@ -241,7 +274,7 @@ const DETAILS = {
   // review · <desk> · approve/block · reason
   'risk.review': p => join('review', partnerName(show(p.desk_id)), show(p.verdict), show(p.reason)),
   'risk.breaker': p => join(show(p.scope), show(p.rule), show(p.action), show(p.detail)),
-  'broker.order': p => join(show(p.status), p.filled_quantity === undefined ? '' : `filled ${quantity(p.filled_quantity)}`, p.average_price ? `avg ${money(show(p.average_price), 4)}` : ''),
+  'broker.order': p => join(p.purpose === 'exit' ? `exit${p.exit_reason ? ` on ${humanize(show(p.exit_reason))}` : ''}` : '', show(p.status), p.filled_quantity === undefined ? '' : `filled ${quantity(p.filled_quantity)}`, p.average_price ? `avg ${money(show(p.average_price), 4)}` : ''),
   'broker.fill': p => join(`${show(p.side)} ${quantity(p.quantity)} ${show(p.instrument)}`.trim(), p.price ? `@ ${money(show(p.price), 4)}` : '', p.fee ? `fee ${money(show(p.fee), 4)}` : ''),
   'broker.reconciled': p => join(show(p.venue), p.matches === undefined ? '' : `${show(p.matches)} matched`, Array.isArray(p.mismatches) ? `${p.mismatches.length} mismatched` : ''),
   'ledger.mark': p => join(p.equity ? `Equity ${money(show(p.equity))}` : '', p.cash ? `Cash ${money(show(p.cash))}` : '', p.daily_pnl ? `Day ${money(show(p.daily_pnl))}` : '', Array.isArray(p.positions) ? `${p.positions.length} positions` : ''),
@@ -258,6 +291,14 @@ const DETAILS = {
   'evolution.promoted': p => join(show(p.desk_id), show(p.from) && show(p.to) ? `${show(p.from)} → ${show(p.to)}` : ''),
   'lab.hypothesis': p => join(show(p.text), show(p.test_plan)),
   'lab.result': p => join(show(p.verdict), show(p.hypothesis_id)),
+  'desk.watch': p => join(`${humanize(show(p.trigger))} → ${p.decision === 'wake' ? 'woke the desk' : p.decision === 'ignore' ? 'let it pass' : show(p.decision)}`, show(p.detail), show(p.reason)),
+  'desk.forecast': p => join(`puts ${probabilityText(p.probability)} on ${show(p.market)}${p.side ? ` ${show(p.side)}` : ''}`, numeric(p.market_price) ? `market ${probabilityText(p.market_price)}` : '', show(p.reasoning)),
+  'desk.exit_plan': p => join(instrumentLabel(p.instrument), p.target_price ? `target ${priceText(show(p.target_price))}` : '', p.stop_price ? `stop ${priceText(show(p.stop_price))}` : '',
+    p.time_stop_at ? `out by ${date(p.time_stop_at)}` : '', p.venue_native === true ? 'bracket held at the venue' : Array.isArray(p.order_ids) && p.order_ids.length ? `${p.order_ids.length} exit order${p.order_ids.length === 1 ? '' : 's'} resting` : 'the floor enforces it'),
+  'desk.code_run': p => join(p.exit_code === 0 ? 'ran' : `exit ${show(p.exit_code)}`, numeric(p.seconds) ? `${p.seconds}s` : '', truncate(show(p.stdout).split('\n')[0], 120).text),
+  'lab.calibration': p => join(p.scope === 'desk' ? partnerName(show(p.desk_id)) : p.scope === 'family' ? `${show(p.family)} family` : 'whole floor', `${show(p.n)} forecasts`, `Brier ${show(p.brier)}`),
+  'lab.experiment': p => join(show(p.status), show(p.hypothesis), p.variant_desk_id ? `variant ${partnerName(show(p.variant_desk_id))}` : ''),
+  'lab.verdict': p => join(show(p.status), show(p.experiment_id), show(p.reason)),
   'ops.alert': p => join(show(p.level), show(p.text)),
   'ops.budget': p => (p.mode
     ? join(show(p.scope), show(p.mode), numeric(p.balance_usd) ? `credit ${money(show(p.balance_usd), 0)}` : '', numeric(p.runway_days) ? `${Math.floor(Number(p.runway_days))}d runway` : '', p.spent_usd ? `${money(show(p.spent_usd), 2)} today` : '')
@@ -718,6 +759,532 @@ export function deskCountLine(checkpoint) {
   const { live, shadow } = floorCounts(checkpoint);
   return `${plural(live, 'live desk')} · ${plural(shadow, 'shadow desk')} competing for capital`;
 }
+// ------------------------------------------------------------------- the positions board
+// Every open position the checkpoint carried, live desks first, largest first. A shadow desk's
+// position is a scored position and is labelled so; the board never adds it to any money.
+export function exitChips(position) {
+  const chips = [];
+  if (numeric(position?.target_price)) chips.push({ kind: 'target', text: `target ${priceText(position.target_price)}` });
+  if (numeric(position?.stop_price)) chips.push({ kind: 'stop', text: `stop ${priceText(position.stop_price)}` });
+  if (typeof position?.time_stop_at === 'string' && position.time_stop_at) chips.push({ kind: 'time_stop', text: `out by ${date(position.time_stop_at)}` });
+  const resting = Array.isArray(position?.exit_orders) ? position.exit_orders.length : 0;
+  if (resting) chips.push({ kind: 'resting', text: `${resting} resting` });
+  else if (chips.length) chips.push({ kind: 'floor', text: 'floor enforces' });
+  else chips.push({ kind: 'none', text: 'no exit plan' });
+  return chips;
+}
+export function positionRows(checkpoint) {
+  const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
+  const rows = [];
+  for (const desk of orderDesks(desks)) {
+    for (const position of Array.isArray(desk?.positions) ? desk.positions : []) {
+      if (!position || typeof position !== 'object') continue;
+      rows.push({
+        desk: show(desk.id), name: partnerName(show(desk.id)), live: isLive(desk),
+        instrument: instrumentLabel(position.instrument) || '—', venue: venueLabel(position.instrument?.venue), side: show(position.side),
+        quantity: quantity(position.quantity), entry: show(position.entry_price), mark: show(position.mark_price),
+        value: show(position.market_value), pnl: show(position.unrealized_pnl), tone: signOf(show(position.unrealized_pnl)),
+        openedAt: show(position.opened_at), thesis: show(position.thesis), chips: exitChips(position),
+        intentId: show(position.intent_id), sessionId: show(position.session_id),
+        story: position.intent_id ? storyHref(show(desk.id), show(position.intent_id)) : '',
+      });
+    }
+  }
+  const size = row => Math.abs(Number(row.value)) || 0;
+  return rows.sort((left, right) => (Number(right.live) - Number(left.live)) || (size(right) - size(left)));
+}
+// "live now · cadence 13:30" while a session runs; nothing otherwise.
+export function liveSessionText(desk) {
+  const session = desk?.live_session;
+  if (!session || typeof session !== 'object') return '';
+  return join('live now', humanize(show(session.trigger)));
+}
+// The night desk's day in one line, or null when the checkpoint carried no watch block.
+export function watchLine(checkpoint) {
+  const watch = checkpoint?.watch;
+  if (!watch || typeof watch !== 'object') return null;
+  const last = typeof watch.last_trigger_at === 'string' && watch.last_trigger_at ? `last ${date(watch.last_trigger_at, 'clock')}` : 'quiet so far';
+  return join(`${plural(Number(watch.triggers_today) || 0, 'look')} today`, `${Number(watch.wakes_today) || 0} woke a desk`, last, numeric(watch.cost_today_usd) ? `${money(watch.cost_today_usd, 2)} spent` : '');
+}
+// The accounts the money sits in, as the first line of the book: the total, then each venue.
+export function portfolioLine(floor) {
+  const total = accountEquity(floor);
+  const venues = accountVenues(floor);
+  if (total === null && !venues.length) return '';
+  return join(total === null ? '' : `Portfolio ${money(total, 2)}`, ...venues.map(row => `${venueChipText(row)}${row.stale ? ' (stale)' : ''}`));
+}
+// Why the desk holds it, on demand: the rationale it filed and the risk engine's answer, read
+// from the desk's own events and cached per desk so a second click costs nothing.
+const rationaleCache = new Map();
+async function loadRationale(deskId) {
+  if (!rationaleCache.has(deskId)) {
+    rationaleCache.set(deskId, Promise.all([
+      loadEvents({ stream: `desk:${deskId}`, kind: 'desk.intent', limit: 100 }).catch(() => ({ events: [] })),
+      loadEvents({ kind: 'risk.decision', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
+    ]).then(([intents, decisions]) => [...intents.events, ...decisions.events]));
+  }
+  return rationaleCache.get(deskId);
+}
+function rationaleControl(row) {
+  const box = element('div', null, 'position-why');
+  const button = element('button', 'why the desk holds it', 'chip chip-why');
+  button.type = 'button';
+  button.setAttribute('aria-expanded', 'false');
+  const body = element('div', null, 'position-why-body');
+  body.hidden = true;
+  button.addEventListener('click', async () => {
+    const open = button.getAttribute('aria-expanded') === 'true';
+    button.setAttribute('aria-expanded', open ? 'false' : 'true');
+    body.hidden = open;
+    if (open || body.children.length) return;
+    body.replaceChildren(element('p', 'Reading the desk\u2019s own words\u2026', 'note'));
+    const found = positionRationale(await loadRationale(row.desk), row.intentId);
+    const parts = [];
+    if (found?.rationale) parts.push(element('p', found.rationale, 'position-rationale'));
+    if (found?.text) parts.push(element('p', found.text, found.decision === 'blocked' ? 'note negative' : 'note'));
+    if (!parts.length) parts.push(element('p', 'The order behind this holding is not on the public tape yet.', 'note'));
+    parts.push(link('the trade story ↗', row.story, 'position-story'));
+    body.replaceChildren(...parts);
+  });
+  box.append(button, body);
+  return box;
+}
+function positionsBoard(checkpoint) {
+  const rows = positionRows(checkpoint);
+  const board = element('div', null, 'positions');
+  const summary = portfolioLine(checkpoint?.floor);
+  if (summary) board.append(element('p', summary, 'portfolio-line'));
+  if (!rows.length) {
+    board.append(element('p', 'Flat. Every desk is in cash; the next position appears here the moment it fills.', 'empty-state'));
+    return board;
+  }
+  for (const row of rows) {
+    const line = element('article', null, row.live ? 'position' : 'position position-shadow');
+    const head = element('div', null, 'position-head');
+    head.append(link(row.name, deskHref(row.desk), 'position-desk'));
+    head.append(element('span', row.live ? 'live' : 'shadow · scored, never sent', row.live ? 'badge badge-live' : 'badge badge-shadow'));
+    head.append(element('span', join(row.side, row.instrument, row.venue), 'position-what'));
+    line.append(head);
+    const numbers = element('div', null, 'position-numbers');
+    for (const [label, value, tone] of [
+      ['size', row.quantity, ''], ['entry', priceText(row.entry), ''], ['mark', priceText(row.mark), ''],
+      ['value', money(row.value, 2), ''], ['P&L', signedMoney(row.pnl, 2), row.tone],
+    ]) {
+      const cell = element('span');
+      cell.append(element('b', value, tone), element('i', label));
+      numbers.append(cell);
+    }
+    line.append(numbers);
+    line.append(element('p', row.thesis || 'The desk filed no thesis with this order.', row.thesis ? 'position-thesis' : 'position-thesis note'));
+    const chips = element('div', null, 'exit-chips');
+    for (const chip of row.chips) chips.append(element('span', chip.text, `exit-chip exit-${chip.kind}`));
+    line.append(chips);
+    if (row.intentId) line.append(rationaleControl(row));
+    board.append(line);
+  }
+  return board;
+}
+
+// ------------------------------------------------------------------------ the run clock
+// How long the desks have been working, what that has cost, what it has made. The elapsed time
+// is wall-clock since the run began; availability says how much of the last week it was up.
+const elapsedText = seconds => {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};
+export function runClock(run, now = Date.now()) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) return null;
+  const started = Date.parse(run.started_at);
+  const elapsed = Number.isFinite(started) ? Math.max(0, Math.floor((now - started) / 1000)) : null;
+  const perDollar = numeric(run.pnl_per_sail_dollar) ? run.pnl_per_sail_dollar : null;
+  return {
+    elapsed: elapsed === null ? '' : elapsedText(elapsed),
+    since: Number.isFinite(started) ? date(run.started_at, 'day') : '',
+    availability: numeric(run.availability_7d_pct) ? `${Number(run.availability_7d_pct).toFixed(1)}% of the last 7 days` : 'measuring',
+    sessions: `${Number(run.sessions_total) || 0} (${Number(run.sessions_today) || 0} today)`,
+    decisions: String(Number(run.decisions_total) || 0),
+    spendToday: money(run.sail_model_spend_today_usd, 2),
+    spendTotal: money(run.sail_spend_total_usd, 2),
+    spendNote: join(numeric(run.sail_model_spend_total_usd) ? `models ${money(run.sail_model_spend_total_usd, 2)}` : '',
+      numeric(run.sail_infra_spend_total_usd) ? `box ${money(run.sail_infra_spend_total_usd, 2)}, about a cent an hour` : 'box about a cent an hour'),
+    pnl: signedMoney(run.pnl_total_usd, 2), pnlTone: signOf(show(run.pnl_total_usd)),
+    perDollar: perDollar === null ? 'not yet' : signedMoney(perDollar, 2), perDollarTone: perDollar === null ? '' : signOf(perDollar),
+    models: Array.isArray(run.models_used) ? run.models_used.map(show).filter(Boolean).join(', ') : '',
+  };
+}
+function runClockPanel(run) {
+  const clock = runClock(run);
+  if (!clock) return null;
+  const panel = element('section', null, 'run-clock');
+  const heading = element('div', null, 'run-heading');
+  heading.append(element('h2', 'Run clock'), element('span', 'How long they have worked, what it cost, what it made', 'infra-copy'));
+  panel.append(heading);
+  const big = element('p', null, 'run-elapsed');
+  big.append(element('b', clock.elapsed ? `running ${clock.elapsed}` : 'running'), element('span', clock.since ? `since ${clock.since}` : ''));
+  panel.append(big);
+  const numbers = element('dl', null, 'run-numbers');
+  numbers.append(
+    metric('Profit per Sail dollar', clock.perDollar, clock.perDollarTone, 'P&L for every dollar of credit spent'),
+    metric('P&L', clock.pnl, clock.pnlTone, 'since the run began'),
+    metric('Sail spend', clock.spendTotal, '', join(`${clock.spendToday} today`, clock.spendNote)),
+  );
+  panel.append(numbers);
+  panel.append(facts([['Up', clock.availability], ['Sessions', clock.sessions], ['Decisions', clock.decisions], ...(clock.models ? [['Models', clock.models]] : [])]));
+  panel.append(element('p', 'The desks stop only when the credit does.', 'run-line'));
+  return panel;
+}
+function watchStrip(checkpoint) {
+  const text = watchLine(checkpoint);
+  if (!text) return null;
+  const strip = element('p', null, 'watch-strip');
+  strip.append(element('b', 'Night desk'), element('span', text));
+  return strip;
+}
+
+// ------------------------------------------------------------------------- the lineage
+// Families as columns, generations as rows. A cell holds the desks of one generation.
+export function lineageGrid(desks) {
+  const list = orderDesks(desks).filter(desk => desk && typeof desk === 'object');
+  const families = [...new Set(list.map(desk => show(desk.family)).filter(Boolean))];
+  const generations = [...new Set(list.map(desk => desk.generation).filter(Number.isSafeInteger))].sort((left, right) => left - right);
+  const rows = generations.map(generation => ({
+    generation,
+    cells: families.map(family => ({ family, desks: list.filter(desk => show(desk.family) === family && desk.generation === generation) })),
+  }));
+  return { families, generations, rows };
+}
+// How a bred desk differs from its parent, as badges. A founder has none.
+export function mutationBadges(mutation) {
+  if (!mutation || typeof mutation !== 'object') return [];
+  const shift = Number(mutation.session_shift_minutes);
+  const badges = [
+    { key: 'model', text: profileName(mutation.model_profile), title: mutation.model_changed === true ? 'born on a different model from its parent' : 'same model as its parent', changed: mutation.model_changed === true },
+    { key: 'effort', text: mutation.reasoning_effort ? `effort ${show(mutation.reasoning_effort)}` : '', title: 'reasoning effort' },
+    { key: 'shift', text: Number.isFinite(shift) && shift !== 0 ? `${shift > 0 ? '+' : '−'}${Math.abs(shift)} min` : '', title: 'session times shifted from the parent' },
+    { key: 'memory', text: Number.isSafeInteger(mutation.memory_limit) ? `memory ${mutation.memory_limit}` : '', title: 'memory entries read per session' },
+    { key: 'trait', text: truncate(mutation.persona_trait, 60).text, title: show(mutation.persona_trait) },
+  ];
+  return badges.filter(badge => badge.text);
+}
+function badgeRow(badges, className = 'mutation') {
+  const row = element('div', null, className);
+  for (const badge of badges) {
+    const chip = element('span', badge.text, `mutation-badge mutation-${badge.key}${badge.changed ? ' mutation-changed' : ''}`);
+    if (badge.title) chip.setAttribute('title', badge.title);
+    row.append(chip);
+  }
+  return row;
+}
+function lineageTree(checkpoint) {
+  const grid = lineageGrid(checkpoint?.desks);
+  if (!grid.rows.length) return null;
+  const tree = element('div', null, 'lineage-tree');
+  tree.style = `--families: ${grid.families.length}`;
+  const head = element('div', null, 'lineage-row lineage-head');
+  head.append(element('span', 'gen', 'lineage-gen'));
+  for (const family of grid.families) head.append(element('span', `${family} family`, 'lineage-family'));
+  tree.append(head);
+  for (const row of grid.rows) {
+    const line = element('div', null, 'lineage-row');
+    line.append(element('span', String(row.generation), 'lineage-gen'));
+    for (const cell of row.cells) {
+      const box = element('span', null, 'lineage-cell');
+      for (const desk of cell.desks) {
+        const node = link('', deskHref(desk.id), isLive(desk) ? 'lineage-node lineage-live' : 'lineage-node');
+        const name = element('span', null, 'lineage-name');
+        name.append(element('b', partnerName(desk.id)), modeBadge(desk));
+        node.append(name);
+        const live = liveSessionText(desk);
+        if (live) node.append(element('span', live, 'live-now'));
+        const badges = mutationBadges(desk.mutation);
+        if (badges.length) node.append(badgeRow(badges));
+        box.append(node);
+      }
+      line.append(box);
+    }
+    tree.append(line);
+  }
+  return tree;
+}
+
+// ------------------------------------------------------------------------------ the lab
+// The lab's experiments, newest first, each with its change spelled out.
+export function changeSummary(change) {
+  if (!change || typeof change !== 'object' || Array.isArray(change)) return '';
+  const parts = [];
+  for (const [key, value] of Object.entries(change).slice(0, 8)) {
+    if (key === 'playbook_note') { parts.push('house view added'); continue; }
+    const rendered = Array.isArray(value) ? value.map(show).filter(Boolean).join(', ')
+      : value && typeof value === 'object' ? Object.entries(value).map(([k, v]) => `${humanize(k)} ${show(v)}`).join(', ') : show(value);
+    parts.push(`${key.replace(/^model\./, '').replace(/^reasoning_/, '').replace(/[._:]+/g, ' ')} ${key.startsWith('model.profile') ? profileName(rendered) : rendered}`.trim());
+  }
+  return parts.join(' · ');
+}
+export function experimentRows(lab) {
+  const list = Array.isArray(lab?.experiments) ? lab.experiments : [];
+  return list.filter(experiment => experiment && typeof experiment === 'object')
+    .map(experiment => ({
+      id: show(experiment.experiment_id), hypothesis: show(experiment.hypothesis), status: show(experiment.status),
+      family: show(experiment.family), parent: show(experiment.parent_id), variant: show(experiment.variant_desk_id),
+      variantName: experiment.variant_desk_id ? partnerName(show(experiment.variant_desk_id)) : '',
+      change: changeSummary(experiment.change), proposedAt: show(experiment.proposed_at), evaluateAfter: show(experiment.evaluate_after),
+      verdict: show(experiment.verdict_reason),
+    }))
+    .sort((left, right) => Date.parse(right.proposedAt) - Date.parse(left.proposedAt));
+}
+const CURVE_METRICS = [
+  { key: 'cost_adjusted_excess_pct', label: 'cost-adjusted excess', format: value => percent(value), better: 'higher' },
+  { key: 'brier', label: 'Brier score', format: value => show(value), better: 'lower' },
+  { key: 'pnl_per_inference_usd', label: 'P&L per inference $', format: value => signedMoney(value, 2), better: 'higher' },
+];
+// Three small multiples, one per metric, generation on the x axis. Pure geometry.
+export function curveSeries(curve, { width = 240, height = 120 } = {}) {
+  const rows = (Array.isArray(curve) ? curve : []).filter(row => row && Number.isSafeInteger(row.generation))
+    .sort((left, right) => left.generation - right.generation);
+  const generations = rows.map(row => row.generation);
+  return CURVE_METRICS.map(metric => {
+    const points = rows.map((row, index) => ({ generation: row.generation, index, value: numeric(row[metric.key]) ? Number(row[metric.key]) : null }))
+      .filter(point => point.value !== null);
+    if (!points.length) return { ...metric, generations, points: [], path: '', empty: true };
+    let min = Math.min(...points.map(point => point.value));
+    let max = Math.max(...points.map(point => point.value));
+    if (min === max) { min -= Math.abs(min) * 0.1 + 0.5; max += Math.abs(max) * 0.1 + 0.5; }
+    const step = generations.length > 1 ? (width - 24) / (generations.length - 1) : 0;
+    const x = index => (generations.length > 1 ? 12 + index * step : width / 2);
+    const y = value => 10 + (max - value) / (max - min) * (height - 24);
+    const plotted = points.map(point => ({ ...point, x: x(point.index), y: y(point.value), text: metric.format(String(point.value)) }));
+    return {
+      ...metric, generations, points: plotted, min, max, width, height, empty: false,
+      path: plotted.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' '),
+    };
+  });
+}
+// One sentence a visitor can act on: is the newest generation better than the one before it?
+export function curveReading(curve) {
+  const rows = (Array.isArray(curve) ? curve : []).filter(row => row && Number.isSafeInteger(row.generation))
+    .sort((left, right) => left.generation - right.generation);
+  if (!rows.length) return 'The curve appears with the first generation’s results.';
+  if (rows.length < 2) return `One generation so far (${rows[0].desks} desk${rows[0].desks === 1 ? '' : 's'}). The curve needs a second to say anything.`;
+  const [before, after] = rows.slice(-2);
+  const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
+  const verb = delta > 0 ? 'beats' : delta < 0 ? 'trails' : 'matches';
+  const parts = [`Generation ${after.generation} ${verb} generation ${before.generation} on cost-adjusted return${delta ? ` by ${percent(delta.toFixed(4)).replace(/^[+−]/, '')}` : ''}`];
+  if (numeric(after.brier) && numeric(before.brier)) {
+    const change = Number(after.brier) - Number(before.brier);
+    parts.push(change < 0 ? 'forecasts sharper' : change > 0 ? 'forecasts looser' : 'forecasts unchanged');
+  }
+  return `${parts.join('; ')}.`;
+}
+function curveFigure(lab) {
+  const series = curveSeries(lab?.curve);
+  const wrap = element('div', null, 'curve');
+  if (series.every(metric => metric.empty)) {
+    wrap.append(element('p', curveReading(lab?.curve), 'empty-state'));
+    return wrap;
+  }
+  const grid = element('div', null, 'curve-grid');
+  for (const metric of series) {
+    const figure = element('figure', null, 'curve-metric');
+    figure.append(element('figcaption', join(metric.label, metric.better === 'lower' ? 'lower is better' : 'higher is better')));
+    if (metric.empty) { figure.append(element('p', 'not yet measured', 'empty-state')); grid.append(figure); continue; }
+    const svg = svgElement('svg', { viewBox: `0 0 ${metric.width} ${metric.height}`, role: 'img', 'aria-label': `${metric.label} by generation`, class: 'curve-svg' });
+    svg.append(svgElement('line', { x1: 12, x2: metric.width - 12, y1: metric.height - 14, y2: metric.height - 14, class: 'chart-grid' }));
+    if (metric.points.length > 1) svg.append(svgElement('path', { d: metric.path, class: 'curve-line' }));
+    for (const point of metric.points) {
+      svg.append(svgElement('circle', { cx: point.x.toFixed(2), cy: point.y.toFixed(2), r: 3.5, class: 'curve-point' }));
+      svg.append(svgElement('text', { x: point.x.toFixed(2), y: metric.height - 2, class: 'curve-label', 'text-anchor': 'middle' }, `g${point.generation}`));
+      svg.append(svgElement('text', { x: point.x.toFixed(2), y: (point.y - 7).toFixed(2), class: 'curve-value', 'text-anchor': 'middle' }, point.text));
+    }
+    figure.append(svg);
+    grid.append(figure);
+  }
+  wrap.append(grid, element('p', curveReading(lab?.curve), 'curve-reading'));
+  return wrap;
+}
+function experimentsPanel(lab, { empty = 'The lab has not proposed an experiment yet. The first one appears with the first nightly review.' } = {}) {
+  const rows = experimentRows(lab);
+  if (!rows.length) return element('p', empty, 'empty-state');
+  const list = element('div', null, 'experiments');
+  for (const row of rows) {
+    const item = element('article', null, `experiment experiment-${row.status}`);
+    const head = element('div', null, 'experiment-head');
+    head.append(element('span', row.status, `status status-${row.status}`));
+    head.append(element('span', join(`${row.family} family`, row.variantName && `variant ${row.variantName}`), 'experiment-meta'));
+    if (row.proposedAt) head.append(timeNode(row.proposedAt, 'day'));
+    item.append(head, element('p', row.hypothesis, 'experiment-hypothesis'));
+    if (row.change) item.append(element('p', row.change, 'experiment-change'));
+    if (row.verdict) item.append(element('p', row.verdict, 'experiment-verdict'));
+    list.append(item);
+  }
+  return list;
+}
+
+// -------------------------------------------------------------------- trade stories
+// One story per order intent: thesis, the risk engine's answer, the order, its fills, the exit
+// plan and the outcome, folded from events on four streams. Newest first.
+export function tradeStories(events, deskIdFilter = null) {
+  const list = Array.isArray(events) ? events.filter(event => event && typeof event === 'object') : [];
+  const byKind = kind => list.filter(event => event.kind === kind);
+  const intents = byKind('desk.intent').filter(event => deskIdFilter === null || event.payload?.desk_id === deskIdFilter || streamDeskOf(event.stream) === deskIdFilter);
+  const decisions = byKind('risk.decision');
+  const orders = byKind('broker.order');
+  const fills = byKind('broker.fill');
+  const exits = byKind('desk.exit_plan');
+  const outcomes = byKind('desk.outcome');
+  return intents.map(intent => {
+    const id = show(intent.payload?.intent_id) || show(intent.id);
+    const symbol = instrumentLabel(intent.payload?.instrument);
+    const decision = decisions.find(event => event.payload?.intent_id === id) || null;
+    const own = orders.filter(event => event.payload?.intent_id === id);
+    const orderIds = new Set(own.map(event => show(event.payload?.order_id)).filter(Boolean));
+    const ownFills = fills.filter(event => orderIds.has(show(event.payload?.order_id)));
+    const exit = exits.find(event => event.payload?.intent_id === id) || null;
+    const latestOrder = own.sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0] || null;
+    const traded = ownFills.length > 0 || ['filled', 'partially_filled'].includes(show(latestOrder?.payload?.status));
+    // An outcome is matched by instrument, so only a story that actually traded can own one.
+    const outcome = traded ? outcomes.find(event => Date.parse(event.at) >= Date.parse(intent.at)
+      && (show(event.payload?.market_id) === symbol || show(event.payload?.instrument) === symbol || show(event.payload?.instrument).startsWith(`${symbol}`))) || null : null;
+    const steps = [];
+    const p = intent.payload || {};
+    steps.push({ key: 'thesis', label: 'Thesis', at: intent.at, text: join(`${show(p.side)} ${quantity(p.quantity)} ${symbol}`.trim(), p.limit_price ? `limit ${priceText(show(p.limit_price))}` : show(p.order_type), show(p.rationale)) });
+    if (decision) {
+      const approved = decision.payload?.approved === true;
+      steps.push({ key: 'risk', label: 'Risk engine', at: decision.at, tone: approved ? 'positive' : 'negative', text: join(approved ? 'approved' : 'blocked', Array.isArray(decision.payload?.reasons) ? decision.payload.reasons.map(show).filter(Boolean).join('; ') : '') });
+    }
+    if (latestOrder) {
+      const o = latestOrder.payload || {};
+      steps.push({ key: 'order', label: 'Order', at: latestOrder.at, text: join(show(o.status), o.filled_quantity !== undefined && o.filled_quantity !== null ? `filled ${quantity(o.filled_quantity)}` : '', numeric(o.average_price) ? `avg ${priceText(o.average_price)}` : '', o.shadow === true ? 'shadow, never sent' : '') });
+    }
+    for (const fill of ownFills.sort((left, right) => Date.parse(left.at) - Date.parse(right.at))) {
+      const f = fill.payload || {};
+      steps.push({ key: 'fill', label: 'Fill', at: fill.at, text: join(`${show(f.side)} ${quantity(f.quantity)}`.trim(), numeric(f.price) ? `@ ${priceText(f.price)}` : '', numeric(f.fee) && Number(f.fee) ? `fee ${money(f.fee, 4)}` : '') });
+    }
+    if (exit) steps.push({ key: 'exit', label: 'Exit plan', at: exit.at, text: DETAILS['desk.exit_plan'](exit.payload || {}) });
+    if (outcome) {
+      const r = outcome.payload || {};
+      steps.push({ key: 'outcome', label: 'Outcome', at: outcome.at, tone: signOf(show(r.pnl)), text: join(r.result ? `resolved ${show(r.result)}` : '', numeric(r.pnl) ? `P&L ${signedMoney(r.pnl, 2)}` : '', r.held_for_hours === undefined ? '' : `${show(r.held_for_hours)}h held`) });
+    }
+    const state = outcome ? 'closed' : traded ? 'open' : decision && decision.payload?.approved === false ? 'blocked' : latestOrder ? show(latestOrder.payload?.status) || 'sent' : 'proposed';
+    return { id, at: intent.at, symbol, side: show(p.side), state, steps };
+  }).sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+}
+const streamDeskOf = stream => (typeof stream === 'string' && stream.startsWith('desk:') ? stream.slice(5) : null);
+// A story's anchor on the desk page, so the book can link a holding to the order behind it.
+export const storyAnchor = intentId => `story-${show(intentId).replace(/[^A-Za-z0-9_-]+/g, '-')}`;
+export const storyHref = (deskId, intentId) => `${deskHref(deskId)}#${storyAnchor(intentId)}`;
+// The desk's own words for a holding: the rationale it filed with the order, and what the risk
+// engine said about it. Read from the events the intent id names.
+export function positionRationale(events, intentId) {
+  const list = Array.isArray(events) ? events : [];
+  const intent = list.find(event => event?.kind === 'desk.intent' && show(event.payload?.intent_id) === show(intentId)) || null;
+  const decision = list.find(event => event?.kind === 'risk.decision' && show(event.payload?.intent_id) === show(intentId)) || null;
+  if (!intent && !decision) return null;
+  const reasons = Array.isArray(decision?.payload?.reasons) ? decision.payload.reasons.map(show).filter(Boolean) : [];
+  return {
+    rationale: show(intent?.payload?.rationale), at: intent?.at || decision?.at || null,
+    decision: decision ? (decision.payload?.approved === true ? 'approved' : decision.payload?.approved === false ? 'blocked' : '') : '',
+    reasons, text: join(decision ? `risk engine ${decision.payload?.approved === true ? 'approved' : 'blocked'}` : '', reasons.join('; ')),
+  };
+}
+function storiesSection(events, id) {
+  const stories = tradeStories(events, id);
+  const block = section('Trade stories', 'Thesis to outcome, one order at a time');
+  if (!stories.length) { block.append(element('p', 'No order proposed yet. The first story starts with the first intent.', 'empty-state')); return block; }
+  const list = element('div', null, 'stories');
+  for (const story of stories.slice(0, 20)) {
+    const item = element('article', null, `story story-${story.state}`);
+    item.id = storyAnchor(story.id);
+    const head = element('div', null, 'story-head');
+    head.append(element('b', [story.side, story.symbol].filter(Boolean).join(' ')), element('span', story.state, `status status-${story.state}`), timeNode(story.at));
+    item.append(head);
+    const steps = element('ol', null, 'story-steps');
+    for (const step of story.steps) {
+      const line = element('li', null, `story-step story-${step.key}`);
+      line.append(element('span', step.label, 'story-label'));
+      line.append(element('span', truncate(step.text, 220).text, step.tone ? `story-text ${step.tone}` : 'story-text'));
+      steps.append(line);
+    }
+    item.append(steps);
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
+
+// ----------------------------------------------------------------------- calibration
+// The newest calibration the lab published for a desk, a family, or the whole floor.
+export function latestCalibration(events, { scope = 'desk', desk_id: id = null, family = null } = {}) {
+  return (Array.isArray(events) ? events : [])
+    .filter(event => event?.kind === 'lab.calibration' && event.payload?.scope === scope
+      && (scope !== 'desk' || event.payload.desk_id === id) && (scope !== 'family' || event.payload.family === family))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0]?.payload || null;
+}
+export function familyCalibrations(events) {
+  const out = new Map();
+  for (const event of (Array.isArray(events) ? events : []).filter(event => event?.kind === 'lab.calibration' && event.payload?.scope === 'family')) {
+    const family = show(event.payload.family);
+    const held = out.get(family);
+    if (!held || Date.parse(event.at) > Date.parse(held.at)) out.set(family, { at: event.at, ...event.payload });
+  }
+  return [...out.values()].sort((left, right) => left.family.localeCompare(right.family));
+}
+// A reliability diagram: what the desk said (x) against what happened (y), one dot per bin,
+// dot size by count, the diagonal as the line a perfect forecaster would sit on.
+export function reliabilitySeries(reliability, { size = 200 } = {}) {
+  const bins = (Array.isArray(reliability) ? reliability : []).filter(bin => bin && numeric(bin.forecast_mean) && numeric(bin.outcome_rate));
+  const most = Math.max(1, ...bins.map(bin => Number(bin.n) || 0));
+  const scale = value => 10 + Number(value) * (size - 20);
+  return {
+    size,
+    points: bins.map(bin => ({
+      bin: show(bin.bin), x: scale(bin.forecast_mean), y: size - scale(bin.outcome_rate), n: Number(bin.n) || 0,
+      r: 3 + 6 * Math.sqrt((Number(bin.n) || 0) / most), forecast: probabilityText(bin.forecast_mean), outcome: probabilityText(bin.outcome_rate),
+    })),
+    diagonal: `M${scale(0).toFixed(1)},${(size - scale(0)).toFixed(1)} L${scale(1).toFixed(1)},${(size - scale(1)).toFixed(1)}`,
+  };
+}
+function reliabilityFigure(calibration) {
+  const series = reliabilitySeries(calibration?.reliability);
+  if (!series.points.length) return element('p', 'The reliability chart appears once forecasts have resolved.', 'empty-state');
+  const figure = element('figure', null, 'reliability');
+  const svg = svgElement('svg', { viewBox: `0 0 ${series.size} ${series.size}`, role: 'img', class: 'reliability-svg', 'aria-label': 'Forecast probability against the rate at which those forecasts came true.' });
+  svg.append(svgElement('path', { d: series.diagonal, class: 'reliability-diagonal' }));
+  for (const point of series.points) {
+    const dot = svgElement('circle', { cx: point.x.toFixed(1), cy: point.y.toFixed(1), r: point.r.toFixed(1), class: 'reliability-dot' });
+    dot.append(svgElement('title', {}, `said ${point.forecast}, happened ${point.outcome}, ${point.n} forecasts`));
+    svg.append(dot);
+  }
+  figure.append(svg, element('figcaption', 'said → happened. On the line is perfect; above it the desk is too shy, below it too sure.', 'chart-caption'));
+  return figure;
+}
+function calibrationCard(desk, calibration) {
+  const block = section('Calibration', 'Every stated probability, scored at resolution');
+  const summary = desk?.calibration && typeof desk.calibration === 'object' ? desk.calibration : calibration;
+  if (summary && Number.isSafeInteger(summary.n) && summary.n > 0) {
+    block.append(facts([
+      ['Forecasts scored', String(summary.n)],
+      ['Brier score', numeric(summary.brier) ? `${summary.brier} · 0 is perfect, 0.25 is a coin` : 'pending'],
+      ['Since', summary.since ? date(summary.since, 'day') : calibration?.since ? date(calibration.since, 'day') : '—'],
+    ]));
+  } else block.append(element('p', 'No forecast has resolved yet.', 'empty-state'));
+  block.append(reliabilityFigure(calibration));
+  return block;
+}
+function liveNow(desk) {
+  const text = liveSessionText(desk);
+  if (!text) return null;
+  const badge = element('span', null, 'live-now live-now-big');
+  const dot = element('span', null, 'badge-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  badge.append(dot, element('span', text));
+  return badge;
+}
+
 function headlineNumbers(checkpoint) {
   const floor = checkpoint.floor;
   const daily = floorDaily(floor);
@@ -851,6 +1418,11 @@ async function startFloor(root) {
   const infra = root.querySelector('#floor-infra');
   const history = root.querySelector('#floor-history');
   const partners = root.querySelector('#floor-partners');
+  const positions = root.querySelector('#floor-positions');
+  const run = root.querySelector('#floor-run');
+  const watch = root.querySelector('#floor-watch');
+  const lineageBox = root.querySelector('#floor-lineage');
+  const lab = root.querySelector('#floor-lab');
   const filters = root.querySelector('#tape-filters');
   const tape = root.querySelector('#floor-tape');
   const state = {
@@ -888,6 +1460,17 @@ async function startFloor(root) {
         infra.setAttribute('aria-busy', 'false');
       }
       drawPartners();
+      if (run) { const panel = runClockPanel(state.checkpoint.run); run.replaceChildren(...(panel ? [panel] : [])); run.setAttribute('aria-busy', 'false'); }
+      if (positions) { positions.replaceChildren(positionsBoard(state.checkpoint)); positions.setAttribute('aria-busy', 'false'); }
+      if (watch) { const strip = watchStrip(state.checkpoint); watch.replaceChildren(...(strip ? [strip] : [])); }
+      if (lineageBox) { const tree = lineageTree(state.checkpoint); lineageBox.replaceChildren(...(tree ? [tree] : [])); }
+      if (lab) {
+        lab.replaceChildren(
+          element('h3', 'Experiments', 'lab-heading'), experimentsPanel(state.checkpoint.lab),
+          element('h3', 'The improvement curve', 'lab-heading'), curveFigure(state.checkpoint.lab),
+        );
+        lab.setAttribute('aria-busy', 'false');
+      }
       statusLine(status, state.mode, state.checkpoint.published_at);
     } catch {
       if (state.checkpoint) return;
@@ -896,6 +1479,7 @@ async function startFloor(root) {
       numbers.replaceChildren(notice);
       numbers.setAttribute('aria-busy', 'false');
       if (infra) infra.setAttribute('aria-busy', 'false');
+      for (const box of [positions, lab, run]) if (box) { box.replaceChildren(); box.setAttribute('aria-busy', 'false'); }
       partners.setAttribute('aria-busy', 'false');
     }
   }
@@ -1017,7 +1601,11 @@ async function startDesk(root) {
     head.append(modeBadge(desk), element('span', live
       ? 'Trading real money. Every fill below happened.'
       : 'Nothing below was sent. Orders are scored against real prices, and the record decides whether this desk earns a live sleeve.'));
+    const running = liveNow(desk);
+    if (running) head.append(running);
     header.append(head);
+    const badges = mutationBadges(desk.mutation);
+    if (badges.length) header.append(badgeRow(badges, 'mutation mutation-row'));
     header.append(facts([
       ['Desk', desk.id], ['Family', desk.family], ['Generation', String(desk.generation)],
       ['Parent', desk.parent_id || 'Founding partner'], ['Mode', deskMode(desk.mode)],
@@ -1032,12 +1620,17 @@ async function startDesk(root) {
       ['Updated', date(desk.updated_at)],
     ]));
   } else header.append(element('p', 'This partner has no published checkpoint row yet.', 'note'));
-  const [deskEvents, marks, fills, evolution] = await Promise.all([
-    loadEvents({ stream: `desk:${id}`, limit: 60 }).catch(() => ({ events: [] })),
+  const [deskEvents, marks, fills, evolution, decisions, orders, labEvents] = await Promise.all([
+    loadEvents({ stream: `desk:${id}`, limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ stream: `ledger:${id}`, kind: 'ledger.mark', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ kind: 'broker.fill', limit: 60 }).catch(() => ({ events: [] })),
+    loadEvents({ kind: 'broker.fill', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'evolution', limit: 100 }).catch(() => ({ events: [] })),
+    loadEvents({ kind: 'risk.decision', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
+    loadEvents({ kind: 'broker.order', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
+    loadEvents({ stream: 'lab', kind: 'lab.calibration', limit: 100 }).catch(() => ({ events: [] })),
   ]);
+  const stories = storiesSection([...deskEvents.events, ...decisions.events, ...orders.events, ...fills.events], id);
+  const calibration = calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id }));
   const performance = section('Equity', 'This partner’s own marks');
   performance.append(equityChart(marks.events));
   const playbook = section('Playbook', 'Rewritten by the desk itself');
@@ -1078,7 +1671,7 @@ async function startDesk(root) {
     }
     family.append(list);
   } else family.append(element('p', desk?.parent_id ? `Spawned from ${desk.parent_id}.` : 'No evolution events for this partner.', 'empty-state'));
-  detail.replaceChildren(performance, playbook, book, blotter, gate, family);
+  detail.replaceChildren(performance, stories, book, calibration, playbook, blotter, gate, family);
   detail.setAttribute('aria-busy', 'false');
   const state = {
     events: deskEvents.events, expanded: new Set(), active: new Set(),
@@ -1101,14 +1694,35 @@ async function startCommittee(root) {
   const gates = root.querySelector('#committee-gates');
   const memos = root.querySelector('#committee-memos');
   const history = root.querySelector('#committee-evolution');
+  const labBox = root.querySelector('#committee-lab');
+  const calibrationBox = root.querySelector('#committee-calibration');
   statusLine(status, 'loading', null);
   let checkpoint = null;
   try { checkpoint = await loadCheckpoint(); } catch { /* Allocations wait for the first checkpoint. */ }
   if (checkpoint) statusLine(status, 'loading', checkpoint.published_at);
-  const [committeeEvents, evolution] = await Promise.all([
+  const [committeeEvents, evolution, labEvents] = await Promise.all([
     loadEvents({ stream: 'committee', limit: 100 }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'evolution', limit: 100 }).catch(() => ({ events: [] })),
+    loadEvents({ stream: 'lab', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
   ]);
+  if (labBox) {
+    // The checkpoint's experiments carry their verdicts; the lab stream carries the record.
+    const verdicts = labEvents.events.filter(event => event.kind === 'lab.verdict').sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+    labBox.replaceChildren(experimentsPanel(checkpoint?.lab, { empty: 'No experiment proposed yet. The lab writes its first proposal after the first nightly review.' }));
+    if (verdicts.length) {
+      labBox.append(table(['Time', 'Experiment', 'Verdict', 'Why'], verdicts.slice(0, 30).map(event => [
+        date(event.at), show(event.payload?.experiment_id) || '—', show(event.payload?.status) || '—', truncate(show(event.payload?.reason), 120).text,
+      ])));
+    }
+    labBox.setAttribute('aria-busy', 'false');
+  }
+  if (calibrationBox) {
+    const families = familyCalibrations(labEvents.events);
+    calibrationBox.replaceChildren(families.length
+      ? table(['Family', 'Forecasts', 'Brier', 'As of'], families.map(row => [`${row.family} family`, String(row.n), show(row.brier), date(row.as_of, 'day')]))
+      : element('p', 'Calibration appears once a family’s forecasts have resolved.', 'empty-state'));
+    calibrationBox.setAttribute('aria-busy', 'false');
+  }
   // Meriwether's latest memo leads the page; the numbers follow it.
   const memoEvents = committeeEvents.events.filter(event => event.kind === 'committee.memo')
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
