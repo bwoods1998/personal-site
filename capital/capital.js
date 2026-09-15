@@ -60,7 +60,7 @@ export const TAPE_FILTERS = [
 ];
 const FILTER_GROUPS = {
   thoughts: ['desk.session_started', 'desk.thought', 'desk.tool_call', 'desk.tool_result', 'desk.memo', 'desk.postmortem', 'desk.session_ended'],
-  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark'],
+  trades: ['desk.intent', 'broker.order', 'broker.fill', 'broker.reconciled', 'ledger.mark', 'desk.outcome'],
   risk: ['risk.decision', 'risk.review', 'risk.breaker', 'ops.alert', 'ops.budget'],
   committee: ['committee.allocation', 'committee.memo', 'committee.gate'],
   evolution: ['evolution.spawned', 'evolution.retired', 'evolution.promoted', 'desk.playbook_updated', 'lab.hypothesis', 'lab.result'],
@@ -230,6 +230,8 @@ const DETAILS = {
   'desk.intent': p => join(`${show(p.side)} ${quantity(p.quantity)} ${show(p.instrument)}`.trim(), show(p.order_type), p.limit_price ? `limit ${money(show(p.limit_price), 4)}` : '', show(p.rationale)),
   'desk.playbook_updated': p => join(p.version ? `v${show(p.version)}` : '', show(p.reason)),
   'desk.postmortem': p => join(show(p.period), show(p.text)),
+  // outcome · <market> · result · P&L
+  'desk.outcome': p => join('outcome', show(p.market_id || p.instrument), p.result ? `resolved ${show(p.result)}` : '', p.pnl ? `P&L ${money(show(p.pnl))}` : '', p.held_for_hours === undefined ? '' : `${show(p.held_for_hours)}h held`),
   'desk.session_ended': p => join(show(p.reason), p.requests === undefined ? '' : `${show(p.requests)} requests`, p.cost_usd ? money(show(p.cost_usd), 4) : ''),
   'risk.decision': p => join(p.approved === true ? 'Approved' : p.approved === false ? 'Blocked' : '', show(p.desk_id), Array.isArray(p.reasons) ? p.reasons.map(show).filter(Boolean).join('; ') : ''),
   // review · <desk> · approve/block · reason
