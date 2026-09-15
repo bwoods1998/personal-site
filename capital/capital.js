@@ -1193,8 +1193,8 @@ export function positionRationale(events, intentId) {
 }
 function storiesSection(events, id) {
   const stories = tradeStories(events, id);
-  const block = section('Trade stories', 'Thesis to outcome, one order at a time');
-  if (!stories.length) { block.append(element('p', 'No order proposed yet. The first story starts with the first intent.', 'empty-state')); return block; }
+  const block = section('Trade stories');
+  if (!stories.length) { block.append(element('p', 'No order yet.', 'empty-state')); return block; }
   const list = element('div', null, 'stories');
   for (const story of stories.slice(0, 20)) {
     const item = element('article', null, `story story-${story.state}`);
@@ -1263,7 +1263,7 @@ function reliabilityFigure(calibration) {
   return figure;
 }
 function calibrationCard(desk, calibration) {
-  const block = section('Calibration', 'Every stated probability, scored at resolution');
+  const block = section('Calibration', 'said vs happened');
   const summary = desk?.calibration && typeof desk.calibration === 'object' ? desk.calibration : calibration;
   if (summary && Number.isSafeInteger(summary.n) && summary.n > 0) {
     block.append(facts([
@@ -1271,7 +1271,7 @@ function calibrationCard(desk, calibration) {
       ['Brier score', numeric(summary.brier) ? `${summary.brier} · 0 is perfect, 0.25 is a coin` : 'pending'],
       ['Since', summary.since ? date(summary.since, 'day') : calibration?.since ? date(calibration.since, 'day') : '—'],
     ]));
-  } else block.append(element('p', 'No forecast has resolved yet.', 'empty-state'));
+  } else block.append(element('p', 'No forecast resolved yet.', 'empty-state'));
   block.append(reliabilityFigure(calibration));
   return block;
 }
@@ -1575,16 +1575,253 @@ function setTitle(value) {
   try { if (typeof document !== 'undefined') document.title = value; } catch { /* The tab keeps its markup title. */ }
 }
 
+// ============================================================================ desk page
+// "Watch it think": the desk's newest session as a stream of its own words, typed out as they
+// arrive. Everything here is pure until thoughtStream, which is the one thing that owns timers.
+
+// "just now", "14 min ago", "3 h ago", "2 d ago".
+export function agoText(value, now = Date.now()) {
+  const stamp = Date.parse(value);
+  if (!Number.isFinite(stamp)) return '';
+  const seconds = Math.max(0, Math.round((now - stamp) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+// How a thought is typed: a readable pace, never longer than a few seconds however long the
+// thought, in frames of `frameMs` that each reveal `chunk` characters.
+export function typingSchedule(text, { charsPerSecond = 90, maxMs = 4000, frameMs = 32 } = {}) {
+  const length = show(text).length;
+  const totalMs = Math.min(maxMs, Math.ceil((length / charsPerSecond) * 1000));
+  const frames = Math.max(1, Math.ceil(totalMs / frameMs));
+  return { length, frames, frameMs, totalMs: frames * frameMs, chunk: Math.max(1, Math.ceil(length / frames)) };
+}
+// The desk's newest session, folded from its own stream: its thoughts and tool calls in
+// order, when it opened, whether it has closed, and the memo it left.
+export function sessionThoughts(events, deskId = null) {
+  const list = (Array.isArray(events) ? events : []).filter(event => event && typeof event === 'object'
+    && (deskId === null || event.stream === `desk:${deskId}`));
+  const byTime = [...list].sort((left, right) => (Date.parse(left.at) - Date.parse(right.at)) || ((left.seq || 0) - (right.seq || 0)));
+  const start = byTime.filter(event => event.kind === 'desk.session_started').at(-1) || null;
+  const sessionId = show(start?.payload?.session_id) || show(byTime.filter(event => event.kind === 'desk.thought').at(-1)?.payload?.session_id);
+  const inSession = event => {
+    const own = show(event.payload?.session_id);
+    if (own) return sessionId ? own === sessionId : true;
+    return start ? Date.parse(event.at) >= Date.parse(start.at) : true;
+  };
+  const ended = byTime.filter(event => event.kind === 'desk.session_ended' && inSession(event)).at(-1) || null;
+  const items = byTime.filter(event => (event.kind === 'desk.thought' || event.kind === 'desk.tool_call') && inSession(event)).map(event => ({
+    id: event.id, at: event.at, kind: event.kind === 'desk.thought' ? 'thought' : 'call',
+    text: event.kind === 'desk.thought' ? show(event.payload?.text) : join(show(event.payload?.tool), summarizeArguments(event.payload?.arguments)),
+  }));
+  const memo = byTime.filter(event => event.kind === 'desk.memo' && inSession(event)).at(-1) || null;
+  return {
+    sessionId, trigger: show(start?.payload?.trigger), startedAt: start?.at || null, endedAt: ended?.at || null,
+    reason: show(ended?.payload?.reason), memo: show(memo?.payload?.title) || show(memo?.payload?.text),
+    running: Boolean(start) && !ended, items,
+  };
+}
+// The one line over the stream: thinking now, or when it stopped and what it decided.
+export function idleLine(session, now = Date.now(), liveSession = null) {
+  // The checkpoint can know a session is running before its first thought reaches the tape.
+  if (liveSession && typeof liveSession === 'object' && !session?.running) return join('thinking now', humanize(show(liveSession.trigger)));
+  if (!session || !session.startedAt) {
+    const last = Array.isArray(session?.items) ? session.items.at(-1) : null;
+    return last ? `last thought ${agoText(last.at, now)}` : 'no session yet';
+  }
+  if (session.running) return join('thinking now', humanize(session.trigger));
+  const outcome = session.memo ? truncate(session.memo, 90).text
+    : session.reason === 'end_session' ? 'ended by the desk' : humanize(session.reason) || 'ended';
+  return join(session.endedAt ? `ended ${agoText(session.endedAt, now)}` : 'ended', outcome);
+}
+// The stream itself. `load` draws a session (the last thought typed only while it runs);
+// `push` types whatever arrives live, in order, tool calls as one short line each.
+export function thoughtStream(container, { instant = false, schedule = typingSchedule, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  const seen = new Set();
+  const queue = [];
+  let timer = null;
+  let busy = false;
+  const settle = () => { try { if ('scrollTop' in container && 'scrollHeight' in container) container.scrollTop = container.scrollHeight; } catch { /* not scrollable */ } };
+  const entry = item => {
+    const node = element('div', null, item.kind === 'call' ? 'thought thought-call' : 'thought');
+    node.append(timeNode(item.at, 'clock'));
+    const text = element('span', '', 'thought-text');
+    node.append(text);
+    return { node, text };
+  };
+  function next() {
+    if (busy || !queue.length) return;
+    const { item, animate } = queue.shift();
+    const { node, text } = entry(item);
+    const full = item.kind === 'call' ? `→ ${item.text}` : item.text;
+    container.append(node);
+    if (!animate || instant || item.kind === 'call') { text.textContent = full; settle(); next(); return; }
+    const plan = schedule(full);
+    let shown = 0;
+    busy = true;
+    const step = () => {
+      shown = Math.min(full.length, shown + plan.chunk);
+      text.textContent = full.slice(0, shown);
+      settle();
+      if (shown < full.length) timer = setTimer(step, plan.frameMs);
+      else { timer = null; busy = false; next(); }
+    };
+    step();
+  }
+  function add(items, animate) {
+    for (const item of items) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      queue.push({ item, animate });
+    }
+    next();
+  }
+  return {
+    load(session) {
+      if (timer) clearTimer(timer);
+      timer = null; busy = false; queue.length = 0; seen.clear();
+      container.replaceChildren();
+      const items = Array.isArray(session?.items) ? session.items : [];
+      if (!items.length) { container.append(element('p', 'Nothing said yet.', 'empty-state')); return; }
+      add(items.slice(0, -1), false);
+      add(items.slice(-1), Boolean(session?.running));
+    },
+    push(events, deskId = null) {
+      const fresh = sessionThoughts(events, deskId).items;
+      if (fresh.length && container.children?.length === 1 && container.children[0].className === 'empty-state') container.replaceChildren();
+      add(fresh, true);
+    },
+    stop() { if (timer) clearTimer(timer); timer = null; busy = false; queue.length = 0; },
+  };
+}
+// Every run of the desk's own code, newest first.
+export function codeRuns(events) {
+  return (Array.isArray(events) ? events : []).filter(event => event?.kind === 'desk.code_run')
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .map(event => ({
+      at: event.at, purpose: show(event.payload?.purpose) || 'unnamed run', exit: Number(event.payload?.exit_code),
+      seconds: show(event.payload?.seconds), hash: show(event.payload?.code_sha256).slice(0, 12), output: show(event.payload?.stdout),
+      savedAs: show(event.payload?.saved_as),
+    }));
+}
+// A desk's holdings with its own words beside each: the thesis it filed with the order, and
+// what the risk engine said, read from the desk's stream rather than fetched on demand.
+export function holdingRows(desk, events) {
+  return positionRows({ desks: desk ? [desk] : [] }).map(row => {
+    const found = row.intentId ? positionRationale(events, row.intentId) : null;
+    return { ...row, rationale: found?.rationale && found.rationale !== row.thesis ? found.rationale : '', engine: found?.text || '' };
+  });
+}
+// The header badges: generation, parent, and what changed at birth.
+export function lineageBadges(desk) {
+  if (!desk) return [];
+  const badges = [];
+  const generation = Number(desk.generation) || 1;
+  badges.push({ text: generation === 1 ? 'founder' : `generation ${generation}`, changed: false });
+  if (desk.parent_id) badges.push({ text: `from ${partnerName(show(desk.parent_id))}`, changed: false, href: deskHref(show(desk.parent_id)) });
+  return [...badges, ...mutationBadges(desk.mutation)];
+}
+
+function holdingsPanel(desk, events) {
+  const block = section('Holdings');
+  const rows = holdingRows(desk, events);
+  if (!rows.length) {
+    block.append(element('p', join('Flat', desk && numeric(desk.cash) ? `${money(desk.cash, 0)} cash` : ''), 'empty-state'));
+    return block;
+  }
+  const list = element('div', null, 'holdings');
+  for (const row of rows) {
+    const item = element('article', null, 'holding');
+    item.id = row.intentId ? `holding-${storyAnchor(row.intentId)}` : '';
+    const head = element('div', null, 'holding-head');
+    head.append(element('b', join(row.side, row.instrument)), element('span', row.venue, 'holding-venue'));
+    head.append(element('span', signedMoney(row.pnl, 2), `holding-pnl ${row.tone}`));
+    item.append(head);
+    item.append(element('p', join(row.quantity, `in ${priceText(row.entry)}`, `now ${priceText(row.mark)}`, money(row.value, 2)), 'holding-numbers'));
+    if (row.thesis) item.append(element('p', row.thesis, 'holding-thesis'));
+    if (row.rationale) item.append(element('p', row.rationale, 'holding-rationale'));
+    if (row.engine) item.append(element('p', row.engine, 'note'));
+    const chips = element('div', null, 'exit-chips');
+    for (const chip of row.chips) chips.append(element('span', chip.text, `exit-chip exit-${chip.kind}`));
+    if (row.intentId) chips.append(link('story ↓', `#${storyAnchor(row.intentId)}`, 'exit-chip exit-link'));
+    item.append(chips);
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
+function toolboxPanel(events) {
+  const runs = codeRuns(events);
+  if (!runs.length) return null;
+  const block = section('Toolbox', 'code the desk wrote and ran');
+  const list = element('div', null, 'runs');
+  for (const run of runs.slice(0, 12)) {
+    const item = element('div', null, run.exit === 0 ? 'run' : 'run run-failed');
+    const head = element('div', null, 'run-head');
+    head.append(element('b', run.purpose), element('span', join(run.exit === 0 ? 'ran' : `exit ${run.exit}`, run.seconds ? `${run.seconds}s` : '', run.savedAs ? `saved as ${run.savedAs}` : '', run.hash && `#${run.hash}`), 'run-meta'));
+    head.append(timeNode(run.at, 'clock'));
+    item.append(head);
+    if (run.output) item.append(details('output', element('pre', run.output, 'run-output')));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
+function playbookPanel(events) {
+  const rewrite = latestPlaybook(events);
+  const body = element('div');
+  if (rewrite) {
+    const meta = element('p', null, 'playbook-meta');
+    meta.append(element('span', rewrite.version ? `v${rewrite.version} · ` : ''));
+    meta.append(timeNode(rewrite.at));
+    body.append(meta);
+    if (rewrite.reason) body.append(element('p', rewrite.reason, 'playbook-reason'));
+    if (rewrite.diff) body.append(diffBlock(rewrite.diff));
+  } else body.append(element('p', 'Not rewritten yet.', 'empty-state'));
+  return details(rewrite ? `Playbook · rewritten ${agoText(rewrite.at)}` : 'Playbook', body);
+}
+function deskHeader(header, desk, partner, marks) {
+  header.replaceChildren(element('h1', partnerName(partner.id)));
+  header.append(element('p', partnerRole(partner) || (desk ? desk.family : partner.id), 'partner-role'));
+  if (!desk) { header.append(element('p', 'No checkpoint row yet.', 'note')); return; }
+  const live = isLive(desk);
+  const mode = element('p', null, 'desk-mode');
+  mode.append(modeBadge(desk), element('span', live ? 'Trading real money.' : 'Shadow: scored on real prices, never sent.'));
+  const running = liveNow(desk);
+  if (running) mode.append(running);
+  header.append(mode);
+  const badges = lineageBadges(desk);
+  const row = element('div', null, 'mutation mutation-row');
+  for (const badge of badges) row.append(badge.href ? link(badge.text, badge.href, badge.changed ? 'mutation-badge mutation-changed' : 'mutation-badge') : element('span', badge.text, badge.changed ? 'mutation-badge mutation-changed' : 'mutation-badge'));
+  header.append(row);
+  const shadow = live ? '' : ' (shadow)';
+  const numbers = facts([
+    [`Equity${shadow}`, money(desk.equity, 0)], ['Today', signedMoney(desk.daily_pnl, 2)], ['Return', percent(desk.return_pct)],
+    ['Drawdown', percent(desk.max_drawdown_pct).replace('+', '−')], ['Days', String(desk.days_live)], ['Sail cost', money(desk.cost_usd, 2)],
+    ['Gate', desk.gate ? `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}` : 'none yet'],
+  ]);
+  header.append(numbers);
+  const spark = element('p', null, 'desk-spark');
+  spark.append(sparkFigure(marks));
+  header.append(spark);
+  if (partner.mandate) header.append(details('Mandate', element('p', partner.mandate, 'mandate')));
+}
+
 async function startDesk(root) {
   const header = root.querySelector('#desk-header');
   const detail = root.querySelector('#desk-detail');
   const tape = root.querySelector('#desk-tape');
   const status = root.querySelector('#desk-status');
+  const think = root.querySelector('#desk-think');
+  const thinkState = root.querySelector('#think-state');
   const id = new URLSearchParams(window.location.search).get('id');
   if (!deskId(id)) {
-    header.replaceChildren(element('h1', 'Partner not found'), element('p', 'Open a partner from the floor.', 'note'));
+    header.replaceChildren(element('h1', 'No such desk'), element('p', 'Open one from the floor.', 'note'));
     detail.replaceChildren();
-    tape.replaceChildren();
+    if (tape) tape.replaceChildren();
     return null;
   }
   statusLine(status, 'loading', null);
@@ -1592,100 +1829,126 @@ async function startDesk(root) {
   try { desk = await loadDesk(id); } catch { /* The manifest facts stay blank until the next checkpoint. */ }
   const partner = partnerOf(desk || id);
   setTitle(`${partner.surname} · LTCM`);
-  header.replaceChildren(element('h1', partnerName(partner.id)));
-  header.append(element('p', partnerRole(partner) || (desk ? desk.family : id), 'partner-role'));
-  if (desk) {
-    if (partner.mandate) header.append(details('Mandate', element('p', partner.mandate, 'mandate')));
-    const live = isLive(desk);
-    const head = element('p', null, 'desk-mode');
-    head.append(modeBadge(desk), element('span', live
-      ? 'Trading real money. Every fill below happened.'
-      : 'Nothing below was sent. Orders are scored against real prices, and the record decides whether this desk earns a live sleeve.'));
-    const running = liveNow(desk);
-    if (running) head.append(running);
-    header.append(head);
-    const badges = mutationBadges(desk.mutation);
-    if (badges.length) header.append(badgeRow(badges, 'mutation mutation-row'));
-    header.append(facts([
-      ['Desk', desk.id], ['Family', desk.family], ['Generation', String(desk.generation)],
-      ['Parent', desk.parent_id || 'Founding partner'], ['Mode', deskMode(desk.mode)],
-      ['Venue', desk.venues.join(', ') || 'None'],
-      [live ? 'Capital' : 'Notional budget', money(desk.capital_usd, 0)],
-      [live ? 'Equity' : 'Equity (hypothetical)', money(desk.equity, 0)], ['Cash', money(desk.cash, 0)],
-      [live ? 'Today' : 'Today (hypothetical)', signedMoney(desk.daily_pnl, 2)],
-      [live ? 'Return' : 'Return (hypothetical)', percent(desk.return_pct)],
-      ['Max drawdown', percent(desk.max_drawdown_pct).replace('+', '−')],
-      ['Days live', String(desk.days_live)], ['Orders', String(desk.orders)], ['Inference cost', money(desk.cost_usd, 2)],
-      ['Status', desk.status], ['Gate', desk.gate ? `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}` : 'None recorded'],
-      ['Updated', date(desk.updated_at)],
-    ]));
-  } else header.append(element('p', 'This partner has no published checkpoint row yet.', 'note'));
-  const [deskEvents, marks, fills, evolution, decisions, orders, labEvents] = await Promise.all([
+  const [deskEvents, marks, fills, decisions, orders, labEvents] = await Promise.all([
     loadEvents({ stream: `desk:${id}`, limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ stream: `ledger:${id}`, kind: 'ledger.mark', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ kind: 'broker.fill', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ stream: 'evolution', limit: 100 }).catch(() => ({ events: [] })),
     loadEvents({ kind: 'risk.decision', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ kind: 'broker.order', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'lab', kind: 'lab.calibration', limit: 100 }).catch(() => ({ events: [] })),
   ]);
-  const stories = storiesSection([...deskEvents.events, ...decisions.events, ...orders.events, ...fills.events], id);
-  const calibration = calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id }));
-  const performance = section('Equity', 'This partner’s own marks');
-  performance.append(equityChart(marks.events));
-  const playbook = section('Playbook', 'Rewritten by the desk itself');
-  const rewrite = latestPlaybook(deskEvents.events);
-  if (rewrite) {
-    const meta = element('p', null, 'playbook-meta');
-    meta.append(element('span', rewrite.version ? `v${rewrite.version} · ` : ''));
-    meta.append(timeNode(rewrite.at));
-    playbook.append(meta);
-    if (rewrite.reason) playbook.append(element('p', rewrite.reason, 'playbook-reason'));
-    if (rewrite.diff) playbook.append(diffBlock(rewrite.diff));
-  } else playbook.append(element('p', 'No playbook rewrite published yet.', 'empty-state'));
-  const book = section('Book', 'Latest published mark');
-  const rows = bookRows(marks.events);
-  book.append(rows.length
-    ? table(['Instrument', 'Quantity', 'Price', 'Value'], rows.map(row => [row.instrument, row.quantity, money(row.price, 4), money(row.value, 2)]))
-    : element('p', 'No positions in the latest mark.', 'empty-state'));
-  const blotter = section('Blotter', 'Fills publish after execution');
-  const fillsForDesk = fillRows(fills.events, id);
-  blotter.append(fillsForDesk.length
-    ? table(['Time', 'Venue', 'Instrument', 'Side', 'Quantity', 'Price', 'Fee'], fillsForDesk.slice(0, 30).map(row => [date(row.at), row.venue, row.instrument, row.side, row.quantity, money(row.price, 4), money(row.fee, 4)]))
-    : element('p', 'No fills published yet.', 'empty-state'));
-  const gate = section('Gate', 'Shadow to live money, on evidence');
-  if (desk?.gate) {
-    gate.append(element('p', `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}`, desk.gate.passed ? 'gate-pass' : 'gate-fail'));
-    gate.append(facts(Object.entries(desk.gate.evidence).slice(0, 12).map(([key, value]) => [key, show(value) || '…'])));
-  } else gate.append(element('p', 'No gate recorded for this partner.', 'empty-state'));
-  const family = section('Lineage', 'Evolution record');
-  const history = lineage(evolution.events, id);
-  if (history.length) {
-    const list = element('ul', null, 'lineage');
-    for (const entry of history) {
-      const item = element('li', entry.text);
-      const meta = element('span', `${entry.label} · `);
-      meta.append(timeNode(entry.at));
-      item.append(meta);
-      list.append(item);
-    }
-    family.append(list);
-  } else family.append(element('p', desk?.parent_id ? `Spawned from ${desk.parent_id}.` : 'No evolution events for this partner.', 'empty-state'));
-  detail.replaceChildren(performance, stories, book, calibration, playbook, blotter, gate, family);
+  deskHeader(header, desk, partner, marks.events);
+  // The hero: the newest session, typed. A page opened mid-session catches up instantly and
+  // types only what arrives from here on.
+  const stream = think ? thoughtStream(think, { instant: typeof requestAnimationFrame === 'undefined' }) : null;
+  const session = sessionThoughts(deskEvents.events, id);
+  if (stream) { stream.load(session); think.setAttribute('aria-busy', 'false'); }
+  if (thinkState) thinkState.textContent = idleLine(session, Date.now(), desk?.live_session);
+  const storyEvents = [...deskEvents.events, ...decisions.events, ...orders.events, ...fills.events];
+  const panels = [
+    holdingsPanel(desk, storyEvents),
+    storiesSection(storyEvents, id),
+  ];
+  const eventDesk = Array.isArray(desk?.venues) && desk.venues.includes('kalshi') || (desk?.calibration && typeof desk.calibration === 'object');
+  if (eventDesk || latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })) panels.push(calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })));
+  const toolbox = toolboxPanel(deskEvents.events);
+  if (toolbox) panels.push(toolbox);
+  panels.push(playbookPanel(deskEvents.events));
+  detail.replaceChildren(...panels);
   detail.setAttribute('aria-busy', 'false');
   const state = {
     events: deskEvents.events, expanded: new Set(), active: new Set(),
-    redraw: () => renderTape(tape, state.events, state),
+    redraw: () => { if (tape) renderTape(tape, state.events, state); },
   };
   state.redraw();
   const feed = startFeed({
     streams: [`desk:${id}`, `ledger:${id}`],
     onStatus: mode => statusLine(status, mode, desk?.updated_at || null),
-    onEvents: events => { state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2); state.redraw(); },
+    onEvents: events => {
+      state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2);
+      state.redraw();
+      const arrived = events.filter(event => event.stream === `desk:${id}`);
+      if (!arrived.length) return;
+      if (arrived.some(event => event.kind === 'desk.session_started')) {
+        const opened = sessionThoughts(state.events, id);
+        if (stream) stream.load(opened);
+        if (thinkState) thinkState.textContent = idleLine(opened);
+        return;
+      }
+      if (stream) stream.push(arrived, id);
+      if (thinkState && arrived.some(event => event.kind === 'desk.session_ended' || event.kind === 'desk.memo')) thinkState.textContent = idleLine(sessionThoughts(state.events, id));
+    },
   });
+  const original = feed.stop;
+  feed.stop = () => { if (stream) stream.stop(); original(); };
   feed.remember(state.events);
   feed.prime(state.events[0]?.seq || 0);
   return feed;
+}
+
+// ============================================================================ the loop page
+// Each family's house genome: what the lab adopted, and what its children were born with.
+export function genomeSummary(evolutionEvents, labEvents) {
+  const families = new Map();
+  const family = name => {
+    if (!families.has(name)) families.set(name, { family: name, children: 0, models: new Set(), efforts: new Set(), adopted: [], rejected: 0, running: 0 });
+    return families.get(name);
+  };
+  for (const event of (Array.isArray(evolutionEvents) ? evolutionEvents : []).filter(event => event?.kind === 'evolution.spawned')) {
+    const row = family(show(event.payload?.family) || 'unknown');
+    row.children += 1;
+    const mutation = event.payload?.mutation && typeof event.payload.mutation === 'object' ? event.payload.mutation : {};
+    if (mutation.model_profile) row.models.add(profileName(show(mutation.model_profile)));
+    if (mutation.reasoning_effort) row.efforts.add(show(mutation.reasoning_effort));
+  }
+  const experiments = new Map();
+  for (const event of (Array.isArray(labEvents) ? labEvents : []).filter(event => event?.kind === 'lab.experiment')) {
+    const id = show(event.payload?.experiment_id);
+    if (id) experiments.set(id, event.payload);
+    if (event.payload?.status === 'running') family(show(event.payload?.family) || 'unknown').running += 1;
+  }
+  for (const event of (Array.isArray(labEvents) ? labEvents : []).filter(event => event?.kind === 'lab.verdict')) {
+    const experiment = experiments.get(show(event.payload?.experiment_id));
+    const row = family(show(experiment?.family) || 'unknown');
+    if (event.payload?.status === 'adopted') row.adopted.push({ at: event.at, change: changeSummary(experiment?.change) || 'change adopted', hypothesis: show(experiment?.hypothesis) });
+    else if (event.payload?.status === 'rejected') row.rejected += 1;
+  }
+  return [...families.values()].map(row => ({ ...row, models: [...row.models].sort(), efforts: [...row.efforts].sort() }))
+    .filter(row => row.family !== 'unknown' || row.adopted.length)
+    .sort((left, right) => left.family.localeCompare(right.family));
+}
+// The newest allocation with Meriwether's reason per desk, when the record carries one.
+export function allocationReasons(events) {
+  const latest = (Array.isArray(events) ? events : []).filter(event => event?.kind === 'committee.allocation'
+    && event.payload?.allocations && typeof event.payload.allocations === 'object')
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0];
+  if (!latest) return { at: null, rows: [] };
+  const reasons = latest.payload.reasons && typeof latest.payload.reasons === 'object' ? latest.payload.reasons : {};
+  const rows = Object.entries(latest.payload.allocations).map(([id, usd]) => ({ desk: id, name: partnerName(id), usd: show(usd), reason: show(reasons[id]) }))
+    .sort((left, right) => (scaled(right.usd) > scaled(left.usd) ? 1 : -1));
+  return { at: latest.at, rows };
+}
+function genomePanel(rows) {
+  if (!rows.length) return element('p', 'Nothing bred yet.', 'empty-state');
+  const list = element('div', null, 'genomes');
+  for (const row of rows) {
+    const card = element('article', null, 'genome');
+    const head = element('div', null, 'genome-head');
+    head.append(element('b', `${row.family} family`), element('span', join(`${row.children} ${row.children === 1 ? 'child' : 'children'}`, row.running ? `${row.running} running` : '', row.rejected ? `${row.rejected} rejected` : ''), 'genome-meta'));
+    card.append(head);
+    if (row.models.length || row.efforts.length) card.append(element('p', join(row.models.length ? `models ${row.models.join(', ')}` : '', row.efforts.length ? `effort ${row.efforts.join(', ')}` : ''), 'genome-born'));
+    if (row.adopted.length) {
+      const adopted = element('ul', null, 'genome-adopted');
+      for (const change of row.adopted) {
+        const item = element('li', change.change);
+        item.append(element('span', join(change.hypothesis, agoText(change.at)), 'genome-why'));
+        adopted.append(item);
+      }
+      card.append(adopted);
+    } else card.append(element('p', 'No change adopted yet.', 'note'));
+    list.append(card);
+  }
+  return list;
 }
 
 async function startCommittee(root) {
@@ -1696,19 +1959,25 @@ async function startCommittee(root) {
   const history = root.querySelector('#committee-evolution');
   const labBox = root.querySelector('#committee-lab');
   const calibrationBox = root.querySelector('#committee-calibration');
+  const curveBox = root.querySelector('#loop-curve');
+  const genomeBox = root.querySelector('#loop-genome');
   statusLine(status, 'loading', null);
   let checkpoint = null;
-  try { checkpoint = await loadCheckpoint(); } catch { /* Allocations wait for the first checkpoint. */ }
+  try { checkpoint = await loadCheckpoint(); } catch { /* The numbers wait for the first checkpoint. */ }
   if (checkpoint) statusLine(status, 'loading', checkpoint.published_at);
   const [committeeEvents, evolution, labEvents] = await Promise.all([
     loadEvents({ stream: 'committee', limit: 100 }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'evolution', limit: 100 }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'lab', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
   ]);
+  if (curveBox) {
+    curveBox.replaceChildren(curveFigure(checkpoint?.lab));
+    curveBox.setAttribute('aria-busy', 'false');
+  }
   if (labBox) {
     // The checkpoint's experiments carry their verdicts; the lab stream carries the record.
     const verdicts = labEvents.events.filter(event => event.kind === 'lab.verdict').sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-    labBox.replaceChildren(experimentsPanel(checkpoint?.lab, { empty: 'No experiment proposed yet. The lab writes its first proposal after the first nightly review.' }));
+    labBox.replaceChildren(experimentsPanel(checkpoint?.lab, { empty: 'None yet. The lab proposes after its first nightly review.' }));
     if (verdicts.length) {
       labBox.append(table(['Time', 'Experiment', 'Verdict', 'Why'], verdicts.slice(0, 30).map(event => [
         date(event.at), show(event.payload?.experiment_id) || '—', show(event.payload?.status) || '—', truncate(show(event.payload?.reason), 120).text,
@@ -1716,14 +1985,17 @@ async function startCommittee(root) {
     }
     labBox.setAttribute('aria-busy', 'false');
   }
+  if (genomeBox) {
+    genomeBox.replaceChildren(genomePanel(genomeSummary(evolution.events, labEvents.events)));
+    genomeBox.setAttribute('aria-busy', 'false');
+  }
   if (calibrationBox) {
     const families = familyCalibrations(labEvents.events);
     calibrationBox.replaceChildren(families.length
       ? table(['Family', 'Forecasts', 'Brier', 'As of'], families.map(row => [`${row.family} family`, String(row.n), show(row.brier), date(row.as_of, 'day')]))
-      : element('p', 'Calibration appears once a family’s forecasts have resolved.', 'empty-state'));
+      : element('p', 'Appears once a family’s forecasts resolve.', 'empty-state'));
     calibrationBox.setAttribute('aria-busy', 'false');
   }
-  // Meriwether's latest memo leads the page; the numbers follow it.
   const memoEvents = committeeEvents.events.filter(event => event.kind === 'committee.memo')
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
   const memoList = element('div');
@@ -1734,17 +2006,20 @@ async function startCommittee(root) {
     memo.append(element('p', show(event.payload?.text)));
     memoList.append(memo);
   }
-  memos.replaceChildren(memoEvents.length ? memoList : element('p', 'No memo published yet.', 'empty-state'));
+  memos.replaceChildren(memoEvents.length ? memoList : element('p', 'None yet.', 'empty-state'));
   memos.setAttribute('aria-busy', 'false');
   const series = allocationSeries(committeeEvents.events);
+  const reasons = allocationReasons(committeeEvents.events);
   const current = checkpoint ? Object.entries(checkpoint.committee.allocations) : [];
   const allocationBlock = element('div');
   if (current.length) {
     const list = element('div', null, 'allocation-current');
+    const why = new Map(reasons.rows.map(row => [row.desk, row.reason]));
     for (const [id, usd] of current.sort((left, right) => (scaled(right[1]) > scaled(left[1]) ? 1 : -1))) {
       const row = element('div', null, 'allocation-row');
       const name = element('span');
       name.append(link(partnerName(id), deskHref(id)));
+      if (why.get(id)) name.append(element('small', why.get(id), 'allocation-why'));
       row.append(name, element('span', money(usd, 0)));
       list.append(row);
     }
@@ -1756,8 +2031,8 @@ async function startCommittee(root) {
       series.rows.map(row => [date(row.at), ...series.desks.map(id => money(show(row.amounts[id]), 0))]),
     ));
   }
-  if (!current.length && !series.rows.length) allocationBlock.append(element('p', 'Meriwether has not allocated capital yet.', 'empty-state'));
-  if (checkpoint) allocationBlock.append(element('p', `Floor capital ${money(checkpoint.floor.capital_usd, 0)} · last memo ${checkpoint.committee.last_memo_at ? date(checkpoint.committee.last_memo_at) : 'none'}`, 'note'));
+  if (!current.length && !series.rows.length) allocationBlock.append(element('p', 'Nothing allocated yet.', 'empty-state'));
+  if (checkpoint) allocationBlock.append(element('p', join(`Floor capital ${money(checkpoint.floor.capital_usd, 0)}`, checkpoint.committee.last_memo_at ? `memo ${agoText(checkpoint.committee.last_memo_at)}` : ''), 'note'));
   allocations.replaceChildren(allocationBlock);
   allocations.setAttribute('aria-busy', 'false');
   const gateEvents = committeeEvents.events.filter(event => event.kind === 'committee.gate');
@@ -1765,7 +2040,7 @@ async function startCommittee(root) {
     ? table(['Time', 'Partner', 'Gate', 'Result'], gateEvents.slice(0, 40).map(event => [
       date(event.at), partnerName(show(event.payload?.desk_id)) || '—', show(event.payload?.gate) || '—', event.payload?.passed ? 'passed' : 'not met',
     ]))
-    : element('p', 'No gate decisions published yet.', 'empty-state'));
+    : element('p', 'No gate decided yet.', 'empty-state'));
   const evolutionEvents = evolution.events.filter(event => event.kind.startsWith('evolution.'));
   const state = {
     events: evolutionEvents, expanded: new Set(), active: new Set(),
