@@ -109,6 +109,8 @@ test('the publisher projection is the only event shape the floor stores', async 
     ['markup', e => { e.payload.text = 'the filing said <b>growth</b>'; }],
     ['offsite url', e => { e.payload.text = 'source https://example.com/report'; }],
     ['insecure url', e => { e.payload.text = 'source http://www.sec.gov/x'; }],
+    ['script uri', e => { e.payload.text = 'then javascript:alert(1) runs'; }],
+    ['data uri', e => { e.payload.text = 'see data:text/plain;base64,QQ== for the table'; }],
     ['private model traffic', e => { e.kind = 'provider.request'; }],
     ['kind outside its stream', e => { e.stream = 'risk'; }],
     ['uppercase stream', e => { e.stream = 'desk:Rosenfeld'; }],
@@ -132,6 +134,11 @@ test('the publisher projection is the only event shape the floor stores', async 
   const cited = event(2);
   cited.payload.text = 'Filing https://www.sec.gov/Archives/edgar/data/1/2/3-index.html confirms the number.';
   assert.equal(validEvent(cited), true);
+  // Hilibrand's first live thought was refused for the words "from the data:" before a
+  // line break. A scheme needs something after its colon; prose does not.
+  const prose = event(3);
+  prose.payload.text = 'The dates near the end are clearly from the data:\n\nLooking at the last bar, the file: is closed.';
+  assert.equal(validEvent(prose), true, 'a colon followed by whitespace is punctuation, not a scheme');
   assert.equal(sourceUrl('https://efts.sec.gov/LATEST/search-index?q=x'), 'https://efts.sec.gov/LATEST/search-index?q=x');
   assert.equal(sourceUrl('https://www.sec.gov:8443/x'), null, 'no alternate ports');
   assert.equal(sourceUrl('https://user:key@www.sec.gov/x'), null, 'no credentials in a citation');
