@@ -217,7 +217,17 @@ export function partnerOf(desk) {
   const family = typeof desk === 'string' ? '' : show(desk?.family);
   const known = PARTNERS[id] || PARTNERS[family] || PARTNERS[id.split('-')[0]] || null;
   const name = typeof desk === 'string' ? '' : show(desk?.name);
-  if (!known) return { id, surname: name || id, first: '', role: '', via: '', mandate: '', variant: '' };
+  if (!known) {
+    // A desk the partner table does not know (Scholes, Haghani, anything the lab breeds later)
+    // still gets a name: the id's base capitalised, a numeric suffix read as its generation,
+    // and a name that already carries the numeral is not given it twice.
+    const dash = id.lastIndexOf('-');
+    const numbered = dash > 0 && /^\d+$/.test(id.slice(dash + 1));
+    const base = numbered ? id.slice(0, dash) : id;
+    const generation = numbered ? Number(id.slice(dash + 1)) : 0;
+    const surname = (name ? name.replace(/\s+[IVXLCDM]+$/, '') : '') || (base ? base[0].toUpperCase() + base.slice(1) : id);
+    return { id, surname, first: '', role: '', via: '', mandate: '', variant: generation > 1 ? roman(generation) : '' };
+  }
   // A bred desk keeps the partner's name and carries the runtime's own suffix beside it.
   const base = known.surname.toLowerCase();
   const variant = id === base ? '' : id.startsWith(`${base}-`) ? id.slice(base.length + 1) : id;
@@ -902,7 +912,8 @@ export function runClock(run, now = Date.now()) {
     sessions: `${Number(run.sessions_total) || 0} (${Number(run.sessions_today) || 0} today)`,
     decisions: String(Number(run.decisions_total) || 0),
     spendToday: money(run.sail_model_spend_today_usd, 2),
-    spendTotal: money(run.sail_spend_total_usd, 2),
+    // The ledgers behind these two are folded differently; the total is never shown below today.
+    spendTotal: money(String(Math.max(Number(run.sail_spend_total_usd) || 0, Number(run.sail_model_spend_today_usd) || 0).toFixed(2)), 2),
     spendNote: join(numeric(run.sail_model_spend_total_usd) ? `models ${money(run.sail_model_spend_total_usd, 2)}` : '',
       numeric(run.sail_infra_spend_total_usd) ? `box ${money(run.sail_infra_spend_total_usd, 2)}, about a cent an hour` : 'box about a cent an hour'),
     pnl: signedMoney(run.pnl_total_usd, 2), pnlTone: signOf(show(run.pnl_total_usd)),
@@ -1042,6 +1053,7 @@ export function curveReading(curve) {
     .sort((left, right) => left.generation - right.generation);
   if (!rows.length) return 'The curve appears with the first generation’s results.';
   if (rows.length < 2) return `One generation so far (${rows[0].desks} desk${rows[0].desks === 1 ? '' : 's'}). The curve needs a second to say anything.`;
+  if (rows.every(row => !(Number(row.decisions) > 0))) return `${rows.length} generations running, none with a scored decision yet. The curve means something after the first settled trades.`;
   const [before, after] = rows.slice(-2);
   const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
   const verb = delta > 0 ? 'beats' : delta < 0 ? 'trails' : 'matches';
@@ -1400,9 +1412,19 @@ export function deskRecord(events, previous = null) {
   return record;
 }
 // An idle desk in one line: when it last worked, and the last thing it concluded.
-export function idleRecordLine(record, now = Date.now()) {
+export function untilText(value, now = Date.now()) {
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) return '';
+  const seconds = Math.round((at - now) / 1000);
+  if (seconds <= 60) return 'now';
+  if (seconds < 3600) return `in ${Math.round(seconds / 60)} min`;
+  if (seconds < 86400) { const hours = Math.floor(seconds / 3600); const minutes = Math.round((seconds % 3600) / 60); return `in ${hours}h${minutes ? ` ${minutes}m` : ''}`; }
+  return `in ${Math.round(seconds / 86400)} d`;
+}
+export function idleRecordLine(record, now = Date.now(), nextAt = null) {
   const when = record?.endedAt ? `last session ${ago(record.endedAt, now)}` : record?.memoAt ? `last memo ${ago(record.memoAt, now)}` : 'no session yet';
-  return join(when, record?.memo || '');
+  const next = untilText(nextAt, now);
+  return join(when, record?.memo || '', next ? `next ${next}` : '');
 }
 export function nowRows(checkpoint, records = new Map(), now = Date.now()) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
@@ -1412,7 +1434,7 @@ export function nowRows(checkpoint, records = new Map(), now = Date.now()) {
     return {
       id: show(desk.id), name: raceName(desk), live: isLive(desk), inSession: Boolean(session),
       trigger: session ? triggerText(session.trigger) : '', since: session?.started_at ? ago(session.started_at, now) : '',
-      thought: record?.thought || '', tool: record?.tool || '', idle: session ? '' : idleRecordLine(record, now),
+      thought: record?.thought || '', tool: record?.tool || '', idle: session ? '' : idleRecordLine(record, now, desk.next_session_at || null),
     };
   }).sort((left, right) => Number(right.inSession) - Number(left.inSession));
 }
@@ -1544,7 +1566,7 @@ export function raceLine(lab, rows = []) {
   const curve = (Array.isArray(lab?.curve) ? lab.curve : []).filter(row => row && Number.isSafeInteger(row.generation)).sort((left, right) => left.generation - right.generation);
   const parts = [];
   if (running) parts.push(`${running} experiment${running === 1 ? '' : 's'} running`);
-  if (curve.length >= 2) {
+  if (curve.length >= 2 && curve.some(row => Number(row.decisions) > 0)) {
     const [before, after] = curve.slice(-2);
     const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
     parts.push(`generation ${roman(after.generation)} vs ${roman(before.generation)}: ${percent(delta.toFixed(4))}`);
@@ -1765,16 +1787,31 @@ export function sessionThoughts(events, deskId = null) {
   };
 }
 // The one line over the stream: thinking now, or when it stopped and what it decided.
+const END_REASONS = {
+  end_session: 'ended by the desk',
+  no_tool_calls: 'the model stopped calling tools',
+  provider_transport_timeout: 'the model provider timed out',
+  provider_failed: 'the model provider failed',
+  provider_cancelled: 'the model call was cancelled',
+  budget_exceeded: 'budget exceeded',
+  max_turns: 'used every turn',
+};
+export function endReason(reason) {
+  const value = show(reason);
+  if (!value) return 'ended';
+  if (END_REASONS[value]) return END_REASONS[value];
+  if (value.startsWith('incomplete:')) return `ran out of ${humanize(value.slice(11)) || 'room'}`;
+  return humanize(value);
+}
 export function idleLine(session, now = Date.now(), liveSession = null) {
   // The checkpoint can know a session is running before its first thought reaches the tape.
-  if (liveSession && typeof liveSession === 'object' && !session?.running) return join('thinking now', humanize(show(liveSession.trigger)));
+  if (liveSession && typeof liveSession === 'object' && !session?.running) return join('thinking now', triggerText(liveSession.trigger));
   if (!session || !session.startedAt) {
     const last = Array.isArray(session?.items) ? session.items.at(-1) : null;
     return last ? `last thought ${agoText(last.at, now)}` : 'no session yet';
   }
-  if (session.running) return join('thinking now', humanize(session.trigger));
-  const outcome = session.memo ? truncate(session.memo, 90).text
-    : session.reason === 'end_session' ? 'ended by the desk' : humanize(session.reason) || 'ended';
+  if (session.running) return join('thinking now', triggerText(session.trigger));
+  const outcome = session.memo ? truncate(session.memo, 90).text : endReason(session.reason);
   return join(session.endedAt ? `ended ${agoText(session.endedAt, now)}` : 'ended', outcome);
 }
 // The stream itself. `load` draws a session (the last thought typed only while it runs);

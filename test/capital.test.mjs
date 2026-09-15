@@ -20,7 +20,7 @@ import {
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
   floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge, creditLine,
   accountEquity, accountVenues, portfolioLabel, venueLabel, venueChipText, floorBalanceSeries, sinceStart,
-  agoText, typingSchedule, sessionThoughts, idleLine, thoughtStream, codeRuns, holdingRows, lineageBadges, genomeSummary, allocationReasons,
+  agoText, typingSchedule, sessionThoughts, idleLine, endReason, thoughtStream, codeRuns, holdingRows, lineageBadges, genomeSummary, allocationReasons,
   positionRows, exitChips, liveSessionText, watchLine, lineageGrid, mutationBadges, experimentRows, changeSummary,
   curveSeries, curveReading, tradeStories, latestCalibration, familyCalibrations, reliabilitySeries, probabilityText,
   instrumentLabel, profileName, LOOPS, runClock, portfolioLine, positionRationale, storyAnchor, storyHref,
@@ -374,7 +374,13 @@ test('the floor projects partners, tape lines and filters without touching marku
   assert.equal(partnerRole(partnerOf('hilibrand')), 'Lawrence · BTC and ETH · Coinbase');
   assert.equal(partnerOf(desk('rosenfeld-02', { family: 'rosenfeld' })).surname, 'Rosenfeld', 'a bred desk keeps the partner name');
   assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld 02');
-  assert.equal(partnerName('unknown-desk'), 'unknown-desk');
+  assert.equal(partnerName('unknown-desk'), 'Unknown-desk');
+  // Desks the partner table does not know still get a name: Scholes, Scholes II, Haghani II once, not twice.
+  assert.equal(partnerName('scholes'), 'Scholes');
+  assert.equal(partnerName('scholes-2'), 'Scholes II');
+  assert.equal(streamLabel('desk:haghani-2'), 'Haghani II');
+  assert.equal(raceName(desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2 })), 'Haghani II');
+  assert.equal(raceName(desk('scholes', { name: 'Scholes', family: 'ranges' })), 'Scholes');
   assert.equal(partnerOf(desk('lab-07', { name: 'Lab Seven', family: 'lab' })).surname, 'Lab Seven');
   assert.deepEqual(orderDesks([desk('hilibrand'), desk('merton'), desk('mullins')]).map(d => d.id), ['merton', 'mullins', 'hilibrand']);
   assert.equal(streamLabel('desk:merton'), 'Merton');
@@ -1331,6 +1337,8 @@ test('the book, the lineage and the lab project from the checkpoint', () => {
   assert.equal(curveReading([curveRow(1)]), 'One generation so far (2 desks). The curve needs a second to say anything.');
   assert.match(curveReading([]), /appears with the first generation/);
   assert.equal(curveReading([curveRow(1), curveRow(2, { cost_adjusted_excess_pct: '0.5', brier: null })]), 'Generation 2 trails generation 1 on cost-adjusted return by 0.70%.');
+  // Cost drag alone is not a verdict: with no scored decision anywhere, the curve says so.
+  assert.equal(curveReading([curveRow(1, { decisions: 0 }), curveRow(2, { decisions: 0, cost_adjusted_excess_pct: '-0.01' })]), '2 generations running, none with a scored decision yet. The curve means something after the first settled trades.');
   assert.equal(probabilityText('0.93'), '93%');
   assert.equal(probabilityText('1'), '100%');
   assert.equal(probabilityText('93'), '—');
@@ -1488,7 +1496,7 @@ test('a desk page tells its trade stories, shows its calibration and mutation, a
     assert.match(text, /said → happened/);
     assert.equal(detail.find('circle').length, 2, 'one dot per reliability bin');
     assert.ok(text.indexOf('Holdings') < text.indexOf('Trade stories') && text.indexOf('Trade stories') < text.indexOf('Calibration'), 'holdings, then stories, then calibration');
-    assert.match(root.querySelector('#think-state').textContent, /thinking now · event resolution/, 'the checkpoint says it is in session before a thought arrives');
+    assert.match(root.querySelector('#think-state').textContent, /thinking now · woke because a market resolved/, 'the checkpoint says it is in session before a thought arrives');
     assert.match(root.querySelector('#desk-tape').textContent, /puts 93% on KXFEDDECISION-26SEP-H25 yes · market 89%/);
   });
 });
@@ -1525,6 +1533,7 @@ const run = (overrides = {}) => ({
 test('the run clock validates like the rest of the checkpoint and reads as elapsed time, cost and profit per Sail dollar', () => {
   assert.equal(validRun(run(), '2026-09-15T14:05:00.000Z'), true);
   assert.equal(validCheckpoint(checkpoint({ run: run() })), true);
+  assert.equal(runClock(run({ sail_model_spend_today_usd: '1.32', sail_spend_total_usd: '0.77' })).spendTotal, '$1.32', 'a total never reads below today');
   assert.equal(validCheckpoint(checkpoint()), true, 'an older floor publishes no run clock');
   const refused = [
     ['started after the checkpoint', run({ started_at: '2026-09-15T15:00:00.000Z' })],
@@ -1655,7 +1664,7 @@ test('watch it think: sessions fold in order, the state line says when it stoppe
   assert.equal(running.trigger, 'cadence:13:30');
   assert.equal(running.running, true);
   assert.deepEqual(running.items.map(item => [item.kind, item.text]), [['thought', 'The Fed decides tomorrow.'], ['call', 'event_markets · query=fed'], ['thought', 'No edge at 89 cents.']]);
-  assert.equal(idleLine(running, now), 'thinking now · cadence 13 30');
+  assert.equal(idleLine(running, now), 'thinking now · sat down for the 13:30 slot');
   const memo = { seq: 6, id: 'm1', stream: 'desk:mullins', kind: 'desk.memo', at: '2026-09-15T13:31:00.000Z', payload: { session_id: 'm:1', title: 'No trade: FOMC priced efficiently', text: '…' } };
   const ended = { seq: 7, id: 'e1', stream: 'desk:mullins', kind: 'desk.session_ended', at: '2026-09-15T13:46:00.000Z', payload: { session_id: 'm:1', reason: 'end_session', requests: 6, cost_usd: '0.03' } };
   const done = sessionThoughts([session, thought, call, later, memo, ended], 'mullins');
@@ -1665,7 +1674,11 @@ test('watch it think: sessions fold in order, the state line says when it stoppe
   assert.equal(idleLine(sessionThoughts([session, thought, { ...ended, payload: { session_id: 'm:1', reason: 'budget_exceeded' } }], 'mullins'), now), 'ended 14 min ago · budget exceeded');
   assert.equal(idleLine(sessionThoughts([], 'mullins'), now), 'no session yet');
   assert.equal(idleLine(sessionThoughts([stale], 'mullins'), now), 'last thought 6 h ago');
-  assert.equal(idleLine(done, now, { trigger: 'watch:price_move' }), 'thinking now · watch price move');
+  assert.equal(idleLine(done, now, { trigger: 'watch:price_move' }), 'thinking now · woke on a price move');
+  // End reasons are words a visitor can read, never the runtime's codes.
+  assert.equal(idleLine(sessionThoughts([session, thought, { ...ended, payload: { session_id: 'm:1', reason: 'provider_transport_timeout' } }], 'mullins'), now), 'ended 14 min ago · the model provider timed out');
+  assert.equal(endReason('no_tool_calls'), 'the model stopped calling tools');
+  assert.equal(endReason('incomplete:max_output_tokens'), 'ran out of max output tokens');
 
   // The stream: a finished session draws instantly; live arrivals type, in order, once each.
   await withBrowser('', () => ({ schema_version: 1, latest_seq: 0, events: [] }), () => {
@@ -1819,6 +1832,10 @@ test('the floor’s new helpers read as words: the strip, the now lines, the fla
   assert.equal(ended.tool, '', 'a session that ended is not using a tool');
   assert.equal(idleRecordLine(ended, Date.parse('2026-09-15T14:16:00.000Z')), 'last session 14 min ago · No trade');
   assert.equal(idleRecordLine(null), 'no session yet');
+  // An idle desk says when it next sits down, as a countdown that needs no timezone.
+  assert.equal(idleRecordLine(ended, Date.parse('2026-09-15T14:16:00.000Z'), '2026-09-15T16:30:00.000Z'), 'last session 14 min ago · No trade · next in 2h 14m');
+  assert.equal(idleRecordLine(null, Date.parse('2026-09-15T14:16:00.000Z'), '2026-09-15T14:16:30.000Z'), 'no session yet · next now');
+  assert.equal(idleRecordLine(null, Date.parse('2026-09-15T14:16:00.000Z'), '2026-09-17T14:16:30.000Z'), 'no session yet · next in 2 d');
   const rows = nowRows(checkpoint({ desks: [desk('mullins', { family: 'kalshi', live_session: liveSession({ trigger: 'watch:headline' }) }), desk('rosenfeld')] }), new Map([['rosenfeld', ended]]), Date.parse('2026-09-15T14:16:00.000Z'));
   assert.deepEqual(rows.map(row => [row.name, row.inSession, row.trigger || row.idle]), [['Mullins', true, 'woke on a headline'], ['Rosenfeld', false, 'last session 14 min ago · No trade']]);
   assert.equal(nightLine(checkpoint({ watch: watch({ triggers_today: 1, wakes_today: 1 }) })), 'night desk: 1 look, 1 wake today');
@@ -1839,4 +1856,5 @@ test('the floor’s new helpers read as words: the strip, the now lines, the fla
   assert.equal(raceLine(lab(), race), '1 experiment running · generation II vs I: +0.90%');
   assert.equal(raceLine({ experiments: [experiment({ status: 'adopted' })], curve: [curveRow(1)] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
   assert.equal(raceLine(null, raceRows(checkpoint())), 'The race starts with the first bred variant.');
+  assert.equal(raceLine({ experiments: [], curve: [curveRow(1, { decisions: 0 }), curveRow(2, { decisions: 0 })] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
 });
