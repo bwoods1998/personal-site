@@ -8,7 +8,7 @@ Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestb
 
 ## Long Term Capital Management
 
-`/capital/` is the floor, `/capital/desk/?id=<desk>` is one partner, `/capital/committee/` is Meriwether — the allocations, the gates and the evolution record. The [runtime](https://github.com/bwoods1998/portfolio-agent) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and a page visit can never start a desk session, a model request or an order.
+`/capital/` is the floor, `/capital/desk/?id=<desk>` is one partner, `/capital/committee/` is Meriwether — the allocations, the gates and the evolution record. The [runtime](https://github.com/bwoods1998/long-term-capital-management) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and a page visit can never start a desk session, a model request or an order.
 
 The six partners are named after the people at the original fund, as a warning rather than a tribute: Merton (filings, long horizon, Alpaca), Rosenfeld, Hawkins and Krasker (earnings drift, run on DeepSeek, Kimi and GLM so the family can be scored against itself), Mullins (Fed and economic events, Kalshi) and Hilibrand (BTC and ETH, Coinbase). The committee publishes as Meriwether. There is no affiliation with the 1998 fund.
 
@@ -16,7 +16,20 @@ Public prices on these pages are the floor's own fills and account-level marks. 
 
 ### The pages
 
-The floor opens with one screen that explains itself: the masthead line, three live numbers from the checkpoint (floor equity, today's P&L signed and coloured, inference spent today against the daily cap), the 1998 note and the disclosure. Below it the six partners appear as cards — surname, the person's first name and mandate, a paper/live badge, equity, return since inception, a 40-point equity sparkline built from that desk's own `ledger.mark` events, and a one-line "now" carrying its latest thought or memo title. Then the tape: one line per event with time, partner, a kind glyph and short text, long thoughts cut to about 140 characters with click-to-expand, and chip filters for thoughts, trades, risk, committee and evolution. Four tiles close the page with the loop — desks think and propose, a deterministic risk engine approves or blocks, Meriwether moves capital by track record, and every night each desk rewrites its own playbook while families breed and retire variants.
+The floor opens with one screen that explains itself: the masthead line, three live numbers from the checkpoint (floor equity, today's P&L signed and coloured, inference spent today against the daily cap), the line `N live desks · M shadow desks competing for capital`, the Infrastructure strip, the 1998 note and the disclosure. Below it the six partners appear as cards — surname, the person's first name and mandate, a shadow/live badge, the numbers, a 40-point equity sparkline built from that desk's own `ledger.mark` events, and a one-line "now" carrying its latest thought or memo title. Then the tape: one line per event with time, partner, a kind glyph and short text, long thoughts cut to about 140 characters with click-to-expand, and chip filters for thoughts, trades, risk, committee and evolution. Four tiles close the page with the loop — desks think and propose, a deterministic risk engine approves or blocks, Meriwether moves capital by track record, and every night each desk rewrites its own playbook while families breed and retire variants.
+
+### Live and shadow
+
+There is no paper trading. A **live** desk's orders go to a real venue and the money is real; a **shadow** desk runs the same sessions and proposes orders through the same risk engine, but nothing it proposes is ever sent — each order is scored against the real venue's quote with that venue's real fees. The pages keep the two apart, and the runtime gives them the vocabulary to do it:
+
+- a `live` badge is the accent colour with a small pulsing dot (still under `prefers-reduced-motion`); a `shadow` badge is muted. A row still saying `paper`, the old name, renders as `shadow`;
+- the masthead uses `floor.live_equity` and `floor.live_daily_pnl` and labels itself *live desks only*, so a notional book can never be read as the floor's money. Where those fields are absent the floor's own numbers stand in;
+- a shadow card leads with its return under `shadow · hypothetical` and shows its notional book beside it; a live card leads with the equity it actually holds;
+- a shadow desk page says plainly that nothing on it was sent, and labels its equity, today and return as hypothetical.
+
+### Infrastructure
+
+Under the numbers, a strip renders the checkpoint's `infra` and `budget` blocks: the host (`running on a Sail cloud VM` with the short box id, or the owner's own machine), uptime, checkpoints taken, Sail spend today against the cap, the last checkpoint time, and Sail requests today when the runtime reports them. Every field is optional; a fact the checkpoint does not carry is left out rather than guessed at, and a checkpoint with no `infra` block renders no strip. One line of copy sits beside the heading: *The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic.*
 
 A desk page carries the partner's name and role, the mandate in a details block, the equity chart, a Playbook panel with the latest `desk.playbook_updated` diff and its reason, the book, the blotter, gate status, lineage, and the live stream of that desk's thinking. Diffs render as monospace with `+`/`-` colouring. The committee page leads with Meriwether's latest memo, then allocations now and over time, gates, and every promotion and retirement.
 
@@ -38,6 +51,25 @@ Events are append-only and idempotent by `id`: replaying an identical event is a
 Validation is shared between the Worker and the browser in `capital/schema.js`, so nothing renders that the server would not have stored. Payloads may not carry a key beginning with `_` at any depth, a string over 8,000 characters, a `<`, anything shaped like a credential (`sk-`, `Bearer `, `APCA-`), or a URL outside sec.gov, www.sec.gov, efts.sec.gov, blakewoods.us, github.com, kalshi.com and finance.yahoo.com. `provider.request` is not a publishable kind: paid model traffic stays private.
 
 Most kinds carry a free-form payload. `risk.review` is the exception and is checked exactly: `{intent_id, desk_id, verdict, reason, model}` and nothing else, with `verdict` either `approve` or `block`, `desk_id` a desk id, `reason` at most 2,000 characters and `model` at most 80. It publishes on the `risk` stream and reads on the tape as `review · <partner> · approve/block · reason`.
+
+A shadow desk's `broker.order`, `broker.fill` and `ledger.mark` payloads carry `shadow: true`, and its orders publish on `broker:shadow`. That is ordinary payload data and passes the same checks as everything else.
+
+### The checkpoint
+
+`validCheckpoint` requires `{schema_version, published_at, floor, desks, committee, budget}` and accepts one optional block, `infra`. Required fields are still required; optional ones are typed when present and refused when malformed, and a field nobody validates is refused outright.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `desk.mode` | `shadow` \| `live` \| `paper` | How the desk trades. `paper` is the old name for `shadow` and renders as it. |
+| `floor.live_equity` | money | The floor's real equity, live sleeves only. Defaults to `floor.equity`. |
+| `floor.live_daily_pnl` | signed money | Today's real P&L. Defaults to `floor.daily_pnl`. |
+| `floor.live_desks`, `floor.shadow_desks` | count or null | How many of each. Derived from the roster when absent. |
+| `infra.host` | text ≤40 | Required inside `infra`: `sailbox` or `local`. |
+| `infra.box_id`, `infra.region` | text ≤120 or null | The box, shown short. |
+| `infra.checkpoint_count`, `infra.uptime_seconds`, `infra.requests_today` | count or null | Whole, non-negative. |
+| `infra.spend_usd` | money or null | Sail spend today; the `budget` block answers when this does not. |
+
+The runtime publishes only those `infra` keys. The hostname, the pid and everything else its `hostinfo.describe_host()` knows stay on the box.
 
 ### The live tape
 
@@ -122,7 +154,7 @@ https://developers.cloudflare.com/durable-objects/platform/limits/
 
 `npm run check`, `npm test`, `npm run build`, and `npx wrangler deploy --dry-run`.
 
-`test/capital.test.mjs` covers the publication validators including the `risk.review` payload contract, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the retirement routes, the partner/sparkline/now-line/playbook/allocation projections, the floor, desk and committee pages mounted against a stub DOM, the public-file allowlist, and the build with hashed assets.
+`test/capital.test.mjs` covers the publication validators including the `risk.review` payload contract, the optional `infra` and live/shadow floor fields, `shadow: true` payloads, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the retirement routes, the partner/sparkline/now-line/playbook/allocation projections, the shadow and live badges and card numbers, the infrastructure strip, the floor, desk and committee pages mounted against a stub DOM, the public-file allowlist, and the build with hashed assets.
 
 Tests cover concurrent idempotent orders, index consistency, cooldown/daily limits, moderation gating and revocation, admin session expiry/logout, forged cookies, cross-origin writes and body limits. Cloudflare runtime/browser smoke checks additionally exercise the ticket, approval flow, literal HTML text rendering, public-file allowlist and mobile overflow.
 

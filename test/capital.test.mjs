@@ -9,13 +9,14 @@ import { Capital, MAX_EVENTS_KEPT, allowedOrigin } from '../lib/capital.mjs';
 import { retiredRoute, RETIRED_TARGET } from '../lib/retired.mjs';
 import { createServer } from '../server.mjs';
 import {
-  validEvent, validEventBatch, validCheckpoint, validDesk, validStream, validKindPayload,
-  socketMatches, parseStreamTags, sourceUrl, EVENT_KINDS, MAX_BATCH_BYTES,
+  validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
+  socketMatches, parseStreamTags, sourceUrl, deskMode, isLive, EVENT_KINDS, MAX_BATCH_BYTES,
 } from '../capital/schema.js';
 import {
   tapeLine, markSeries, sparkline, nowLine, latestPlaybook, diffLines, allocationSeries, orderDesks,
   partnerOf, partnerName, partnerRole, filterGroup, matchesFilters, truncate, lineage, fillRows, bookRows,
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
+  floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge,
 } from '../capital/capital.js';
 
 const token = 'woods-capital-test-publication-token-01';
@@ -52,6 +53,10 @@ function checkpoint(overrides = {}) {
     ...overrides,
   };
 }
+const infra = (overrides = {}) => ({
+  host: 'sailbox', box_id: 'box-9f2c1ad4', checkpoint_count: 118, spend_usd: '4.21',
+  uptime_seconds: 93784, region: 'us-east', requests_today: 37, ...overrides,
+});
 const review = (overrides = {}) => ({
   id: 'risk.review.1', stream: 'risk', kind: 'risk.review', at: '2026-09-15T14:02:00.000Z',
   digest: 'a'.repeat(64),
@@ -732,4 +737,220 @@ test('the committee page leads with the memo, then allocations over time, gates 
     assert.match(root.querySelector('#committee-gates').textContent, /Sixty forward days/);
     assert.match(root.querySelector('#committee-evolution').textContent, /drawdown breach/);
   });
+});
+
+
+test('a shadow desk is published, validated and rendered as hypothetical', async () => {
+  const { capital } = floor();
+  // The runtime's own vocabulary, and the one it used before the rename.
+  assert.equal(validDesk(desk('merton', { mode: 'shadow' }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { mode: 'paper' }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { mode: 'margin' }), '2026-09-15T14:05:00.000Z'), false);
+  assert.equal(deskMode('paper'), 'shadow');
+  assert.equal(deskMode('live'), 'live');
+  assert.equal(isLive({ mode: 'shadow' }), false);
+  assert.equal(isLive({ mode: 'paper' }), false);
+  assert.equal(isLive({ mode: 'live' }), true);
+
+  // `shadow: true` is ordinary payload data on an order, a fill and a mark.
+  const shadowed = kind => event(9, {
+    id: `broker.shadow.${kind}`, stream: 'broker:shadow', kind: `broker.${kind}`,
+    payload: { order_id: 'o1', intent_id: 'i1', status: 'filled', filled_quantity: '2', shadow: true },
+  });
+  for (const kind of ['order', 'fill']) assert.equal(validEvent(shadowed(kind)), true);
+  const mark = event(10, {
+    id: 'ledger.merton.mark.1', stream: 'ledger:merton', kind: 'ledger.mark',
+    payload: { equity: '2000', cash: '2000', daily_pnl: '0', positions: [], as_of: '2026-09-15T14:00:00.000Z', shadow: true },
+  });
+  assert.equal(validEvent(mark), true);
+  assert.equal((await post(capital, '/api/capital/events', batch(shadowed('order'), mark))).status, 200);
+
+  // A shadow card leads with the score and names it; a live card leads with the money.
+  const shadow = desk('merton', { mode: 'shadow', equity: '2000', return_pct: '3.5' });
+  assert.deepEqual(cardNumbers(shadow).map(row => row[1]), ['shadow · hypothetical', 'notional book']);
+  assert.equal(cardNumbers(shadow)[0][0], '+3.50%');
+  assert.deepEqual(cardNumbers(desk('merton', { mode: 'live' })).map(row => row[1]), ['equity', 'since inception']);
+});
+
+test('the floor block separates real equity from the desks competing for it', async () => {
+  const { capital } = floor();
+  const board = [
+    desk('mullins', { mode: 'live', equity: '210.55', return_pct: '5.2' }),
+    desk('merton', { mode: 'shadow', equity: '2000', return_pct: '3.5' }),
+    desk('krasker', { mode: 'shadow', equity: '1000', return_pct: '-1' }),
+  ];
+  const body = checkpoint({
+    desks: board,
+    floor: {
+      ...checkpoint().floor, equity: '210.55', daily_pnl: '-1.25',
+      live_equity: '210.55', live_daily_pnl: '-1.25', live_desks: 1, shadow_desks: 2,
+    },
+  });
+  assert.equal(validCheckpoint(body), true);
+  assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200);
+  assert.equal(floorEquity(body.floor), '210.55');
+  assert.equal(floorDaily(body.floor), '-1.25');
+  assert.deepEqual(floorCounts(body), { live: 1, shadow: 2 });
+  assert.equal(deskCountLine(body), '1 live desk · 2 shadow desks competing for capital');
+
+  // The counts are optional: an older checkpoint is counted from its own roster.
+  const bare = checkpoint({ desks: board });
+  assert.equal(validCheckpoint(bare), true);
+  assert.deepEqual(floorCounts(bare), { live: 1, shadow: 2 });
+  assert.equal(floorEquity(bare.floor), bare.floor.equity, 'no live_equity falls back to the floor');
+  assert.equal(deskCountLine(checkpoint({ desks: [board[0]] })), '1 live desk · 0 shadow desks competing for capital');
+
+  for (const invalid of [
+    checkpoint({ floor: { ...checkpoint().floor, live_equity: -5 } }),
+    checkpoint({ floor: { ...checkpoint().floor, live_equity: '-5' } }),
+    checkpoint({ floor: { ...checkpoint().floor, live_daily_pnl: 1.25 } }),
+    checkpoint({ floor: { ...checkpoint().floor, shadow_desks: '2' } }),
+    checkpoint({ floor: { ...checkpoint().floor, shadow_desks: -1 } }),
+    checkpoint({ floor: { ...checkpoint().floor, live_notes: 'private' } }),
+  ]) {
+    assert.equal(validCheckpoint(invalid), false);
+    assert.equal((await post(capital, '/api/capital/checkpoint', invalid)).status, 400);
+  }
+});
+
+test('the infrastructure block is optional, typed, and rendered from what it carries', async () => {
+  const { capital } = floor();
+  assert.equal(validCheckpoint(checkpoint()), true, 'a checkpoint without infra still publishes');
+  const body = checkpoint({ infra: infra() });
+  assert.equal(validCheckpoint(body), true);
+  assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200);
+  assert.deepEqual(await (await get(capital, '/api/capital/checkpoint')).json(), body);
+  assert.equal(validInfra({ host: 'local' }), true, 'host alone is enough');
+  assert.equal(validInfra({ host: 'local', box_id: null, region: null, spend_usd: null, checkpoint_count: null }), true);
+
+  for (const bad of [
+    {}, { box_id: 'b' }, { host: '' }, { host: 'local', hostname: 'blake-macbook' },
+    { host: 'local', checkpoint_count: '4' }, { host: 'local', checkpoint_count: -1 },
+    { host: 'local', uptime_seconds: 1.5 }, { host: 'local', spend_usd: 4.21 },
+    { host: 'local', spend_usd: '-1' }, { host: 'local', region: 'a'.repeat(200) },
+  ]) {
+    assert.equal(validInfra(bad), false, JSON.stringify(bad));
+    assert.equal((await post(capital, '/api/capital/checkpoint', checkpoint({ infra: bad, published_at: '2026-09-15T14:30:00.000Z' }))).status, 400);
+  }
+
+  assert.equal(uptimeText(93784), '1d 2h');
+  assert.equal(uptimeText(7260), '2h 1m');
+  assert.equal(uptimeText(90), '1m');
+  assert.equal(uptimeText(null), '');
+  assert.equal(boxShort('box-9f2c1ad4e7b6'), '9f2c1ad4');
+  assert.equal(boxShort(null), '');
+
+  const rows = new Map(infraRows(body));
+  assert.match(rows.get('Host'), /running on a Sail cloud VM/);
+  assert.match(rows.get('Host'), /box 9f2c1ad4/);
+  assert.match(rows.get('Host'), /us-east/);
+  assert.equal(rows.get('Uptime'), '1d 2h');
+  assert.equal(rows.get('Checkpoints'), '118');
+  assert.equal(rows.get('Sail spend today'), '$4.21 of $25');
+  assert.equal(rows.get('Sail requests today'), '37');
+  assert.ok(rows.get('Last checkpoint'));
+  // Absent facts are left out rather than guessed at, and no infra means no strip.
+  const quiet = new Map(infraRows(checkpoint({ infra: { host: 'local' } })));
+  assert.equal(quiet.get('Host'), 'running on the owner’s own machine');
+  assert.equal(quiet.has('Uptime'), false);
+  assert.equal(quiet.has('Sail requests today'), false);
+  assert.equal(quiet.get('Sail spend today'), '$4.21 of $25', 'the budget block answers when infra does not');
+  assert.deepEqual(infraRows(checkpoint()), []);
+});
+
+test('the floor page badges live against shadow and mounts the infrastructure strip', async () => {
+  const root = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-infra', 'floor-partners', 'tape-filters', 'floor-tape']);
+  const board = [
+    desk('mullins', { name: 'Mullins', family: 'mullins', mode: 'live', equity: '210.55', return_pct: '5.2', gate: null }),
+    desk('merton', { name: 'Merton', family: 'merton', mode: 'shadow', equity: '2000', return_pct: '3.5', gate: null }),
+  ];
+  const body = checkpoint({
+    desks: board,
+    floor: {
+      ...checkpoint().floor, equity: '210.55', daily_pnl: '-1.25',
+      live_equity: '210.55', live_daily_pnl: '-1.25', live_desks: 1, shadow_desks: 1,
+    },
+    infra: infra(),
+  });
+  await withBrowser('', path => {
+    if (path.startsWith('/api/capital/checkpoint')) return body;
+    return { schema_version: 1, latest_seq: 1, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const numbers = root.querySelector('#floor-numbers');
+    assert.match(numbers.textContent, /\$211/, 'the masthead is the live sleeve, not the shadow books');
+    assert.doesNotMatch(numbers.textContent, /\$2,000/, 'a notional book never reaches the floor number');
+    assert.match(numbers.textContent, /live desks only/);
+    assert.match(numbers.textContent, /1 live desk · 1 shadow desk competing for capital/);
+
+    const strip = root.querySelector('#floor-infra');
+    assert.equal(strip.getAttribute('aria-busy'), 'false');
+    assert.match(strip.textContent, /running on a Sail cloud VM/);
+    assert.match(strip.textContent, /box 9f2c1ad4/);
+    assert.match(strip.textContent, /1d 2h/);
+    assert.match(strip.textContent, /118/);
+    assert.match(strip.textContent, /\$4\.21 of \$25/);
+    assert.match(strip.textContent, /37/, 'Sail requests today');
+    assert.match(strip.textContent, /The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic\./);
+
+    // The founding order decides the grid, so Merton (shadow) leads and Mullins (live) follows.
+    const cards = root.querySelector('#floor-partners').find('a');
+    const [shadowCard, liveCard] = cards;
+    const badges = cards.map(card => card.withClass('badge')[0]);
+    assert.deepEqual(badges.map(badge => badge.className), ['badge badge-shadow', 'badge badge-live']);
+    assert.equal(badges[1].withClass('badge-dot').length, 1, 'live pulses');
+    assert.equal(badges[0].withClass('badge-dot').length, 0, 'shadow does not');
+    assert.match(badges[0].getAttribute('title'), /never sent/);
+    assert.match(badges[1].getAttribute('title'), /real money/);
+    assert.match(liveCard.textContent, /\$211/);
+    assert.match(liveCard.textContent, /equity/);
+    assert.match(shadowCard.textContent, /shadow · hypothetical/);
+    assert.match(shadowCard.textContent, /\+3\.50%/);
+    assert.match(shadowCard.textContent, /notional book/);
+  });
+});
+
+test('a shadow desk page says nothing on it was ever sent', async () => {
+  const root = stubPage('desk', ['desk-header', 'desk-detail', 'desk-tape', 'desk-status']);
+  await withBrowser('?id=merton', path => {
+    if (path.startsWith('/api/capital/desks/')) return desk('merton', { name: 'Merton', family: 'merton', mode: 'shadow' });
+    return { schema_version: 1, latest_seq: 1, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const header = root.querySelector('#desk-header').textContent;
+    assert.match(header, /shadow/);
+    assert.match(header, /Nothing below was sent/);
+    assert.match(header, /Notional budget/);
+    assert.match(header, /Equity \(hypothetical\)/);
+    assert.match(header, /Return \(hypothetical\)/);
+    assert.match(root.querySelector('#desk-detail').textContent, /Shadow to live money, on evidence/);
+  });
+});
+
+test('the pages say shadow, never paper', async () => {
+  for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
+    const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
+    // The one permitted mention is the sentence that rules paper trading out.
+    const mentions = (html.match(/paper/gi) || []).length;
+    const ruledOut = (html.match(/There is no paper trading here/g) || []).length;
+    assert.equal(mentions, ruledOut, `${page} still says paper`);
+  }
+  const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
+  assert.match(floorHtml, /id="floor-infra"/);
+  assert.match(floorHtml, /What a shadow desk is/);
+  // The runtime repository was renamed; every link on the pages follows it.
+  const REPO = 'https://github.com/bwoods1998/long-term-capital-management';
+  for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
+    const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /github\.com\/bwoods1998\/portfolio-agent/, page);
+    assert.ok(html.includes(REPO), `${page} links the runtime repository`);
+  }
+  const script = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
+  assert.ok(script.includes(`'${REPO}'`), 'the unavailable-checkpoint notice links the runtime');
+  assert.doesNotMatch(script, /portfolio-agent/);
+  const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
+  assert.match(css, /\.badge-shadow/);
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,80}badge-dot/);
 });

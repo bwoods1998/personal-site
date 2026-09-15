@@ -57,6 +57,17 @@ h1 { font-size: clamp(32px, 5.4vw, 54px); font-weight: 500; letter-spacing: -2px
   letter-spacing: -1.4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
 .metric-note { display: block; margin-top: 7px; font: 10px/1.7 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: 0; }
+.desk-counts { margin: 16px 0 0; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: .3px; }
+
+/* 1b — where the floor runs, and what the box costs to run. */
+.infra { margin: 24px 0 0; padding: 16px 18px; border: 1px solid var(--line); background: var(--surface); }
+.infra-heading { display: flex; justify-content: space-between; gap: 12px 20px; align-items: baseline; flex-wrap: wrap; }
+.infra-heading h2 { font: 11px/1.6 'Courier New', Courier, monospace; font-weight: 400; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+.infra-copy { font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); max-width: 620px; }
+.infra .facts { margin-top: 14px; gap: 12px 24px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.infra .facts dd { font-size: 12px; }
+.desk-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.desk-mode .badge { margin-left: 0; }
 .footnote { margin: 30px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); max-width: 620px; }
 .disclosure {
   margin: 14px 0 0; padding: 14px 16px; border: 1px solid var(--line); background: var(--surface);
@@ -91,11 +102,22 @@ h3 { font-size: 13px; font-weight: 500; margin: 0; }
 .partner-surname { font-size: 23px; letter-spacing: -.8px; line-height: 1.1; }
 .partner-variant { font: 10px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 .badge {
+  display: inline-flex; align-items: center; gap: 5px;
   margin-left: auto; padding: 2px 7px; border: 1px solid var(--line);
   font: 9px/1.7 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
 }
-.badge-live { color: var(--positive); border-color: #55694a; }
-.badge-paper { color: var(--muted); }
+/* Real money is the accent, and it breathes. A scored book is muted and stays still. */
+.badge-live { color: var(--accent); border-color: #6b5836; }
+.badge-shadow, .badge-paper { color: var(--muted); }
+.badge-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none;
+  animation: badge-pulse 2.4s ease-in-out infinite;
+}
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.7); }
+}
+@media (prefers-reduced-motion: reduce) { .badge-dot { animation: none; } }
 .partner-role { font: 10px/1.7 'Courier New', Courier, monospace; color: var(--muted); overflow-wrap: anywhere; }
 .partner-numbers { display: flex; gap: 20px; flex-wrap: wrap; }
 .partner-numbers > span { display: flex; flex-direction: column; gap: 3px; }

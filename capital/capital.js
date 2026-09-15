@@ -1,5 +1,6 @@
 import {
-  EVENT_KINDS, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, deskId, validCheckpoint, validDesk, validPublicEvent, socketMatches,
+  EVENT_KINDS, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, deskId, deskMode, isLive,
+  validCheckpoint, validDesk, validPublicEvent, socketMatches,
 } from './schema.js';
 
 // Long Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
@@ -16,7 +17,7 @@ const CARD_MARKS = 60;
 const MAX_CARDS = 12;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
-const REPOSITORY = 'https://github.com/bwoods1998/portfolio-agent';
+const REPOSITORY = 'https://github.com/bwoods1998/long-term-capital-management';
 const responseCache = new Map();
 const STREAM_LABELS = { risk: 'Risk engine', committee: 'Meriwether', evolution: 'Evolution', lab: 'Lab', ops: 'Ops' };
 
@@ -598,20 +599,45 @@ function sparkFigure(marks) {
   return svg;
 }
 
+// Live carries a pulsing dot; shadow is muted and says so. The two never look alike.
+export function modeBadge(desk) {
+  const mode = deskMode(desk?.mode);
+  const badge = element('span', null, `badge badge-${mode}`);
+  if (mode === 'live') {
+    const dot = element('span', null, 'badge-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    badge.append(dot);
+  }
+  badge.append(element('span', mode));
+  badge.setAttribute('title', mode === 'live'
+    ? 'Trading real money on a live venue.'
+    : 'Orders are scored against real prices and never sent. Competing for a live sleeve.');
+  return badge;
+}
+// A live card leads with the money it holds. A shadow card leads with the score, labelled.
+export function cardNumbers(desk) {
+  if (isLive(desk)) {
+    return [
+      [money(desk.equity, 0), 'equity', ''],
+      [percent(desk.return_pct), 'since inception', signOf(desk.return_pct)],
+    ];
+  }
+  return [
+    [percent(desk.return_pct), 'shadow · hypothetical', signOf(desk.return_pct)],
+    [money(desk.equity, 0), 'notional book', ''],
+  ];
+}
 function partnerCard(desk, record) {
   const partner = partnerOf(desk);
   const card = link('', deskHref(desk.id), 'partner');
   const head = element('span', null, 'partner-head');
   head.append(element('span', partner.surname, 'partner-surname'));
   if (partner.variant) head.append(element('span', partner.variant, 'partner-variant'));
-  head.append(element('span', desk.mode, `badge badge-${desk.mode}`));
+  head.append(modeBadge(desk));
   card.append(head);
   card.append(element('span', partnerRole(partner) || desk.family, 'partner-role'));
   const numbers = element('span', null, 'partner-numbers');
-  for (const [value, label, tone] of [
-    [money(desk.equity, 0), 'equity', ''],
-    [percent(desk.return_pct), 'since inception', signOf(desk.return_pct)],
-  ]) {
+  for (const [value, label, tone] of cardNumbers(desk)) {
     const cell = element('span');
     cell.append(element('b', value, tone), element('i', label));
     numbers.append(cell);
@@ -629,20 +655,79 @@ function partnerGrid(desks, records) {
   for (const desk of orderDesks(desks).slice(0, MAX_CARDS)) grid.append(partnerCard(desk, records.get(desk.id)));
   return grid;
 }
+// The masthead is real money. A shadow desk's book is a score, and the floor never adds it in.
+export const floorEquity = floor => (numeric(floor?.live_equity) ? floor.live_equity : floor?.equity);
+export const floorDaily = floor => (numeric(floor?.live_daily_pnl) ? floor.live_daily_pnl : floor?.daily_pnl);
+export function floorCounts(checkpoint) {
+  const floor = checkpoint?.floor || {};
+  const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
+  const given = field => (Number.isSafeInteger(floor[field]) ? floor[field] : null);
+  return {
+    live: given('live_desks') ?? desks.filter(isLive).length,
+    shadow: given('shadow_desks') ?? desks.filter(desk => !isLive(desk)).length,
+  };
+}
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+export function deskCountLine(checkpoint) {
+  const { live, shadow } = floorCounts(checkpoint);
+  return `${plural(live, 'live desk')} · ${plural(shadow, 'shadow desk')} competing for capital`;
+}
 function headlineNumbers(checkpoint) {
   const floor = checkpoint.floor;
+  const daily = floorDaily(floor);
   const numbers = element('dl', null, 'headline');
   numbers.append(
-    metric('Floor equity', money(floor.equity, 0)),
-    metric('Today', signedMoney(floor.daily_pnl, 0), signOf(floor.daily_pnl)),
+    metric('Floor equity', money(floorEquity(floor), 0), '', 'live desks only'),
+    metric('Today', signedMoney(daily, 0), signOf(daily)),
     metric('Inference today', `${money(checkpoint.budget.spent_today_usd, 2)} / ${money(checkpoint.budget.cap_usd, 0)}`, '', 'spent of the daily cap'),
   );
   return numbers;
 }
 
+// ---------------------------------------------------------------- the box the floor runs on
+const HOST_COPY = { sailbox: 'running on a Sail cloud VM', local: 'running on the owner’s own machine' };
+export const boxShort = value => (typeof value === 'string' && value ? value.replace(/^(?:box|sb)[-_]/i, '').slice(0, 8) : '');
+export function uptimeText(seconds) {
+  if (!Number.isSafeInteger(seconds) || seconds < 0) return '';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+// One row per fact the checkpoint actually carried. Nothing is guessed and nothing is padded.
+export function infraRows(checkpoint) {
+  const infra = checkpoint?.infra;
+  const budget = checkpoint?.budget || {};
+  if (!infra || typeof infra !== 'object' || Array.isArray(infra)) return [];
+  const host = show(infra.host);
+  const box = boxShort(infra.box_id);
+  const rows = [['Host', join(HOST_COPY[host] || host, box && `box ${box}`, show(infra.region))]];
+  const uptime = uptimeText(infra.uptime_seconds);
+  if (uptime) rows.push(['Uptime', uptime]);
+  if (Number.isSafeInteger(infra.checkpoint_count)) rows.push(['Checkpoints', String(infra.checkpoint_count)]);
+  const spent = numeric(infra.spend_usd) ? infra.spend_usd : budget.spent_today_usd;
+  if (numeric(spent)) rows.push(['Sail spend today', `${money(spent, 2)} of ${money(show(budget.cap_usd), 0)}`]);
+  if (checkpoint?.published_at) rows.push(['Last checkpoint', date(checkpoint.published_at)]);
+  if (Number.isSafeInteger(infra.requests_today)) rows.push(['Sail requests today', String(infra.requests_today)]);
+  return rows;
+}
+const INFRA_COPY = 'The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic.';
+function infraStrip(checkpoint) {
+  const rows = infraRows(checkpoint);
+  if (!rows.length) return null;
+  const strip = element('section', null, 'infra');
+  const heading = element('div', null, 'infra-heading');
+  heading.append(element('h2', 'Infrastructure'), element('span', INFRA_COPY, 'infra-copy'));
+  strip.append(heading, facts(rows));
+  return strip;
+}
+
 async function startFloor(root) {
   const status = root.querySelector('#floor-status');
   const numbers = root.querySelector('#floor-numbers');
+  const infra = root.querySelector('#floor-infra');
   const partners = root.querySelector('#floor-partners');
   const filters = root.querySelector('#tape-filters');
   const tape = root.querySelector('#floor-tape');
@@ -663,8 +748,16 @@ async function startFloor(root) {
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
-      numbers.replaceChildren(headlineNumbers(state.checkpoint));
+      numbers.replaceChildren(
+        headlineNumbers(state.checkpoint),
+        element('p', deskCountLine(state.checkpoint), 'desk-counts'),
+      );
       numbers.setAttribute('aria-busy', 'false');
+      if (infra) {
+        const strip = infraStrip(state.checkpoint);
+        infra.replaceChildren(...(strip ? [strip] : []));
+        infra.setAttribute('aria-busy', 'false');
+      }
       drawPartners();
       statusLine(status, state.mode, state.checkpoint.published_at);
     } catch {
@@ -673,6 +766,7 @@ async function startFloor(root) {
       notice.append(link('Read the runtime on GitHub.', REPOSITORY));
       numbers.replaceChildren(notice);
       numbers.setAttribute('aria-busy', 'false');
+      if (infra) infra.setAttribute('aria-busy', 'false');
       partners.setAttribute('aria-busy', 'false');
     }
   }
@@ -775,11 +869,21 @@ async function startDesk(root) {
   header.append(element('p', partnerRole(partner) || (desk ? desk.family : id), 'partner-role'));
   if (desk) {
     if (partner.mandate) header.append(details('Mandate', element('p', partner.mandate, 'mandate')));
+    const live = isLive(desk);
+    const head = element('p', null, 'desk-mode');
+    head.append(modeBadge(desk), element('span', live
+      ? 'Trading real money. Every fill below happened.'
+      : 'Nothing below was sent. Orders are scored against real prices, and the record decides whether this desk earns a live sleeve.'));
+    header.append(head);
     header.append(facts([
       ['Desk', desk.id], ['Family', desk.family], ['Generation', String(desk.generation)],
-      ['Parent', desk.parent_id || 'Founding partner'], ['Mode', desk.mode], ['Venues', desk.venues.join(', ') || 'None'],
-      ['Capital', money(desk.capital_usd, 0)], ['Equity', money(desk.equity, 0)], ['Cash', money(desk.cash, 0)],
-      ['Today', signedMoney(desk.daily_pnl, 2)], ['Return', percent(desk.return_pct)], ['Max drawdown', percent(desk.max_drawdown_pct).replace('+', '−')],
+      ['Parent', desk.parent_id || 'Founding partner'], ['Mode', deskMode(desk.mode)],
+      ['Venue', desk.venues.join(', ') || 'None'],
+      [live ? 'Capital' : 'Notional budget', money(desk.capital_usd, 0)],
+      [live ? 'Equity' : 'Equity (hypothetical)', money(desk.equity, 0)], ['Cash', money(desk.cash, 0)],
+      [live ? 'Today' : 'Today (hypothetical)', signedMoney(desk.daily_pnl, 2)],
+      [live ? 'Return' : 'Return (hypothetical)', percent(desk.return_pct)],
+      ['Max drawdown', percent(desk.max_drawdown_pct).replace('+', '−')],
       ['Days live', String(desk.days_live)], ['Orders', String(desk.orders)], ['Inference cost', money(desk.cost_usd, 2)],
       ['Status', desk.status], ['Gate', desk.gate ? `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}` : 'None recorded'],
       ['Updated', date(desk.updated_at)],
@@ -813,7 +917,7 @@ async function startDesk(root) {
   blotter.append(fillsForDesk.length
     ? table(['Time', 'Venue', 'Instrument', 'Side', 'Quantity', 'Price', 'Fee'], fillsForDesk.slice(0, 30).map(row => [date(row.at), row.venue, row.instrument, row.side, row.quantity, money(row.price, 4), money(row.fee, 4)]))
     : element('p', 'No fills published yet.', 'empty-state'));
-  const gate = section('Gate', 'Paper to live money, on evidence');
+  const gate = section('Gate', 'Shadow to live money, on evidence');
   if (desk?.gate) {
     gate.append(element('p', `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}`, desk.gate.passed ? 'gate-pass' : 'gate-fail'));
     gate.append(facts(Object.entries(desk.gate.evidence).slice(0, 12).map(([key, value]) => [key, show(value) || '…'])));
