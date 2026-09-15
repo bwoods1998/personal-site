@@ -10,14 +10,14 @@ import { retiredRoute, RETIRED_TARGET } from '../lib/retired.mjs';
 import { createServer } from '../server.mjs';
 import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
-  validVenues, validVenueBalance, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
+  validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES,
 } from '../capital/schema.js';
 import {
   tapeLine, markSeries, sparkline, nowLine, latestPlaybook, diffLines, allocationSeries, orderDesks,
   partnerOf, partnerName, partnerRole, filterGroup, matchesFilters, truncate, lineage, fillRows, bookRows,
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
-  floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge,
+  floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge, creditLine,
   accountEquity, accountVenues, portfolioLabel, venueLabel, venueChipText, floorBalanceSeries, sinceStart,
 } from '../capital/capital.js';
 
@@ -865,6 +865,28 @@ test('the infrastructure block is optional, typed, and rendered from what it car
   assert.equal(quiet.has('Sail requests today'), false);
   assert.equal(quiet.get('Sail spend today'), '$4.21 of $25', 'the budget block answers when infra does not');
   assert.deepEqual(infraRows(checkpoint()), []);
+});
+
+test('the runway spend policy is accepted, rendered, and refused when it is not arithmetic', () => {
+  const runway = {
+    spent_today_usd: '0.10', cap_usd: '269.82', mode: 'open', balance_usd: '279.82', spendable_usd: '269.82',
+    runway_days: '385.4', burn_usd_per_day: '0.70', reserve_usd: '10', desk_fuse_usd: '67.45',
+  };
+  assert.equal(validBudget(runway), true);
+  assert.equal(validCheckpoint(checkpoint({ budget: runway })), true);
+  assert.equal(validBudget({ spent_today_usd: '4.21', cap_usd: '25' }), true, 'the capped policy still publishes');
+  assert.equal(validBudget({ ...runway, mode: 'panic' }), false);
+  assert.equal(validBudget({ ...runway, runway_days: 'soon' }), false);
+  assert.equal(validBudget({ ...runway, balance_usd: null, runway_days: null, mode: 'unknown' }), true, 'an unread balance is null, not zero');
+  assert.equal(validBudget({ ...runway, extra: '1' }), false);
+
+  // The headline says what the owner wants to know: how much credit, how long it lasts, no cap.
+  assert.deepEqual(creditLine(runway), { label: 'Sail credit', value: '$280', note: '385d runway · no cap · $0.10 today', mode: 'open' });
+  assert.equal(creditLine({ ...runway, mode: 'throttled', cap_usd: '2' }).note, '385d runway · throttled to $2 a day');
+  assert.equal(creditLine({ ...runway, mode: 'stopped', balance_usd: '9.80' }).note, 'stopped · waiting for credit');
+  assert.equal(creditLine({ spent_today_usd: '4.21', cap_usd: '25' }).value, '$4.21 / $25', 'the capped policy keeps its old line');
+  const rows = new Map(infraRows(checkpoint({ budget: runway, infra: infra() })));
+  assert.equal(rows.get('Sail spend today'), '$4.21 · no cap · 385 days of runway');
 });
 
 test('the floor page badges live against shadow and mounts the infrastructure strip', async () => {

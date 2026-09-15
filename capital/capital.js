@@ -259,7 +259,9 @@ const DETAILS = {
   'lab.hypothesis': p => join(show(p.text), show(p.test_plan)),
   'lab.result': p => join(show(p.verdict), show(p.hypothesis_id)),
   'ops.alert': p => join(show(p.level), show(p.text)),
-  'ops.budget': p => join(show(p.scope), p.spent_usd ? `${money(show(p.spent_usd), 2)} of ${money(show(p.cap_usd), 2)}` : ''),
+  'ops.budget': p => (p.mode
+    ? join(show(p.scope), show(p.mode), numeric(p.balance_usd) ? `credit ${money(show(p.balance_usd), 0)}` : '', numeric(p.runway_days) ? `${Math.floor(Number(p.runway_days))}d runway` : '', p.spent_usd ? `${money(show(p.spent_usd), 2)} today` : '')
+    : join(show(p.scope), p.spent_usd ? `${money(show(p.spent_usd), 2)} of ${money(show(p.cap_usd), 2)}` : '')),
 };
 function summarizeArguments(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return show(value);
@@ -728,9 +730,28 @@ function headlineNumbers(checkpoint) {
       ? metric('Floor equity', money(floorEquity(floor), 0), '', 'live desks only')
       : metric(portfolioLabel(floor), money(account, 2), '', 'real account balances'),
     metric('Today', signedMoney(daily, 0), signOf(daily)),
-    metric('Inference today', `${money(checkpoint.budget.spent_today_usd, 2)} / ${money(checkpoint.budget.cap_usd, 0)}`, '', 'spent of the daily cap'),
+    creditMetric(checkpoint.budget),
   );
   return numbers;
+}
+// The third headline number. Under the runway policy it is the Sail credit and how long it
+// lasts at the current burn; under the older capped policy it is today's spend against the cap.
+export function creditLine(budget) {
+  if (!budget || typeof budget !== 'object') return null;
+  if (!budget.mode) return { label: 'Inference today', value: `${money(budget.spent_today_usd, 2)} / ${money(budget.cap_usd, 0)}`, note: 'spent of the daily cap' };
+  const runway = numeric(budget.runway_days) ? `${Math.floor(Number(budget.runway_days))}d runway` : '';
+  const note = {
+    open: join(runway, 'no cap', `${money(budget.spent_today_usd, 2)} today`),
+    throttled: join(runway, `throttled to ${money(budget.cap_usd, 0)} a day`),
+    stopped: 'stopped · waiting for credit',
+    unknown: join('balance unread', `${money(budget.spent_today_usd, 2)} today`),
+  }[budget.mode] || '';
+  const value = numeric(budget.balance_usd) ? money(budget.balance_usd, 0) : `${money(budget.spent_today_usd, 2)} today`;
+  return { label: 'Sail credit', value, note, mode: budget.mode };
+}
+function creditMetric(budget) {
+  const line = creditLine(budget) || { label: 'Inference today', value: '', note: '', mode: '' };
+  return metric(line.label, line.value, line.mode === 'stopped' ? 'neg' : '', line.note);
 }
 // One chip per account, under the headline, so the total is always shown broken into its parts.
 function venueChips(floor) {
@@ -800,10 +821,18 @@ export function infraRows(checkpoint) {
   if (uptime) rows.push(['Uptime', uptime]);
   if (Number.isSafeInteger(infra.checkpoint_count)) rows.push(['Checkpoints', String(infra.checkpoint_count)]);
   const spent = numeric(infra.spend_usd) ? infra.spend_usd : budget.spent_today_usd;
-  if (numeric(spent)) rows.push(['Sail spend today', `${money(spent, 2)} of ${money(show(budget.cap_usd), 0)}`]);
+  if (numeric(spent)) rows.push(['Sail spend today', budget.mode ? spendLine(spent, budget) : `${money(spent, 2)} of ${money(show(budget.cap_usd), 0)}`]);
   if (checkpoint?.published_at) rows.push(['Last checkpoint', date(checkpoint.published_at)]);
   if (Number.isSafeInteger(infra.requests_today)) rows.push(['Sail requests today', String(infra.requests_today)]);
   return rows;
+}
+// "Spend today" under the runway policy: what was spent, and what governs it.
+function spendLine(spent, budget) {
+  const runway = numeric(budget.runway_days) ? `${Math.floor(Number(budget.runway_days))} days of runway` : '';
+  if (budget.mode === 'open') return join(money(spent, 2), 'no cap', runway);
+  if (budget.mode === 'throttled') return join(money(spent, 2), `throttled to ${money(show(budget.cap_usd), 0)} a day`, runway);
+  if (budget.mode === 'stopped') return join(money(spent, 2), 'stopped: waiting for Sail credit');
+  return money(spent, 2);
 }
 const INFRA_COPY = 'The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic.';
 function infraStrip(checkpoint) {
