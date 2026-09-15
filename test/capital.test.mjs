@@ -916,6 +916,27 @@ test('a desk may say when it next sits down, or that it never does', () => {
   assert.equal(validCheckpoint(checkpoint({ desks: [desk('rosenfeld', { next_session_at: 'soon' })] })), false);
 });
 
+test('positions and exit plans validate in the shapes the floor really publishes', () => {
+  // A holding the floor could not tie to an intent carries null ids; a desk-initiated market
+  // exit carries kind "desk" and no price yet; an instrument carries its venue fields.
+  const holding = {
+    instrument: { symbol: 'KXBTCD-26SEP15-T76000', asset_class: 'event', venue: 'kalshi' }, side: 'yes', quantity: '20',
+    entry_price: '0.56', mark_price: '0.6', market_value: '12.0', unrealized_pnl: '0.8', opened_at: '2026-09-15T22:00:00.000Z',
+    thesis: '', intent_id: null, session_id: null, target_price: null, stop_price: null, time_stop_at: null,
+    exit_orders: [{ id: 'ord-2', kind: 'desk', price: null }, { id: 'ord-1', kind: 'target', price: '0.95' }],
+  };
+  assert.equal(validPosition(holding, '2026-09-15T23:00:00.000Z'), true);
+  assert.equal(validPosition({ ...holding, exit_orders: [{ id: 'x', kind: 'panic', price: null }] }, '2026-09-15T23:00:00.000Z'), false);
+  assert.equal(validPosition({ ...holding, intent_id: 7 }, '2026-09-15T23:00:00.000Z'), false);
+  const plan = event(9, { kind: 'desk.exit_plan', payload: {
+    intent_id: 'oi-abc', instrument: { asset_class: 'event', symbol: 'KXBTCD-26SEP15-T76000', venue: 'kalshi', multiplier: '1', expiry: null, strike: null, right: 'yes', market_id: 'KXBTCD-26SEP15-T76000', currency: 'USD' },
+    target_price: '0.95', stop_price: '0.40', time_stop_at: '2026-09-17T23:00:00.000Z', venue_native: false, order_ids: [], entry_side: 'buy', quantity: '20',
+  } });
+  assert.equal(validEvent(plan), true);
+  assert.equal(validEvent({ ...plan, payload: { ...plan.payload, entry_side: 'hold' } }), false);
+  assert.equal(validEvent({ ...plan, payload: { ...plan.payload, instrument: { ...plan.payload.instrument, colour: 'red' } } }), false);
+});
+
 test('the runway spend policy is accepted, rendered, and refused when it is not arithmetic', () => {
   const runway = {
     spent_today_usd: '0.10', cap_usd: '269.82', mode: 'open', balance_usd: '279.82', spendable_usd: '269.82',
