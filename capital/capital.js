@@ -246,6 +246,19 @@ export function orderDesks(desks) {
   }).map(entry => entry.desk);
 }
 export const filterGroup = kind => GROUP_OF_KIND[kind] || null;
+// What a first-time visitor should see scroll by: thinking, decisions and money. The plumbing
+// (tool calls, marks, budgets, gates, the night desk's passes) is one toggle away.
+export const INTERESTING_KINDS = new Set([
+  'desk.thought', 'desk.memo', 'desk.forecast', 'desk.watch', 'desk.intent', 'desk.postmortem', 'desk.outcome',
+  'desk.exit_plan', 'desk.code_run', 'desk.playbook_updated', 'risk.decision', 'risk.review', 'risk.breaker',
+  'broker.order', 'broker.fill', 'committee.allocation', 'committee.memo',
+  'evolution.spawned', 'evolution.retired', 'evolution.promoted', 'lab.experiment', 'lab.verdict',
+]);
+export function isInteresting(event) {
+  if (!INTERESTING_KINDS.has(event?.kind)) return false;
+  if (event.kind === 'desk.watch') return event.payload?.decision === 'wake';
+  return true;
+}
 // Chips are inclusive. Turning every chip off reads as no filter rather than an empty page.
 export function matchesFilters(event, active) {
   const group = filterGroup(event?.kind);
@@ -259,51 +272,66 @@ export function truncate(value, max = TAPE_TEXT_LIMIT) {
 }
 
 const DETAILS = {
-  'desk.session_started': p => join('Session open', show(p.trigger)),
+  'desk.session_started': p => triggerText(p.trigger, 'sat down'),
   'desk.thought': p => show(p.text),
-  'desk.tool_call': p => join(show(p.tool), summarizeArguments(p.arguments)),
-  'desk.tool_result': p => join(show(p.tool), show(p.summary)),
-  'desk.memo': p => join(show(p.title), show(p.text)),
-  'desk.intent': p => join(`${show(p.side)} ${quantity(p.quantity)} ${show(p.instrument)}`.trim(), show(p.order_type), p.limit_price ? `limit ${money(show(p.limit_price), 4)}` : '', show(p.rationale)),
-  'desk.playbook_updated': p => join(p.version ? `v${show(p.version)}` : '', show(p.reason)),
-  'desk.postmortem': p => join(show(p.period), show(p.text)),
-  // outcome · <market> · result · P&L
-  'desk.outcome': p => join('outcome', show(p.market_id || p.instrument), p.result ? `resolved ${show(p.result)}` : '', p.pnl ? `P&L ${money(show(p.pnl))}` : '', p.held_for_hours === undefined ? '' : `${show(p.held_for_hours)}h held`),
-  'desk.session_ended': p => join(show(p.reason), p.requests === undefined ? '' : `${show(p.requests)} requests`, p.cost_usd ? money(show(p.cost_usd), 4) : ''),
-  'risk.decision': p => join(p.approved === true ? 'Approved' : p.approved === false ? 'Blocked' : '', show(p.desk_id), Array.isArray(p.reasons) ? p.reasons.map(show).filter(Boolean).join('; ') : ''),
-  // review · <desk> · approve/block · reason
-  'risk.review': p => join('review', partnerName(show(p.desk_id)), show(p.verdict), show(p.reason)),
-  'risk.breaker': p => join(show(p.scope), show(p.rule), show(p.action), show(p.detail)),
-  'broker.order': p => join(p.purpose === 'exit' ? `exit${p.exit_reason ? ` on ${humanize(show(p.exit_reason))}` : ''}` : '', show(p.status), p.filled_quantity === undefined ? '' : `filled ${quantity(p.filled_quantity)}`, p.average_price ? `avg ${money(show(p.average_price), 4)}` : ''),
-  'broker.fill': p => join(`${show(p.side)} ${quantity(p.quantity)} ${show(p.instrument)}`.trim(), p.price ? `@ ${money(show(p.price), 4)}` : '', p.fee ? `fee ${money(show(p.fee), 4)}` : ''),
-  'broker.reconciled': p => join(show(p.venue), p.matches === undefined ? '' : `${show(p.matches)} matched`, Array.isArray(p.mismatches) ? `${p.mismatches.length} mismatched` : ''),
-  'ledger.mark': p => join(p.equity ? `Equity ${money(show(p.equity))}` : '', p.cash ? `Cash ${money(show(p.cash))}` : '', p.daily_pnl ? `Day ${money(show(p.daily_pnl))}` : '', Array.isArray(p.positions) ? `${p.positions.length} positions` : ''),
-  'floor.mark': p => join(p.account_equity ? `Balance ${money(show(p.account_equity))}` : '',
+  'desk.tool_call': p => join(`asked ${humanize(show(p.tool)) || 'a tool'}`, summarizeArguments(p.arguments)),
+  'desk.tool_result': p => join(`${humanize(show(p.tool)) || 'the tool'} answered`, show(p.summary)),
+  'desk.memo': p => join(`wrote "${show(p.title)}"`, show(p.text)),
+  'desk.intent': p => join(`proposed ${orderWords(p)}`.trim(), p.limit_price ? `at ${priceText(show(p.limit_price))}` : show(p.order_type) === 'market' ? 'at market' : '', show(p.rationale)),
+  'desk.playbook_updated': p => join(`rewrote its playbook${p.version ? ` (v${show(p.version)})` : ''}`, show(p.reason)),
+  'desk.postmortem': p => join('post-mortem', show(p.text)),
+  'desk.outcome': p => join(`${show(p.market_id) || instrumentLabel(p.instrument)} ${p.result ? `resolved ${show(p.result)}` : 'closed'}`.trim(), p.pnl ? `P&L ${signedMoney(show(p.pnl), 2)}` : '', p.held_for_hours === undefined ? '' : `held ${show(p.held_for_hours)}h`),
+  'desk.session_ended': p => join(`ended${show(p.reason) === 'end_session' || !show(p.reason) ? '' : ` (${humanize(show(p.reason))})`}`, p.requests === undefined ? '' : `${show(p.requests)} model calls`, p.cost_usd ? money(show(p.cost_usd), 2) : ''),
+  'risk.decision': p => join(`${p.approved === true ? 'approved' : p.approved === false ? 'blocked' : 'judged'} ${partnerName(show(p.desk_id))}'s order`, Array.isArray(p.reasons) ? p.reasons.map(show).filter(Boolean).join('; ') : ''),
+  'risk.review': p => join(`${show(p.verdict) === 'block' ? 'blocked' : show(p.verdict) === 'approve' ? 'cleared' : show(p.verdict)} ${partnerName(show(p.desk_id))}'s order`, show(p.reason)),
+  'risk.breaker': p => join(`breaker ${show(p.action) || 'tripped'}`, show(p.scope), show(p.rule), show(p.detail)),
+  'broker.order': p => join(p.purpose === 'exit' ? `exit${p.exit_reason ? ` on ${humanize(show(p.exit_reason))}` : ''}` : 'order', show(p.status), p.filled_quantity === undefined ? '' : `filled ${quantity(p.filled_quantity)}`, p.average_price ? `at ${priceText(show(p.average_price))}` : ''),
+  'broker.fill': p => join(`${fillVerb(p.side)} ${quantity(p.quantity)} ${instrumentLabel(p.instrument)}`.trim(), p.price ? `at ${priceText(show(p.price))}` : '', p.fee ? `fee ${money(show(p.fee), 2)}` : ''),
+  'broker.reconciled': p => join(`${venueLabel(p.venue)} reconciled`, p.matches === undefined ? '' : `${show(p.matches)} matched`, Array.isArray(p.mismatches) && p.mismatches.length ? `${p.mismatches.length} mismatched` : ''),
+  'ledger.mark': p => join(p.equity ? `marked ${money(show(p.equity))}` : 'marked', p.daily_pnl && show(p.daily_pnl) !== '0' ? `day ${signedMoney(show(p.daily_pnl), 2)}` : '', Array.isArray(p.positions) && p.positions.length ? `${p.positions.length} open` : ''),
+  'floor.mark': p => join(p.account_equity ? `balance ${money(show(p.account_equity))}` : 'balance',
     Array.isArray(p.venues) ? p.venues.map(row => `${venueLabel(row?.venue)} ${money(show(row?.equity), 2)}${row?.stale === true ? ' (stale)' : ''}`).join(', ') : ''),
   'committee.allocation': p => {
     const allocations = p.allocations && typeof p.allocations === 'object' ? Object.entries(p.allocations) : [];
-    return join(`${allocations.length} desks funded`, allocations.slice(0, 3).map(([id, usd]) => `${partnerName(id)} ${money(show(usd), 0)}`).join(', '));
+    return join(`funded ${allocations.length} desk${allocations.length === 1 ? '' : 's'}`, allocations.slice(0, 3).map(([id, usd]) => `${partnerName(id)} ${money(show(usd), 0)}`).join(', '));
   },
-  'committee.memo': p => join(show(p.period), show(p.text)),
-  'committee.gate': p => join(show(p.desk_id), show(p.gate), p.passed === true ? 'passed' : p.passed === false ? 'not met' : ''),
-  'evolution.spawned': p => join(show(p.desk_id), show(p.family), p.generation === undefined ? '' : `generation ${show(p.generation)}`, p.parent_id ? `from ${show(p.parent_id)}` : '', show(p.mutation)),
-  'evolution.retired': p => join(show(p.desk_id), show(p.reason)),
-  'evolution.promoted': p => join(show(p.desk_id), show(p.from) && show(p.to) ? `${show(p.from)} → ${show(p.to)}` : ''),
+  'committee.memo': p => join(`wrote the ${show(p.period)} memo`, show(p.text)),
+  'committee.gate': p => join(`${partnerName(show(p.desk_id))} ${p.passed === true ? 'passed' : p.passed === false ? 'did not pass' : 'faced'} gate ${show(p.gate)}`),
+  'evolution.spawned': p => join(`bred ${partnerName(show(p.desk_id))}${p.parent_id ? ` from ${partnerName(show(p.parent_id))}` : ''}`, mutationWords(p.mutation)),
+  'evolution.retired': p => join(`retired ${partnerName(show(p.desk_id))}`, show(p.reason)),
+  'evolution.promoted': p => join(`promoted ${partnerName(show(p.desk_id))} to real money`, show(p.venue) ? `on ${venueLabel(p.venue)}` : ''),
   'lab.hypothesis': p => join(show(p.text), show(p.test_plan)),
   'lab.result': p => join(show(p.verdict), show(p.hypothesis_id)),
-  'desk.watch': p => join(`${humanize(show(p.trigger))} → ${p.decision === 'wake' ? 'woke the desk' : p.decision === 'ignore' ? 'let it pass' : show(p.decision)}`, show(p.detail), show(p.reason)),
+  'desk.watch': p => join(`${humanize(show(p.trigger))}: ${p.decision === 'wake' ? 'woke the desk' : p.decision === 'ignore' ? 'let it pass' : show(p.decision)}`, show(p.detail), show(p.reason)),
   'desk.forecast': p => join(`puts ${probabilityText(p.probability)} on ${show(p.market)}${p.side ? ` ${show(p.side)}` : ''}`, numeric(p.market_price) ? `market ${probabilityText(p.market_price)}` : '', show(p.reasoning)),
-  'desk.exit_plan': p => join(instrumentLabel(p.instrument), p.target_price ? `target ${priceText(show(p.target_price))}` : '', p.stop_price ? `stop ${priceText(show(p.stop_price))}` : '',
-    p.time_stop_at ? `out by ${date(p.time_stop_at)}` : '', p.venue_native === true ? 'bracket held at the venue' : Array.isArray(p.order_ids) && p.order_ids.length ? `${p.order_ids.length} exit order${p.order_ids.length === 1 ? '' : 's'} resting` : 'the floor enforces it'),
-  'desk.code_run': p => join(p.exit_code === 0 ? 'ran' : `exit ${show(p.exit_code)}`, numeric(p.seconds) ? `${p.seconds}s` : '', truncate(show(p.stdout).split('\n')[0], 120).text),
-  'lab.calibration': p => join(p.scope === 'desk' ? partnerName(show(p.desk_id)) : p.scope === 'family' ? `${show(p.family)} family` : 'whole floor', `${show(p.n)} forecasts`, `Brier ${show(p.brier)}`),
-  'lab.experiment': p => join(show(p.status), show(p.hypothesis), p.variant_desk_id ? `variant ${partnerName(show(p.variant_desk_id))}` : ''),
-  'lab.verdict': p => join(show(p.status), show(p.experiment_id), show(p.reason)),
+  'desk.exit_plan': p => join(`exit plan for ${instrumentLabel(p.instrument)}`, p.target_price ? `target ${priceText(show(p.target_price))}` : '', p.stop_price ? `stop ${priceText(show(p.stop_price))}` : '',
+    p.time_stop_at ? `out by ${date(p.time_stop_at)}` : '', p.venue_native === true ? 'held at the venue' : Array.isArray(p.order_ids) && p.order_ids.length ? `${p.order_ids.length} exit order${p.order_ids.length === 1 ? '' : 's'} resting` : 'the floor enforces it'),
+  'desk.code_run': p => join(`ran code${numeric(p.seconds) ? ` in ${p.seconds}s` : ''}${p.exit_code === 0 || p.exit_code === undefined ? '' : ` (exit ${show(p.exit_code)})`}`, show(p.purpose), truncate(show(p.stdout).split('\n')[0], 120).text),
+  'lab.calibration': p => join(`${p.scope === 'desk' ? partnerName(show(p.desk_id)) : p.scope === 'family' ? `the ${show(p.family)} family` : 'the floor'} scored`, `${show(p.n)} forecast${show(p.n) === '1' ? '' : 's'}`, `Brier ${show(p.brier)}`),
+  'lab.experiment': p => join(`${show(p.status)}: ${show(p.hypothesis)}`, p.variant_desk_id ? `as ${partnerName(show(p.variant_desk_id))}` : ''),
+  'lab.verdict': p => join(`${show(p.status)} ${show(p.experiment_id)}`, show(p.reason)),
   'ops.alert': p => join(show(p.level), show(p.text)),
   'ops.budget': p => (p.mode
-    ? join(show(p.scope), show(p.mode), numeric(p.balance_usd) ? `credit ${money(show(p.balance_usd), 0)}` : '', numeric(p.runway_days) ? `${Math.floor(Number(p.runway_days))}d runway` : '', p.spent_usd ? `${money(show(p.spent_usd), 2)} today` : '')
+    ? join(`credit ${numeric(p.balance_usd) ? money(show(p.balance_usd), 0) : 'unread'}`, numeric(p.runway_days) ? `${Math.floor(Number(p.runway_days))} days of runway` : '', show(p.mode), p.spent_usd ? `${money(show(p.spent_usd), 2)} spent today` : '')
     : join(show(p.scope), p.spent_usd ? `${money(show(p.spent_usd), 2)} of ${money(show(p.cap_usd), 2)}` : '')),
 };
+// "buy 10 KXFED yes" reads as words: bought, sold; a sell of a YES contract stays a sale.
+const fillVerb = side => (show(side) === 'buy' ? 'bought' : show(side) === 'sell' ? 'sold' : show(side));
+const orderWords = p => `${show(p.side)} ${quantity(p.quantity)} ${instrumentLabel(p.instrument)}`;
+function mutationWords(mutation) {
+  if (typeof mutation === 'string') return mutation;  // the first generation wrote it as prose
+  return mutationBadges(mutation).map(badge => badge.text).slice(0, 3).join(', ');
+}
+// The reason a desk sat down, in words. "cadence:13:30" is a slot; "watch:price_move" a wake.
+export function triggerText(trigger, verb = 'sat down') {
+  const value = show(trigger);
+  if (!value) return verb === 'sat down' ? 'in session' : verb;
+  if (value.startsWith('cadence:')) return `${verb} for the ${value.slice(8)} slot`;
+  if (value === 'postmortem') return 'writing its post-mortem';
+  if (value === 'event_resolution') return 'woke because a market resolved';
+  if (value.startsWith('watch:')) return `woke on a ${humanize(value.slice(6))}`;
+  return `${verb}: ${humanize(value)}`;
+}
 function summarizeArguments(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return show(value);
   return Object.entries(value).slice(0, 4).map(([key, item]) => `${key}=${show(item) || (Array.isArray(item) ? `[${item.length}]` : '{…}')}`).join(' ');
@@ -608,28 +636,21 @@ function tapeEntry(event, state) {
 }
 function renderTape(target, events, state) {
   const selected = [...events]
-    .filter(event => !state || matchesFilters(event, state.active))
+    .filter(event => !state || ((state.everything || isInteresting(event)) && matchesFilters(event, state.active)))
     .sort((left, right) => right.seq - left.seq)
     .slice(0, TAPE_LIMIT);
   const entries = selected.map(event => tapeEntry(event, state));
-  target.replaceChildren(...(entries.length ? entries : [element('p', events.length ? 'Nothing on the tape under these filters.' : 'No events published yet.', 'empty-state')]));
+  target.replaceChildren(...(entries.length ? entries : [element('p', events.length ? 'Quiet. The next thought appears here.' : 'Nothing published yet.', 'empty-state')]));
   target.setAttribute('aria-busy', 'false');
 }
-function filterChips(state, onChange) {
-  const chips = element('div', null, 'chips');
-  for (const filter of TAPE_FILTERS) {
-    const on = state.active.has(filter.key);
-    const chip = element('button', filter.label, on ? 'chip chip-on' : 'chip');
-    chip.type = 'button';
-    chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    chip.addEventListener('click', () => {
-      if (state.active.has(filter.key)) state.active.delete(filter.key);
-      else state.active.add(filter.key);
-      onChange();
-    });
-    chips.append(chip);
-  }
-  return chips;
+// One toggle: the interesting parts (default) or everything the floor writes.
+function tapeToggle(state, onChange) {
+  const toggle = element('button', 'everything', state.everything ? 'chip chip-on tape-toggle' : 'chip tape-toggle');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-pressed', state.everything ? 'true' : 'false');
+  toggle.setAttribute('title', 'Show every event, including tool calls, marks and budgets');
+  toggle.addEventListener('click', () => { state.everything = !state.everything; onChange(); });
+  return toggle;
 }
 function statusLine(target, mode, publishedAt) {
   const state = element('span', mode === 'live' ? 'Live · streaming' : mode === 'polling' ? 'Live · reconnecting' : 'Loading', mode === 'live' ? 'status-live' : 'status-polling');
@@ -676,34 +697,6 @@ export function cardNumbers(desk) {
     [percent(desk.return_pct), 'shadow · hypothetical', signOf(desk.return_pct)],
     [money(desk.equity, 0), 'notional book', ''],
   ];
-}
-function partnerCard(desk, record) {
-  const partner = partnerOf(desk);
-  const card = link('', deskHref(desk.id), 'partner');
-  const head = element('span', null, 'partner-head');
-  head.append(element('span', partner.surname, 'partner-surname'));
-  if (partner.variant) head.append(element('span', partner.variant, 'partner-variant'));
-  head.append(modeBadge(desk));
-  card.append(head);
-  card.append(element('span', partnerRole(partner) || desk.family, 'partner-role'));
-  const numbers = element('span', null, 'partner-numbers');
-  for (const [value, label, tone] of cardNumbers(desk)) {
-    const cell = element('span');
-    cell.append(element('b', value, tone), element('i', label));
-    numbers.append(cell);
-  }
-  card.append(numbers);
-  card.append(sparkFigure(record?.marks || []));
-  const now = record?.now || '';
-  const line = element('span', null, 'partner-now');
-  line.append(element('i', 'now'), element('span', now || 'quiet — nothing published since the last session'));
-  card.append(line);
-  return card;
-}
-function partnerGrid(desks, records) {
-  const grid = element('div', null, 'partners');
-  for (const desk of orderDesks(desks).slice(0, MAX_CARDS)) grid.append(partnerCard(desk, records.get(desk.id)));
-  return grid;
 }
 // The masthead is real money. A shadow desk's book is a score, and the floor never adds it in.
 export const floorEquity = floor => (numeric(floor?.live_equity) ? floor.live_equity : floor?.equity);
@@ -827,7 +820,7 @@ async function loadRationale(deskId) {
 }
 function rationaleControl(row) {
   const box = element('div', null, 'position-why');
-  const button = element('button', 'why the desk holds it', 'chip chip-why');
+  const button = element('button', 'why', 'chip chip-why');
   button.type = 'button';
   button.setAttribute('aria-expanded', 'false');
   const body = element('div', null, 'position-why-body');
@@ -849,20 +842,20 @@ function rationaleControl(row) {
   box.append(button, body);
   return box;
 }
-function positionsBoard(checkpoint) {
+function positionsBoard(checkpoint, { line = true } = {}) {
   const rows = positionRows(checkpoint);
   const board = element('div', null, 'positions');
-  const summary = portfolioLine(checkpoint?.floor);
+  const summary = line ? portfolioLine(checkpoint?.floor) : '';
   if (summary) board.append(element('p', summary, 'portfolio-line'));
   if (!rows.length) {
-    board.append(element('p', 'Flat. Every desk is in cash; the next position appears here the moment it fills.', 'empty-state'));
+    board.append(element('p', flatLine(checkpoint), 'empty-state'));
     return board;
   }
   for (const row of rows) {
     const line = element('article', null, row.live ? 'position' : 'position position-shadow');
     const head = element('div', null, 'position-head');
     head.append(link(row.name, deskHref(row.desk), 'position-desk'));
-    head.append(element('span', row.live ? 'live' : 'shadow · scored, never sent', row.live ? 'badge badge-live' : 'badge badge-shadow'));
+    head.append(element('span', row.live ? 'live' : 'shadow', row.live ? 'badge badge-live' : 'badge badge-shadow'));
     head.append(element('span', join(row.side, row.instrument, row.venue), 'position-what'));
     line.append(head);
     const numbers = element('div', null, 'position-numbers');
@@ -875,7 +868,7 @@ function positionsBoard(checkpoint) {
       numbers.append(cell);
     }
     line.append(numbers);
-    line.append(element('p', row.thesis || 'The desk filed no thesis with this order.', row.thesis ? 'position-thesis' : 'position-thesis note'));
+    line.append(element('p', row.thesis || 'No thesis filed.', row.thesis ? 'position-thesis' : 'position-thesis note'));
     const chips = element('div', null, 'exit-chips');
     for (const chip of row.chips) chips.append(element('span', chip.text, `exit-chip exit-${chip.kind}`));
     line.append(chips);
@@ -916,27 +909,6 @@ export function runClock(run, now = Date.now()) {
     perDollar: perDollar === null ? 'not yet' : signedMoney(perDollar, 2), perDollarTone: perDollar === null ? '' : signOf(perDollar),
     models: Array.isArray(run.models_used) ? run.models_used.map(show).filter(Boolean).join(', ') : '',
   };
-}
-function runClockPanel(run) {
-  const clock = runClock(run);
-  if (!clock) return null;
-  const panel = element('section', null, 'run-clock');
-  const heading = element('div', null, 'run-heading');
-  heading.append(element('h2', 'Run clock'), element('span', 'How long they have worked, what it cost, what it made', 'infra-copy'));
-  panel.append(heading);
-  const big = element('p', null, 'run-elapsed');
-  big.append(element('b', clock.elapsed ? `running ${clock.elapsed}` : 'running'), element('span', clock.since ? `since ${clock.since}` : ''));
-  panel.append(big);
-  const numbers = element('dl', null, 'run-numbers');
-  numbers.append(
-    metric('Profit per Sail dollar', clock.perDollar, clock.perDollarTone, 'P&L for every dollar of credit spent'),
-    metric('P&L', clock.pnl, clock.pnlTone, 'since the run began'),
-    metric('Sail spend', clock.spendTotal, '', join(`${clock.spendToday} today`, clock.spendNote)),
-  );
-  panel.append(numbers);
-  panel.append(facts([['Up', clock.availability], ['Sessions', clock.sessions], ['Decisions', clock.decisions], ...(clock.models ? [['Models', clock.models]] : [])]));
-  panel.append(element('p', 'The desks stop only when the credit does.', 'run-line'));
-  return panel;
 }
 function watchStrip(checkpoint) {
   const text = watchLine(checkpoint);
@@ -1285,22 +1257,6 @@ function liveNow(desk) {
   return badge;
 }
 
-function headlineNumbers(checkpoint) {
-  const floor = checkpoint.floor;
-  const daily = floorDaily(floor);
-  const account = accountEquity(floor);
-  const numbers = element('dl', null, 'headline');
-  numbers.append(
-    // The headline is the real balance when the venues answered, and the ledger's live equity
-    // when they did not. Today's number stays the ledger's: the venues do not keep a day's P&L.
-    account === null
-      ? metric('Floor equity', money(floorEquity(floor), 0), '', 'live desks only')
-      : metric(portfolioLabel(floor), money(account, 2), '', 'real account balances'),
-    metric('Today', signedMoney(daily, 0), signOf(daily)),
-    creditMetric(checkpoint.budget),
-  );
-  return numbers;
-}
 // The third headline number. Under the runway policy it is the Sail credit and how long it
 // lasts at the current burn; under the older capped policy it is today's spend against the cap.
 export function creditLine(budget) {
@@ -1316,54 +1272,6 @@ export function creditLine(budget) {
   const value = numeric(budget.balance_usd) ? money(budget.balance_usd, 0) : `${money(budget.spent_today_usd, 2)} today`;
   return { label: 'Sail credit', value, note, mode: budget.mode };
 }
-function creditMetric(budget) {
-  const line = creditLine(budget) || { label: 'Inference today', value: '', note: '', mode: '' };
-  return metric(line.label, line.value, line.mode === 'stopped' ? 'neg' : '', line.note);
-}
-// One chip per account, under the headline, so the total is always shown broken into its parts.
-function venueChips(floor) {
-  const rows = accountVenues(floor);
-  if (!rows.length) return null;
-  const line = element('p', null, 'venue-chips');
-  rows.forEach((row, index) => {
-    if (index) line.append(element('span', '·', 'venue-separator'));
-    const chip = element('span', null, row.stale ? 'venue-chip venue-chip-stale' : 'venue-chip');
-    chip.append(element('b', row.name), element('span', money(row.equity, 2)));
-    if (row.stale) {
-      // A venue that stopped answering keeps its last balance and says so, rather than
-      // disappearing and making the portfolio look smaller than it is.
-      chip.append(element('i', 'stale'));
-      chip.setAttribute('title', `${row.name} did not answer the last balance request. Showing the reading from ${row.at ? date(row.at) : 'its last successful read'}.`);
-    }
-    line.append(chip);
-  });
-  return line;
-}
-// The floor's real balance over time, drawn from `floor.mark` and nothing else.
-function balanceChart(events) {
-  const change = sinceStart(events);
-  const series = floorBalanceSeries(events);
-  if (!series) {
-    return element('p', change
-      ? `${money(String(change.last.equity.toFixed(2)), 2)} now. The balance line starts at the second published mark.`
-      : 'The real balance line appears with the floor\u2019s first published mark.', 'empty-state');
-  }
-  const figure = element('figure', null, 'pnl-chart');
-  const svg = svgElement('svg', {
-    viewBox: '0 0 760 190', preserveAspectRatio: 'none', role: 'img',
-    'aria-label': 'The floor\u2019s real account balance, from its own published marks.',
-  });
-  for (const tick of series.ticks) svg.append(svgElement('line', { x1: 2, x2: 748, y1: tick.y, y2: tick.y, class: 'chart-grid' }));
-  svg.append(svgElement('path', { d: series.path, class: 'chart-equity' }));
-  figure.append(svg);
-  const caption = element('figcaption', null, 'chart-caption');
-  caption.append(element('span', `${money(String(series.first.equity.toFixed(2)), 2)} \u2192 ${money(String(series.last.equity.toFixed(2)), 2)}`));
-  caption.append(element('span', change.text, change.tone));
-  caption.append(element('span', `${date(new Date(series.first.at).toISOString())} \u2013 ${date(new Date(series.last.at).toISOString())}`));
-  figure.append(caption);
-  return figure;
-}
-
 // ---------------------------------------------------------------- the box the floor runs on
 const HOST_COPY = { sailbox: 'running on a Sail cloud VM', local: 'running on the owner’s own machine' };
 export const boxShort = value => (typeof value === 'string' && value ? value.replace(/^(?:box|sb)[-_]/i, '').slice(0, 8) : '');
@@ -1401,106 +1309,340 @@ function spendLine(spent, budget) {
   if (budget.mode === 'stopped') return join(money(spent, 2), 'stopped: waiting for Sail credit');
   return money(spent, 2);
 }
-const INFRA_COPY = 'The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic.';
-function infraStrip(checkpoint) {
+// ============================================================================ the floor
+// One screen answers three questions: what is this, is it alive, is it working. Everything
+// below the masthead is live things with as few words around them as the numbers allow.
+
+// "14 min ago", "2 h ago", "3 d ago": relative time for the now cards and the idle lines.
+export function ago(value, now = Date.now()) {
+  const stamp = Date.parse(value);
+  if (!Number.isFinite(stamp)) return '';
+  const seconds = Math.max(0, Math.floor((now - stamp) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} d ago`;
+}
+// Generations read as numerals: the founder is I, its first child II.
+export function roman(value) {
+  let number = Number.isSafeInteger(value) && value > 0 ? value : 1;
+  const table = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+  let out = '';
+  for (const [size, glyph] of table) while (number >= size) { out += glyph; number -= size; }
+  return out;
+}
+export const raceName = desk => {
+  const generation = Number.isSafeInteger(desk?.generation) ? desk.generation : 1;
+  return generation > 1 ? `${partnerOf(desk).surname} ${roman(generation)}` : partnerOf(desk).surname;
+};
+
+// ---- the run strip: running 2h 14m · $0.19 spent · profit $0.00 · $0.00 per Sail dollar · credit
+export function runStrip(run, budget, now = Date.now()) {
+  const clock = runClock(run, now);
+  const credit = creditLine(budget);
+  const perDollar = clock ? (clock.perDollar === 'not yet' ? 'profit per Sail dollar: not yet' : `${clock.perDollar} per Sail dollar`) : '';
+  const total = Number(run?.sessions_total) || 0;
+  return {
+    elapsed: clock?.elapsed ? `running ${clock.elapsed}` : 'starting up',
+    since: clock?.since ? `since ${clock.since}` : '',
+    spend: clock ? `${clock.spendTotal} of Sail credit spent` : '',
+    profit: clock ? `profit ${clock.pnl}` : '', profitTone: clock?.pnlTone || '',
+    perDollar, perDollarTone: clock?.perDollarTone || '',
+    sessions: clock ? `${total} session${total === 1 ? '' : 's'}` : '',
+    credit: credit ? (credit.mode ? `${credit.value} credit · ${credit.mode}` : `${credit.value} today`) : '', mode: credit?.mode || '',
+  };
+}
+function runStripPanel(checkpoint, state) {
+  const strip = runStrip(checkpoint?.run, checkpoint?.budget);
+  const line = element('p', null, 'run-strip');
+  const elapsed = element('b', strip.elapsed, 'run-elapsed-text');
+  line.append(elapsed);
+  if (strip.since) line.append(element('span', strip.since, 'run-since'));
+  for (const [text, tone] of [[strip.spend, ''], [strip.profit, strip.profitTone], [strip.perDollar, strip.perDollarTone], [strip.sessions, '']]) {
+    if (text) line.append(element('span', text, tone ? `run-item ${tone}` : 'run-item'));
+  }
+  if (strip.credit) line.append(element('span', strip.credit, `credit-pill credit-${strip.mode || 'none'}`));
+  const status = element('span', state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'reconnecting' : 'loading', `run-status run-status-${state.mode}`);
+  status.setAttribute('title', checkpoint?.published_at ? `Checkpoint ${date(checkpoint.published_at)}` : 'Awaiting the first checkpoint');
+  line.append(status);
+  // The clock ticks in the browser between checkpoints, so a page left open stays alive.
+  if (state.ticker) clearInterval(state.ticker);
+  const started = Date.parse(checkpoint?.run?.started_at);
+  if (Number.isFinite(started)) {
+    state.ticker = setInterval(() => { elapsed.textContent = `running ${elapsedText(Math.max(0, Math.floor((Date.now() - started) / 1000)))}`; }, 1000);
+  }
+  state.statusNode = status;
+  return line;
+}
+// Behind the chevron: where it runs and what the box has done. Nothing a first look needs.
+function mastheadMore(checkpoint) {
   const rows = infraRows(checkpoint);
-  if (!rows.length) return null;
-  const strip = element('section', null, 'infra');
-  const heading = element('div', null, 'infra-heading');
-  heading.append(element('h2', 'Infrastructure'), element('span', INFRA_COPY, 'infra-copy'));
-  strip.append(heading, facts(rows));
-  return strip;
+  const box = element('div', null, 'masthead-more-body');
+  if (rows.length) box.append(facts(rows));
+  box.append(element('p', 'The desks think on Sail. Their keys never leave Cloudflare. Every order passes a risk engine and a critic.', 'note'));
+  return box;
+}
+
+// ---- now: who is thinking, about what
+// What the page remembers per desk from its own stream: the newest thought, the last tool it
+// asked, its last memo and when its last session ended. Folded from events, updated live.
+export function deskRecord(events, previous = null) {
+  const record = { thought: '', thoughtAt: '', tool: '', memo: '', memoAt: '', endedAt: '', ...(previous || {}) };
+  const list = [...(Array.isArray(events) ? events : [])].sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
+  for (const event of list) {
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+    if (event.kind === 'desk.thought' && show(payload.text)) { record.thought = show(payload.text); record.thoughtAt = event.at; }
+    else if (event.kind === 'desk.tool_call') record.tool = humanize(show(payload.tool));
+    else if (event.kind === 'desk.memo') { record.memo = show(payload.title) || truncate(show(payload.text), 80).text; record.memoAt = event.at; }
+    else if (event.kind === 'desk.session_ended') { record.endedAt = event.at; record.tool = ''; }
+    else if (event.kind === 'desk.session_started') { record.thought = ''; record.tool = ''; }
+  }
+  return record;
+}
+// An idle desk in one line: when it last worked, and the last thing it concluded.
+export function idleLine(record, now = Date.now()) {
+  const when = record?.endedAt ? `last session ${ago(record.endedAt, now)}` : record?.memoAt ? `last memo ${ago(record.memoAt, now)}` : 'no session yet';
+  return join(when, record?.memo || '');
+}
+export function nowRows(checkpoint, records = new Map(), now = Date.now()) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  return desks.map(desk => {
+    const record = records.get(desk.id) || null;
+    const session = desk.live_session && typeof desk.live_session === 'object' ? desk.live_session : null;
+    return {
+      id: show(desk.id), name: raceName(desk), live: isLive(desk), inSession: Boolean(session),
+      trigger: session ? triggerText(session.trigger) : '', since: session?.started_at ? ago(session.started_at, now) : '',
+      thought: record?.thought || '', tool: record?.tool || '', idle: session ? '' : idleLine(record, now),
+    };
+  }).sort((left, right) => Number(right.inSession) - Number(left.inSession));
+}
+// The night desk in one line, or nothing when the checkpoint carried no watch block.
+export function nightLine(checkpoint) {
+  const watch = checkpoint?.watch;
+  if (!watch || typeof watch !== 'object') return '';
+  const looks = Number(watch.triggers_today) || 0;
+  const wakes = Number(watch.wakes_today) || 0;
+  return `night desk: ${looks} look${looks === 1 ? '' : 's'}, ${wakes} wake${wakes === 1 ? '' : 's'} today`;
+}
+// Types a thought out at a readable pace. Off when the visitor asked for less motion, and in
+// any place without a window, where the text simply lands.
+const typers = new WeakMap();
+function typeInto(node, text) {
+  const previous = typers.get(node);
+  if (previous) clearTimeout(previous);
+  const canAnimate = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!canAnimate || !text) { node.textContent = text; return; }
+  let shown = 0;
+  const step = () => {
+    shown = Math.min(text.length, shown + 2);
+    node.textContent = text.slice(0, shown);
+    if (shown < text.length) typers.set(node, setTimeout(step, 24));
+  };
+  step();
+}
+function nowPanel(checkpoint, records) {
+  const rows = nowRows(checkpoint, records);
+  const nodes = [];
+  for (const row of rows.filter(item => item.inSession)) {
+    const card = element('article', null, row.live ? 'now-card' : 'now-card now-card-shadow');
+    const head = element('div', null, 'now-head');
+    head.append(link(row.name, deskHref(row.id), 'now-name'), element('span', row.trigger, 'now-trigger'));
+    if (row.since) head.append(element('span', `started ${row.since}`, 'now-since'));
+    if (!row.live) head.append(element('span', 'shadow', 'badge badge-shadow'));
+    card.append(head);
+    const thought = element('p', null, 'now-thought');
+    if (row.thought) typeInto(thought, truncate(row.thought, 420).text);
+    else thought.textContent = 'thinking…';
+    card.append(thought);
+    if (row.tool) card.append(element('span', `using ${row.tool}`, 'now-tool'));
+    nodes.push(card);
+  }
+  const idle = rows.filter(item => !item.inSession);
+  if (idle.length) {
+    const list = element('div', null, 'now-idle-list');
+    for (const row of idle) {
+      const line = element('p', null, 'now-idle');
+      line.append(link(row.name, deskHref(row.id), 'now-idle-name'));
+      if (!row.live) line.append(element('span', 'shadow', 'badge badge-shadow'));
+      line.append(element('span', row.idle, 'now-idle-text'));
+      list.append(line);
+    }
+    nodes.push(list);
+  }
+  const night = nightLine(checkpoint);
+  if (night) nodes.push(element('p', night, 'now-night'));
+  if (!nodes.length) nodes.push(element('p', 'The desks appear with the first checkpoint.', 'empty-state'));
+  return nodes;
+}
+
+// ---- holdings: the accounts, the balance line, every position with its reason
+export function flatLine(checkpoint) {
+  const total = accountEquity(checkpoint?.floor);
+  const accounts = accountVenues(checkpoint?.floor).length;
+  const today = Number(checkpoint?.run?.sessions_today) || 0;
+  return [
+    'Flat.',
+    total === null ? '' : `${money(total, 0)} in cash${accounts ? ` across ${accounts} account${accounts === 1 ? '' : 's'}` : ''}.`,
+    today ? `${today} session${today === 1 ? '' : 's'} today, no trade taken.` : 'No trade taken yet.',
+  ].filter(Boolean).join(' ');
+}
+function holdingsPanel(checkpoint, floorMarks) {
+  const nodes = [];
+  const floor = checkpoint?.floor;
+  const total = accountEquity(floor);
+  const venues = accountVenues(floor);
+  if (total !== null || venues.length) {
+    const line = element('p', null, 'holdings-line');
+    if (total !== null) line.append(element('b', money(total, 2), 'holdings-total'));
+    for (const row of venues) {
+      const chip = element('span', null, row.stale ? 'venue-chip venue-chip-stale' : 'venue-chip');
+      chip.append(element('b', row.name), element('span', money(row.equity, 2)));
+      if (row.stale) { chip.append(element('i', 'stale')); chip.setAttribute('title', `${row.name} did not answer the last balance request.`); }
+      line.append(chip);
+    }
+    const series = sparkline(floorMarks, { selector: FLOOR_MARK });
+    if (series) {
+      const svg = svgElement('svg', { viewBox: `0 0 ${series.width} ${series.height}`, preserveAspectRatio: 'none', class: `spark spark-${series.direction} holdings-spark`, role: 'img', 'aria-label': 'The real balance over the floor’s last marks.' });
+      svg.append(svgElement('path', { d: series.path, class: 'spark-line' }));
+      line.append(svg);
+    }
+    const change = sinceStart(floorMarks);
+    if (change) line.append(element('span', change.text, `holdings-since ${change.tone}`));
+    nodes.push(line);
+  }
+  const rows = positionRows(checkpoint);
+  if (!rows.length) { nodes.push(element('p', flatLine(checkpoint), 'empty-state holdings-flat')); return nodes; }
+  nodes.push(positionsBoard(checkpoint, { line: false }));
+  return nodes;
+}
+
+// ---- the race: each family's live desk and its children, who leads, what is being tried
+export function raceRows(checkpoint) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const families = [...new Set(desks.map(desk => show(desk.family)).filter(Boolean))];
+  return families.map(family => {
+    const members = desks.filter(desk => show(desk.family) === family)
+      .map(desk => ({
+        id: show(desk.id), name: raceName(desk), live: isLive(desk), inSession: Boolean(desk.live_session),
+        generation: Number.isSafeInteger(desk.generation) ? desk.generation : 1,
+        score: numeric(desk.return_pct) ? Number(desk.return_pct) : null,
+        scoreText: numeric(desk.return_pct) ? percent(desk.return_pct) : '—', tone: numeric(desk.return_pct) ? signOf(desk.return_pct) : '',
+        badges: mutationBadges(desk.mutation), leader: false,
+      }))
+      .sort((left, right) => left.generation - right.generation || left.id.localeCompare(right.id));
+    const scored = members.filter(member => member.score !== null);
+    const best = scored.length ? Math.max(...scored.map(member => member.score)) : null;
+    const leaders = scored.filter(member => member.score === best);
+    if (leaders.length === 1 && members.length > 1) leaders[0].leader = true;
+    const live = members.find(member => member.live);
+    return { family, label: venueLabel(family), live: live ? live.name : '', members };
+  });
+}
+// "2 experiments running · generation II vs I: +0.90%", or what the race is waiting for.
+export function raceLine(lab, rows = []) {
+  const running = (Array.isArray(lab?.experiments) ? lab.experiments : []).filter(item => item?.status === 'running').length;
+  const curve = (Array.isArray(lab?.curve) ? lab.curve : []).filter(row => row && Number.isSafeInteger(row.generation)).sort((left, right) => left.generation - right.generation);
+  const parts = [];
+  if (running) parts.push(`${running} experiment${running === 1 ? '' : 's'} running`);
+  if (curve.length >= 2) {
+    const [before, after] = curve.slice(-2);
+    const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
+    parts.push(`generation ${roman(after.generation)} vs ${roman(before.generation)}: ${percent(delta.toFixed(4))}`);
+  }
+  if (!parts.length) {
+    const children = rows.reduce((sum, row) => sum + row.members.filter(member => member.generation > 1).length, 0);
+    return children ? 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.' : 'The race starts with the first bred variant.';
+  }
+  return parts.join(' · ');
+}
+function racePanel(checkpoint) {
+  const rows = raceRows(checkpoint);
+  if (!rows.length) return [element('p', 'The families appear with the first checkpoint.', 'empty-state')];
+  const nodes = [];
+  for (const row of rows) {
+    const line = element('div', null, 'race-row');
+    line.append(element('span', row.label, 'race-family'));
+    const chips = element('span', null, 'race-chips');
+    for (const member of row.members) {
+      const chip = link('', deskHref(member.id), `race-chip${member.live ? ' race-live' : ''}${member.leader ? ' race-leader' : ''}`);
+      if (member.live) { const dot = element('span', null, 'badge-dot'); dot.setAttribute('aria-hidden', 'true'); chip.append(dot); }
+      chip.append(element('b', member.name));
+      chip.append(element('span', member.scoreText, member.tone));
+      if (member.leader) chip.append(element('i', '★ leads'));
+      if (member.inSession) chip.append(element('i', 'thinking', 'race-thinking'));
+      chip.setAttribute('title', join(member.live ? 'live: real money' : 'shadow: scored, never sent', ...member.badges.map(badge => badge.text)));
+      chips.append(chip);
+    }
+    line.append(chips);
+    nodes.push(line);
+  }
+  nodes.push(element('p', raceLine(checkpoint?.lab, rows), 'race-line'));
+  const bred = rows.flatMap(row => row.members.filter(member => member.badges.length));
+  if (bred.length) {
+    const more = element('details', null, 'race-more');
+    more.append(element('summary', 'how the children differ'));
+    for (const member of bred) {
+      const item = element('div', null, 'race-diff');
+      item.append(element('b', member.name), badgeRow(member.badges));
+      more.append(item);
+    }
+    more.append(link('the loop: experiments, verdicts, the curve ↗', '/capital/committee/', 'race-loop-link'));
+    nodes.push(more);
+  } else nodes.push(link('the loop ↗', '/capital/committee/', 'race-loop-link'));
+  return nodes;
 }
 
 async function startFloor(root) {
-  const status = root.querySelector('#floor-status');
-  const numbers = root.querySelector('#floor-numbers');
-  const infra = root.querySelector('#floor-infra');
-  const history = root.querySelector('#floor-history');
-  const partners = root.querySelector('#floor-partners');
-  const positions = root.querySelector('#floor-positions');
-  const run = root.querySelector('#floor-run');
-  const watch = root.querySelector('#floor-watch');
-  const lineageBox = root.querySelector('#floor-lineage');
-  const lab = root.querySelector('#floor-lab');
-  const filters = root.querySelector('#tape-filters');
+  const strip = root.querySelector('#floor-run');
+  const moreBody = root.querySelector('#floor-more-body');
+  const now = root.querySelector('#floor-now');
+  const holdings = root.querySelector('#floor-positions');
+  const race = root.querySelector('#floor-race');
+  const toggle = root.querySelector('#tape-toggle');
   const tape = root.querySelector('#floor-tape');
   const state = {
     checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [],
-    active: new Set(TAPE_FILTERS.map(filter => filter.key)), expanded: new Set(),
-    redraw: () => renderTape(tape, state.events, state),
+    everything: false, active: new Set(), expanded: new Set(), ticker: null, statusNode: null,
+    redraw: () => { if (tape) renderTape(tape, state.events, state); },
   };
-  const drawBalance = () => {
-    if (!history) return;
-    history.replaceChildren(balanceChart(state.floorMarks));
-    history.setAttribute('aria-busy', 'false');
-  };
-  const drawChips = () => filters.replaceChildren(filterChips(state, () => { drawChips(); state.redraw(); }));
-  statusLine(status, state.mode, null);
-  const drawPartners = () => {
-    if (!state.checkpoint) return;
-    partners.replaceChildren(state.checkpoint.desks.length
-      ? partnerGrid(state.checkpoint.desks, state.records)
-      : element('p', 'The partners appear with the first published checkpoint.', 'empty-state'));
-    partners.setAttribute('aria-busy', 'false');
+  const ready = node => node && node.setAttribute('aria-busy', 'false');
+  const drawStrip = () => { if (!strip || !state.checkpoint) return; strip.replaceChildren(runStripPanel(state.checkpoint, state)); ready(strip); };
+  const drawMore = () => { if (moreBody && state.checkpoint) moreBody.replaceChildren(mastheadMore(state.checkpoint)); };
+  const drawNow = () => { if (!now || !state.checkpoint) return; now.replaceChildren(...nowPanel(state.checkpoint, state.records)); ready(now); };
+  const drawHoldings = () => { if (!holdings || !state.checkpoint) return; holdings.replaceChildren(...holdingsPanel(state.checkpoint, state.floorMarks)); ready(holdings); };
+  const drawRace = () => { if (!race || !state.checkpoint) return; race.replaceChildren(...racePanel(state.checkpoint)); ready(race); };
+  const drawToggle = () => { if (toggle) toggle.replaceChildren(tapeToggle(state, () => { drawToggle(); state.redraw(); })); };
+  const setStatus = () => {
+    if (!state.statusNode) return;
+    state.statusNode.textContent = state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'reconnecting' : 'loading';
+    state.statusNode.className = `run-status run-status-${state.mode}`;
   };
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
-      const chips = venueChips(state.checkpoint.floor);
-      numbers.replaceChildren(
-        headlineNumbers(state.checkpoint),
-        ...(chips ? [chips] : []),
-        element('p', deskCountLine(state.checkpoint), 'desk-counts'),
-      );
-      numbers.setAttribute('aria-busy', 'false');
-      if (infra) {
-        const strip = infraStrip(state.checkpoint);
-        infra.replaceChildren(...(strip ? [strip] : []));
-        infra.setAttribute('aria-busy', 'false');
-      }
-      drawPartners();
-      if (run) { const panel = runClockPanel(state.checkpoint.run); run.replaceChildren(...(panel ? [panel] : [])); run.setAttribute('aria-busy', 'false'); }
-      if (positions) { positions.replaceChildren(positionsBoard(state.checkpoint)); positions.setAttribute('aria-busy', 'false'); }
-      if (watch) { const strip = watchStrip(state.checkpoint); watch.replaceChildren(...(strip ? [strip] : [])); }
-      if (lineageBox) { const tree = lineageTree(state.checkpoint); lineageBox.replaceChildren(...(tree ? [tree] : [])); }
-      if (lab) {
-        lab.replaceChildren(
-          element('h3', 'Experiments', 'lab-heading'), experimentsPanel(state.checkpoint.lab),
-          element('h3', 'The improvement curve', 'lab-heading'), curveFigure(state.checkpoint.lab),
-        );
-        lab.setAttribute('aria-busy', 'false');
-      }
-      statusLine(status, state.mode, state.checkpoint.published_at);
+      drawStrip(); drawMore(); drawNow(); drawHoldings(); drawRace();
     } catch {
       if (state.checkpoint) return;
       const notice = element('p', 'The floor checkpoint is unavailable. ', 'unavailable');
       notice.append(link('Read the runtime on GitHub.', REPOSITORY));
-      numbers.replaceChildren(notice);
-      numbers.setAttribute('aria-busy', 'false');
-      if (infra) infra.setAttribute('aria-busy', 'false');
-      for (const box of [positions, lab, run]) if (box) { box.replaceChildren(); box.setAttribute('aria-busy', 'false'); }
-      partners.setAttribute('aria-busy', 'false');
+      if (strip) { strip.replaceChildren(notice); ready(strip); }
+      for (const box of [now, holdings, race]) if (box) { box.replaceChildren(); ready(box); }
     }
   }
   await refresh();
-  // The floor's real balance history: its own marks of the venue accounts, nothing else.
-  if (history) {
-    const marks = await loadEvents({ stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT })
-      .catch(() => ({ events: [] }));
+  // The real balance history: the floor's own marks of the venue accounts.
+  if (holdings) {
+    const marks = await loadEvents({ stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT }).catch(() => ({ events: [] }));
     state.floorMarks = marks.events;
-    drawBalance();
+    drawHoldings();
   }
-  // Each card carries its own equity line and its own latest thought.
-  if (state.checkpoint) {
+  // What each desk is thinking now, from its own stream.
+  if (state.checkpoint && now) {
     await Promise.all(orderDesks(state.checkpoint.desks).slice(0, MAX_CARDS).map(async desk => {
-      const [marks, recent] = await Promise.all([
-        loadEvents({ stream: `ledger:${desk.id}`, kind: 'ledger.mark', limit: SPARK_POINTS }).catch(() => ({ events: [] })),
-        loadEvents({ stream: `desk:${desk.id}`, limit: 10 }).catch(() => ({ events: [] })),
-      ]);
-      state.records.set(desk.id, { marks: marks.events, now: nowLine(recent.events) });
+      const recent = await loadEvents({ stream: `desk:${desk.id}`, limit: 40 }).catch(() => ({ events: [] }));
+      state.records.set(desk.id, deskRecord(recent.events));
     }));
-    drawPartners();
+    drawNow();
   }
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
   let tapeReady = true;
@@ -1509,14 +1651,13 @@ async function startFloor(root) {
     state.events = history.events;
   } catch {
     tapeReady = false;
-    tape.replaceChildren(element('p', 'The tape is unavailable. It resumes when the floor publishes again.', 'unavailable'));
-    tape.setAttribute('aria-busy', 'false');
+    if (tape) { tape.replaceChildren(element('p', 'The tape is unavailable. It resumes when the floor publishes again.', 'unavailable')); ready(tape); }
   }
-  drawChips();
+  drawToggle();
   if (tapeReady) state.redraw();
   const feed = startFeed({
     streams: ['all'],
-    onStatus: mode => { state.mode = mode; statusLine(status, mode, state.checkpoint?.published_at || null); },
+    onStatus: mode => { state.mode = mode; setStatus(); },
     onEvents: events => {
       state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2);
       let cards = false;
@@ -1527,14 +1668,13 @@ async function startFloor(root) {
           balance = true;
           continue;
         }
-        const id = typeof event.stream === 'string' && event.stream.includes(':') ? event.stream.slice(event.stream.indexOf(':') + 1) : null;
-        const record = id ? state.records.get(id) : null;
-        if (!record) continue;
-        if (event.kind === 'ledger.mark') { record.marks = [...record.marks, event].slice(-CARD_MARKS); cards = true; }
-        if (event.kind === 'desk.thought' || event.kind === 'desk.memo') { record.now = nowLine([event]); cards = true; }
+        if (typeof event.stream !== 'string' || !event.stream.startsWith('desk:')) continue;
+        const id = event.stream.slice(5);
+        state.records.set(id, deskRecord([event], state.records.get(id)));
+        cards = true;
       }
-      if (cards) drawPartners();
-      if (balance) drawBalance();
+      if (cards) drawNow();
+      if (balance) drawHoldings();
       state.redraw();
     },
   });

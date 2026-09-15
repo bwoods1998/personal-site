@@ -376,3 +376,104 @@ footer { border-top: 1px solid var(--line); padding: 18px 0 36px; font-size: 10p
   .lineage-row { grid-template-columns: 32px repeat(var(--families, 2), minmax(140px, 1fr)); }
   footer { flex-direction: column; gap: 6px; padding-bottom: 28px; }
 }
+
+/* floor */
+/* The floor page: one screen answers what, alive, working. Fewer words, more live things. */
+.masthead-floor { padding-bottom: 22px; }
+.masthead-floor .lede { max-width: 680px; }
+.run-strip-box { margin: 26px 0 0; }
+.run-strip {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 0;
+  font: 12px/1.7 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.run-strip .run-elapsed-text { font-weight: 400; font-size: clamp(24px, 4.2vw, 36px); letter-spacing: -1.2px; line-height: 1.1; color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
+.run-strip .run-since { color: var(--muted); }
+.run-strip .run-item { color: var(--ink); }
+.run-strip .run-item.positive { color: var(--positive); }
+.run-strip .run-item.negative { color: var(--negative); }
+.credit-pill { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; }
+.credit-open { color: var(--positive); border-color: #4c5a3e; }
+.credit-throttled { color: var(--accent); border-color: #6b5836; }
+.credit-stopped { color: var(--negative); border-color: #6b4a42; }
+.run-status { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+.run-status::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--muted); vertical-align: middle; }
+.run-status-live { color: var(--positive); }
+.run-status-live::before { background: var(--positive); animation: badge-pulse 2.4s ease-in-out infinite; }
+.run-status-polling { color: var(--accent); }
+.run-status-polling::before { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .run-status-live::before { animation: none; } }
+.masthead-more { margin: 18px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); }
+.masthead-more summary { cursor: pointer; width: fit-content; min-height: 32px; display: flex; align-items: center; }
+.masthead-more .facts { margin-top: 10px; gap: 8px 22px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.masthead-more .facts dd { font-size: 12px; }
+.masthead-more .note { max-width: 620px; }
+.masthead-more .disclosure, .masthead-more .footnote { margin-top: 12px; }
+.section-title { margin: 0; }
+.block > .section-title + [aria-busy], .block > .section-title + div { margin-top: 14px; }
+
+/* now: who is thinking, about what */
+.now-card { border: 1px solid var(--accent); background: var(--surface); padding: 14px 16px; display: grid; gap: 8px; min-width: 0; }
+.now-card + .now-card { margin-top: 10px; }
+.now-card-shadow { border-color: var(--line); border-style: dashed; }
+.now-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.now-name { font: 500 16px/1.2 Arial, Helvetica, sans-serif; letter-spacing: -.4px; text-decoration: none; color: var(--ink); }
+.now-head .badge { margin-left: 0; }
+.now-thought { margin: 0; font-size: 14px; line-height: 1.65; color: var(--ink); overflow-wrap: anywhere; min-height: 1.65em; }
+.now-thought::after { content: '▍'; color: var(--accent); animation: badge-pulse 1.1s steps(2) infinite; margin-left: 2px; }
+@media (prefers-reduced-motion: reduce) { .now-thought::after { animation: none; } }
+.now-tool { font: 10px/1.7 'Courier New', Courier, monospace; color: var(--tone-tool); text-transform: uppercase; letter-spacing: .5px; }
+.now-idle-list { display: grid; gap: 4px; margin-top: 10px; }
+.now-idle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font: 11.5px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.now-idle-name { color: var(--ink); text-decoration: none; }
+.now-idle-name:hover { text-decoration: underline; }
+.now-idle .badge { margin-left: 0; }
+.now-night { margin: 12px 0 0; font: 10px/1.7 'Courier New', Courier, monospace; color: var(--tone-watch); text-transform: uppercase; letter-spacing: .6px; }
+
+/* holdings: the accounts, then every position with its reason */
+.holdings-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 0; font: 12px/1.7 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
+.holdings-total { font: 400 clamp(22px, 3.6vw, 30px)/1.1 Arial, Helvetica, sans-serif; letter-spacing: -.9px; color: var(--ink); }
+.holdings-spark { width: 120px; height: 26px; flex: none; }
+.holdings-since { font-size: 11px; }
+.holdings-flat { margin-top: 12px; }
+.holdings-line + .positions { margin-top: 14px; }
+.position { padding: 12px 14px; gap: 8px; }
+.position-thesis { color: var(--ink); }
+
+/* the race: families as rows, desks as chips */
+.race-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.race-family { flex: 0 0 80px; font: 10px/1.7 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.race-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.race-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; min-height: 34px;
+  border: 1px solid var(--line); background: var(--surface); text-decoration: none; color: var(--ink);
+  font: 12px/1.4 'Courier New', Courier, monospace; font-variant-numeric: tabular-nums;
+}
+.race-chip:hover { border-color: var(--accent); color: var(--ink); }
+.race-chip b { font: 500 13px/1.2 Arial, Helvetica, sans-serif; letter-spacing: -.3px; }
+.race-chip span { color: var(--muted); }
+.race-chip span.positive { color: var(--positive); }
+.race-chip span.negative { color: var(--negative); }
+.race-chip i { font-style: normal; font-size: 10px; letter-spacing: .4px; color: var(--accent); }
+.race-chip .race-thinking { color: var(--tone-watch); text-transform: uppercase; }
+.race-live { border-color: #6b5836; }
+.race-leader { border-color: var(--accent); }
+.race-line { margin: 12px 0 0; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.race-more { margin: 10px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); }
+.race-more summary { cursor: pointer; width: fit-content; min-height: 32px; display: flex; align-items: center; }
+.race-diff { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 8px 0 0; }
+.race-diff b { font: 500 12px/1.4 Arial, Helvetica, sans-serif; color: var(--ink); }
+.race-loop-link { display: inline-block; margin-top: 12px; font: 11px/1.7 'Courier New', Courier, monospace; }
+
+/* the tape: one toggle instead of five chips */
+.section-heading #tape-toggle { display: flex; }
+.tape-toggle { min-height: 30px; padding: 4px 10px; }
+
+/* the explainer */
+.how .loops { margin-top: 16px; }
+.how .loops figcaption { color: var(--ink); }
+@media (max-width: 720px) {
+  .run-status { margin-left: 0; }
+  .race-family { flex-basis: 100%; }
+  .holdings-spark { width: 100%; }
+}
+/* end floor */

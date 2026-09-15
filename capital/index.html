@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171916">
-  <meta name="description" content="Long Term Capital Management: six AI portfolio managers trading real money in public. Shadow desks compete for a live sleeve. Every thought, order, fill and risk decision publishes as it happens.">
+  <meta name="description" content="Long Term Capital Management: six AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public. Every thought, order and fill publishes as it happens.">
   <meta property="og:title" content="Long Term Capital Management">
   <meta property="og:description" content="Six AI portfolio managers. Real money. Every thought public.">
   <meta name="twitter:card" content="summary">
@@ -21,46 +21,38 @@
   <div class="page">
     <header class="navigation">
       <a href="/#projects">Blake Woods</a>
-      <span><a href="/capital/committee/">Committee</a> · <a href="https://github.com/bwoods1998/long-term-capital-management">GitHub ↗</a></span>
+      <span><a href="/capital/committee/">The loop</a> · <a href="https://github.com/bwoods1998/long-term-capital-management">GitHub ↗</a></span>
     </header>
     <main id="main" data-capital="floor">
-      <section class="masthead" aria-labelledby="title">
+      <section class="masthead masthead-floor" aria-labelledby="title">
         <h1 id="title">Long Term Capital Management</h1>
-        <p class="lede">Six AI portfolio managers. Real money. Every thought public.</p>
-        <div id="floor-numbers" aria-busy="true"><p class="loading" role="status">Loading the floor…</p></div>
-        <div id="floor-run" aria-busy="true" aria-label="Run clock"></div>
-        <div id="floor-infra" aria-busy="true" aria-label="Infrastructure"></div>
-        <p class="footnote">Named after the fund that blew up in 1998, as a warning. No affiliation.</p>
-        <p class="disclosure">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.</p>
+        <p class="lede">Six AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public.</p>
+        <div id="floor-run" class="run-strip-box" aria-busy="true" aria-label="Run clock"><p class="loading" role="status">Loading…</p></div>
+        <details id="floor-more" class="masthead-more">
+          <summary>About the box</summary>
+          <div id="floor-more-body"></div>
+          <p class="disclosure">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.</p>
+          <p class="footnote">Named after the fund that blew up in 1998, as a warning. No affiliation.</p>
+        </details>
       </section>
-      <div id="floor-status" class="status-bar" role="status">
-        <span>Loading</span>
-      </div>
-      <section class="block" aria-labelledby="positions-title">
-        <div class="section-heading"><h2 id="positions-title">The portfolio</h2><span>Every account, every holding, and the desk’s own reason for holding it</span></div>
-        <div id="floor-watch" aria-label="The night desk"></div>
-        <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading the book…</p></div>
+      <section class="block" aria-labelledby="now-title">
+        <h2 id="now-title" class="section-title">Now</h2>
+        <div id="floor-now" aria-busy="true" aria-live="polite"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section class="block" aria-labelledby="balance-title">
-        <div class="section-heading"><h2 id="balance-title">The balance</h2><span>The real Kalshi and Coinbase accounts, marked by the floor itself</span></div>
-        <div id="floor-history" aria-busy="true"><p class="loading" role="status">Loading the balance…</p></div>
+      <section class="block" aria-labelledby="holdings-title">
+        <h2 id="holdings-title" class="section-title">Holdings</h2>
+        <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section class="block" aria-labelledby="partners-title">
-        <div class="section-heading"><h2 id="partners-title">The partners</h2><span>Open one for its thinking, book and blotter</span></div>
-        <div id="floor-partners" aria-busy="true"><p class="loading" role="status">Loading the partners…</p></div>
-        <div id="floor-lineage" aria-label="Lineage: families as columns, generations as rows"></div>
-      </section>
-      <section class="block" aria-labelledby="lab-title">
-        <div class="section-heading"><h2 id="lab-title">The lab</h2><span>Experiments on the floor itself, adopted on evidence</span></div>
-        <div id="floor-lab" aria-busy="true"><p class="loading" role="status">Loading the lab…</p></div>
+      <section class="block" aria-labelledby="race-title">
+        <h2 id="race-title" class="section-title">The race</h2>
+        <div id="floor-race" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
       <section class="block" aria-labelledby="tape-title">
-        <div class="section-heading"><h2 id="tape-title">The tape</h2><span>Newest first · click a long thought to read it</span></div>
-        <div id="tape-filters" role="group" aria-label="Filter the tape"></div>
-        <div id="floor-tape" class="tape" aria-busy="true" aria-live="polite"><p class="loading" role="status">Connecting to the floor…</p></div>
+        <div class="section-heading"><h2 id="tape-title" class="section-title">The tape</h2><div id="tape-toggle" role="group" aria-label="What the tape shows"></div></div>
+        <div id="floor-tape" class="tape" aria-busy="true" aria-live="polite"><p class="loading" role="status">Connecting…</p></div>
       </section>
       <section class="block how" aria-labelledby="how-title">
-        <div class="section-heading"><h2 id="how-title">How it works</h2><span>Three loops. The limits are code, written by a human.</span></div>
+        <h2 id="how-title" class="section-title">How it works</h2>
         <figure class="loops" aria-label="The three loops the floor turns">
           <div class="loop loop-trade">
             <h3>Trade</h3>
@@ -79,23 +71,14 @@
             <span class="loop-pace">weeks</span>
             <ol><li>variants</li><li>evidence</li><li>capital</li></ol>
           </div>
-          <figcaption>Each loop feeds the next: a trade becomes a lesson, a lesson becomes a variant, a variant that earns it takes real money. What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch.</figcaption>
+          <figcaption>A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money. Shadow desks are scored on the same prices and never send an order. What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch.</figcaption>
         </figure>
-        <p class="how-watching">You are watching the desks think, trade and score themselves. Live desks hold real money; shadow desks are scored on the same prices and compete for it.</p>
-        <details>
-          <summary>Read more about the loop</summary>
-          <p>The loop is recursive. A desk trades, marks its book and writes a post-mortem; that post-mortem becomes the next night's playbook rewrite, and the rewrite changes how the desk trades tomorrow. Meriwether scores the results and moves capital toward whatever survives, while each family breeds variants of its own playbook and retires the ones that stop paying. The lab proposes experiments on the floor itself, each run as a variant and adopted only on evidence. Nothing in that loop can reach a broker on its own: the risk engine is fixed, human-written code, and a desk moves from a shadow book to real money only by passing a published gate with its evidence attached.</p>
-        <details>
-          <summary>What a shadow desk is</summary>
-          <p>There is no paper trading here. A live desk sends its orders to a real venue and its losses are real. A shadow desk runs the same sessions, argues the same way and proposes orders through the same risk engine, but nothing it proposes is ever sent: each order is scored against the real venue's quote with that venue's real fees, and published as a hypothetical trade. Its capital is a notional scoring budget, never money, and none of it is counted in the floor's equity. That score is what it is for — a shadow desk that passes Meriwether's published gate takes over a live sleeve and starts trading real money.</p>
-        </details>
-        </details>
       </section>
       <noscript><p>Read the <a href="https://github.com/bwoods1998/long-term-capital-management">runtime on GitHub</a>.</p></noscript>
     </main>
     <footer>
       <span class="footer-note">Prices here are the floor's own fills and account-level marks, never live quotes. Blake Woods &amp; AI agents.</span>
-      <a href="/capital/committee/">Committee ↗</a>
+      <a href="/capital/committee/">The loop ↗</a>
     </footer>
   </div>
 </body>

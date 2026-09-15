@@ -23,6 +23,7 @@ import {
   positionRows, exitChips, liveSessionText, watchLine, lineageGrid, mutationBadges, experimentRows, changeSummary,
   curveSeries, curveReading, tradeStories, latestCalibration, familyCalibrations, reliabilitySeries, probabilityText,
   instrumentLabel, profileName, LOOPS, runClock, portfolioLine, positionRationale, storyAnchor, storyHref,
+  runStrip, ago, roman, raceName, triggerText, isInteresting, INTERESTING_KINDS, deskRecord, idleLine, nowRows, nightLine, flatLine, raceRows, raceLine,
 } from '../capital/capital.js';
 
 const token = 'woods-capital-test-publication-token-01';
@@ -180,7 +181,7 @@ test('risk.review is publishable and carries one fixed payload shape', async () 
   // review · <desk> · approve/block · reason
   const line = tapeLine(review());
   assert.equal(line.tone, 'risk');
-  assert.equal(line.text, 'review · Merton · approve · Inside the position cap and the mandate.');
+  assert.equal(line.text, "cleared Merton's order · Inside the position cap and the mandate.");
   assert.equal(line.source, 'Risk engine');
   assert.equal(filterGroup('risk.review'), 'risk');
 });
@@ -388,9 +389,9 @@ test('the floor projects partners, tape lines and filters without touching marku
   assert.match(thought.text, /Margins widened/);
   const fill = tapeLine({ stream: 'broker:alpaca', kind: 'broker.fill', at: event().at, payload: { fill_id: 'f1', order_id: 'o1', instrument: 'MSFT', side: 'buy', quantity: '20', price: '500.25', fee: '0.01' } });
   assert.equal(fill.tone, 'fill');
-  assert.match(fill.text, /buy 20 MSFT · @ \$500\.2500/);
+  assert.match(fill.text, /bought 20 MSFT · at \$500\.25 · fee \$0\.01/);
   assert.equal(fill.group, 'trades');
-  assert.match(tapeLine({ stream: 'risk', kind: 'risk.decision', at: event().at, payload: { intent_id: 'i1', desk_id: 'rosenfeld', approved: false, reasons: ['position cap'] } }).text, /Blocked · rosenfeld · position cap/);
+  assert.match(tapeLine({ stream: 'risk', kind: 'risk.decision', at: event().at, payload: { intent_id: 'i1', desk_id: 'rosenfeld', approved: false, reasons: ['position cap'] } }).text, /blocked Rosenfeld's order · position cap/);
   assert.equal(tapeLine({ stream: 'lab', kind: 'lab.result', at: event().at, payload: {} }).text, '');
   assert.equal(tapeLine({ stream: 'ops', kind: 'ops.alert', at: event().at, payload: null }).text, '');
   // Every published kind belongs to exactly one chip.
@@ -505,16 +506,19 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
     assert.match(html, /data-capital="(?:floor|desk|committee)"/, page);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /Six AI portfolio managers\. Real money\. Every thought public\./);
+  assert.match(floorHtml, /Six AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public\./);
   assert.match(floorHtml, /Named after the fund that blew up in 1998, as a warning\. No affiliation\./);
-  for (const id of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape', 'floor-status',
-    'floor-positions', 'floor-watch', 'floor-lineage', 'floor-lab', 'floor-run']) assert.match(floorHtml, new RegExp(`id="${id}"`));
+  for (const id of ['floor-run', 'floor-more', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']) assert.match(floorHtml, new RegExp(`id="${id}"`));
+  for (const gone of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-status', 'floor-infra', 'floor-lineage', 'floor-lab']) assert.doesNotMatch(floorHtml, new RegExp(`id="${gone}"`), `${gone} folded into the new panels`);
   // The explainer is the three loops, in reading order, and one line of what cannot change.
   for (const loop of LOOPS) assert.match(floorHtml, new RegExp(`<h3>${loop.label}</h3>`));
   assert.ok(floorHtml.indexOf('<h3>Trade</h3>') < floorHtml.indexOf('<h3>Desk</h3>') && floorHtml.indexOf('<h3>Desk</h3>') < floorHtml.indexOf('<h3>Floor</h3>'));
   assert.match(floorHtml, /What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch\./);
-  assert.ok(floorHtml.indexOf('id="floor-positions"') < floorHtml.indexOf('id="floor-history"'), 'the book sits near the top');
-  assert.match(floorHtml, /Read more about the loop/);
+  assert.ok(floorHtml.indexOf('id="floor-run"') < floorHtml.indexOf('id="floor-now"') && floorHtml.indexOf('id="floor-now"') < floorHtml.indexOf('id="floor-positions"')
+    && floorHtml.indexOf('id="floor-positions"') < floorHtml.indexOf('id="floor-race"') && floorHtml.indexOf('id="floor-race"') < floorHtml.indexOf('id="floor-tape"'), 'the brief\u2019s order: clock, now, holdings, race, tape');
+  // The word budget: under 120 static words above the tape, so the live things carry the page.
+  const aboveTape = floorHtml.slice(floorHtml.indexOf('<main'), floorHtml.indexOf('id="floor-tape"')).replace(/<[^>]+>/g, ' ');
+  assert.ok(aboveTape.split(/\s+/).filter(Boolean).length < 120, 'static words above the tape');
   for (const id of ['committee-lab', 'committee-calibration']) assert.match(await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8'), new RegExp(`id="${id}"`));
   const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
   assert.match(committeeHtml, /<h1 id="committee-title">Meriwether<\/h1>/);
@@ -615,56 +619,67 @@ function markEvent(id, index) {
   };
 }
 
-test('the floor page mounts the headline numbers, partner cards and a filterable tape', async () => {
-  const root = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-partners', 'tape-filters', 'floor-tape']);
-  const board = [desk('merton', { name: 'Merton', family: 'merton', mode: 'live', equity: '90000', return_pct: '9', gate: null }), desk('rosenfeld')];
-  const marks = [0, 1, 2].map(index => markEvent('merton', index));
+test('the floor page mounts the run strip, the now cards, the holdings, the race and a tape with one toggle', async () => {
+  const root = stubPage('floor', ['floor-run', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']);
+  const board = [
+    desk('merton', { name: 'Merton', family: 'merton', mode: 'live', equity: '90000', return_pct: '9', gate: null, live_session: { session_id: 'merton:s', trigger: 'cadence:09:45', started_at: '2026-09-15T13:45:00.000Z' } }),
+    desk('rosenfeld'),
+  ];
   const longThought = published(3, { id: 'desk.rosenfeld.thought.3', payload: { session_id: 's', text: 'word '.repeat(60).trim() } });
   const tape = [longThought, { ...published(2), seq: 2 }, { ...markEvent('merton', 2), seq: 1 }];
   await withBrowser('', path => {
-    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ desks: board });
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ desks: board, run: run(), infra: infra() });
     if (path.includes('after=')) return { schema_version: 1, latest_seq: 3, events: [] };
-    if (path.includes('ledger%3Amerton')) return { schema_version: 1, latest_seq: 3, events: marks };
-    if (path.includes('desk%3Amerton')) return { schema_version: 1, latest_seq: 3, events: [published(1, { id: 'desk.merton.thought.1', stream: 'desk:merton', payload: { session_id: 's', text: 'Filing lands at four.' } })] };
+    if (path.includes('desk%3Amerton')) {
+      return { schema_version: 1, latest_seq: 3, events: [
+        published(1, { id: 'desk.merton.thought.1', stream: 'desk:merton', payload: { session_id: 's', text: 'Filing lands at four.' } }),
+        published(4, { id: 'desk.merton.tool.4', stream: 'desk:merton', kind: 'desk.tool_call', at: '2026-09-15T14:02:30.000Z', payload: { session_id: 's', tool: 'filing', arguments: { symbol: 'MSFT' } } }),
+      ] };
+    }
+    if (path.includes('desk%3Arosenfeld')) {
+      return { schema_version: 1, latest_seq: 3, events: [
+        published(5, { id: 'desk.rosenfeld.memo.5', kind: 'desk.memo', payload: { session_id: 's', title: 'No trade', text: 'Priced fairly.' } }),
+        published(6, { id: 'desk.rosenfeld.end.6', kind: 'desk.session_ended', at: '2026-09-15T14:03:00.000Z', payload: { session_id: 's', reason: 'end_session', requests: 3, cost_usd: '0.02' } }),
+      ] };
+    }
     if (path.includes('stream=')) return { schema_version: 1, latest_seq: 3, events: [] };
     return { schema_version: 1, latest_seq: 3, events: tape };
   }, async () => {
     const feed = await startCapital(root);
     feed.stop();
-    const text = root.textContent;
-    assert.match(text, /\$100,500/, 'floor equity');
-    assert.match(text, /−\$250/, 'today, signed');
-    assert.match(text, /\$4\.21 \/ \$25/, 'inference spent against the cap');
-    assert.equal(root.querySelector('#floor-numbers').getAttribute('aria-busy'), 'false');
-    const today = root.querySelector('#floor-numbers').find('dd')[1];
-    assert.equal(today.className, 'negative', 'a losing day is coloured');
+    const strip = root.querySelector('#floor-run');
+    assert.equal(strip.getAttribute('aria-busy'), 'false');
+    assert.match(strip.textContent, /running \d+d \d+h since Sep 12, 2026 \$41\.97 of Sail credit spent profit \+\$63\.40 \+\$1\.51 per Sail dollar 412 sessions \$4\.21 \/ \$25 today/);
+    assert.equal(strip.withClass('run-item')[1].className, 'run-item positive', 'profit is toned');
+    assert.match(root.querySelector('#floor-more-body').textContent, /running on a Sail cloud VM.*box 9f2c1ad4.*118.*keys never leave Cloudflare/s, 'the box facts sit behind the chevron');
 
-    const cards = root.querySelector('#floor-partners').find('a');
-    assert.equal(cards.length, 2);
-    assert.deepEqual(cards.map(card => card.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
-    assert.match(cards[0].textContent, /Merton/);
-    assert.match(cards[0].textContent, /Robert · filings, long horizon · Alpaca/);
-    assert.match(cards[0].textContent, /live/, 'the mode badge');
-    assert.match(cards[0].textContent, /\$90,000/);
-    assert.match(cards[0].textContent, /\+9\.00%/);
-    assert.match(cards[0].textContent, /Filing lands at four\./, 'the now line');
-    assert.match(cards[1].textContent, /Eric · earnings drift · DeepSeek/);
-    const [spark] = cards[0].find('svg');
-    assert.equal(spark.find('path').length, 1, 'one equity line per card');
-    assert.match(spark.find('path')[0].attributes.d, /^M1\.00,/);
-    assert.equal(cards[1].find('svg').length, 0, 'a desk with no marks shows no line');
+    const now = root.querySelector('#floor-now');
+    assert.equal(now.getAttribute('aria-busy'), 'false');
+    const cards = now.withClass('now-card');
+    assert.equal(cards.length, 1, 'one card per desk in session');
+    assert.match(cards[0].textContent, /Merton sat down for the 09:45 slot/);
+    assert.match(cards[0].textContent, /Filing lands at four\./, 'the newest thought');
+    assert.match(cards[0].textContent, /using filing/, 'the last tool it asked');
+    const idle = now.withClass('now-idle');
+    assert.equal(idle.length, 1);
+    assert.match(idle[0].textContent, /Rosenfeld.*shadow.*last session .* ago · No trade/s);
+    assert.deepEqual(now.find('a').map(node => node.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
 
-    const chips = () => root.querySelector('#tape-filters').find('button');
-    assert.deepEqual(chips().map(chip => chip.textContent), ['thoughts', 'trades', 'risk', 'committee', 'evolution']);
-    assert.equal(chips()[0].getAttribute('aria-pressed'), 'true');
+    const race = root.querySelector('#floor-race');
+    assert.equal(race.getAttribute('aria-busy'), 'false');
+    assert.deepEqual(race.withClass('race-chip').map(chip => chip.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
+    assert.match(race.withClass('race-chip')[0].textContent, /Merton.*\+9\.00%.*thinking/s);
+
+    const toggle = () => root.querySelector('#tape-toggle').find('button')[0];
+    assert.equal(toggle().textContent, 'everything');
+    assert.equal(toggle().getAttribute('aria-pressed'), 'false');
     const lines = () => root.querySelector('#floor-tape').withClass('tape-entry');
-    assert.equal(lines().length, 3);
-    chips()[0].click();
-    assert.equal(chips()[0].getAttribute('aria-pressed'), 'false');
-    assert.equal(lines().length, 1, 'turning thoughts off leaves the mark');
-    assert.doesNotMatch(root.querySelector('#floor-tape').textContent, /Margins widened/);
-    chips()[0].click();
-    assert.equal(lines().length, 3);
+    assert.equal(lines().length, 2, 'a mark is plumbing; thoughts show by default');
+    toggle().click();
+    assert.equal(toggle().getAttribute('aria-pressed'), 'true');
+    assert.equal(lines().length, 3, 'everything shows the mark too');
+    toggle().click();
+    assert.equal(lines().length, 2);
 
     const expand = root.querySelector('#floor-tape').find('button')[0];
     assert.equal(expand.getAttribute('aria-expanded'), 'false');
@@ -899,8 +914,8 @@ test('the runway spend policy is accepted, rendered, and refused when it is not 
   assert.equal(rows.get('Sail spend today'), '$4.21 · no cap · 385 days of runway');
 });
 
-test('the floor page badges live against shadow and mounts the infrastructure strip', async () => {
-  const root = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-infra', 'floor-partners', 'tape-filters', 'floor-tape']);
+test('the race badges live against shadow, and the box facts sit behind the chevron', async () => {
+  const root = stubPage('floor', ['floor-run', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']);
   const board = [
     desk('mullins', { name: 'Mullins', family: 'mullins', mode: 'live', equity: '210.55', return_pct: '5.2', gate: null }),
     desk('merton', { name: 'Merton', family: 'merton', mode: 'shadow', equity: '2000', return_pct: '3.5', gate: null }),
@@ -919,36 +934,27 @@ test('the floor page badges live against shadow and mounts the infrastructure st
   }, async () => {
     const feed = await startCapital(root);
     feed.stop();
-    const numbers = root.querySelector('#floor-numbers');
-    assert.match(numbers.textContent, /\$211/, 'the masthead is the live sleeve, not the shadow books');
-    assert.doesNotMatch(numbers.textContent, /\$2,000/, 'a notional book never reaches the floor number');
-    assert.match(numbers.textContent, /live desks only/);
-    assert.match(numbers.textContent, /1 live desk · 1 shadow desk competing for capital/);
+    const more = root.querySelector('#floor-more-body');
+    assert.match(more.textContent, /running on a Sail cloud VM/);
+    assert.match(more.textContent, /box 9f2c1ad4/);
+    assert.match(more.textContent, /1d 2h/);
+    assert.match(more.textContent, /118/);
+    assert.match(more.textContent, /\$4\.21 of \$25/);
+    assert.match(more.textContent, /37/, 'Sail requests today');
+    assert.match(more.textContent, /The desks think on Sail\. Their keys never leave Cloudflare\. Every order passes a risk engine and a critic\./);
+    assert.doesNotMatch(root.querySelector('#floor-run').textContent, /\$2,000/, 'a notional book never reaches the headline');
 
-    const strip = root.querySelector('#floor-infra');
-    assert.equal(strip.getAttribute('aria-busy'), 'false');
-    assert.match(strip.textContent, /running on a Sail cloud VM/);
-    assert.match(strip.textContent, /box 9f2c1ad4/);
-    assert.match(strip.textContent, /1d 2h/);
-    assert.match(strip.textContent, /118/);
-    assert.match(strip.textContent, /\$4\.21 of \$25/);
-    assert.match(strip.textContent, /37/, 'Sail requests today');
-    assert.match(strip.textContent, /The desks think on Sail; their keys never leave Cloudflare; every order passes a risk engine and a critic\./);
-
-    // The founding order decides the grid, so Merton (shadow) leads and Mullins (live) follows.
-    const cards = root.querySelector('#floor-partners').find('a');
-    const [shadowCard, liveCard] = cards;
-    const badges = cards.map(card => card.withClass('badge')[0]);
-    assert.deepEqual(badges.map(badge => badge.className), ['badge badge-shadow', 'badge badge-live']);
-    assert.equal(badges[1].withClass('badge-dot').length, 1, 'live pulses');
-    assert.equal(badges[0].withClass('badge-dot').length, 0, 'shadow does not');
-    assert.match(badges[0].getAttribute('title'), /never sent/);
-    assert.match(badges[1].getAttribute('title'), /real money/);
-    assert.match(liveCard.textContent, /\$211/);
-    assert.match(liveCard.textContent, /equity/);
-    assert.match(shadowCard.textContent, /shadow · hypothetical/);
-    assert.match(shadowCard.textContent, /\+3\.50%/);
-    assert.match(shadowCard.textContent, /notional book/);
+    // The founding order decides the row order, so Merton (shadow) leads and Mullins (live) follows.
+    const chips = root.querySelector('#floor-race').withClass('race-chip');
+    assert.deepEqual(chips.map(chip => chip.className), ['race-chip', 'race-chip race-live']);
+    assert.equal(chips[1].withClass('badge-dot').length, 1, 'live pulses');
+    assert.equal(chips[0].withClass('badge-dot').length, 0, 'shadow does not');
+    assert.match(chips[0].getAttribute('title'), /shadow: scored, never sent/);
+    assert.match(chips[1].getAttribute('title'), /live: real money/);
+    assert.match(chips[1].textContent, /Mullins.*\+5\.20%/s);
+    assert.match(chips[0].textContent, /Merton.*\+3\.50%/s);
+    assert.equal(root.querySelector('#floor-race').withClass('race-leader').length, 0, 'a family of one has no leader');
+    assert.match(root.querySelector('#floor-race').textContent, /The race starts with the first bred variant\./);
   });
 });
 
@@ -979,8 +985,8 @@ test('the pages say shadow, never paper', async () => {
     assert.equal(mentions, ruledOut, `${page} still says paper`);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /id="floor-infra"/);
-  assert.match(floorHtml, /What a shadow desk is/);
+  assert.match(floorHtml, /id="floor-more"/);
+  assert.match(floorHtml, /Shadow desks are scored on the same prices and never send an order\./);
   // The runtime repository was renamed; every link on the pages follows it.
   const REPO = 'https://github.com/bwoods1998/long-term-capital-management';
   for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
@@ -1088,7 +1094,7 @@ test('the checkpoint carries the account balances beside the ledger, or not at a
   }
 });
 
-test('the floor page leads with the portfolio, its venue chips and the real balance line', async () => {
+test('the holdings lead with the accounts, the balance line and what has changed since the start', async () => {
   const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')];
   assert.equal(floorBalanceSeries([marks[0]]), null, 'a line needs a second mark');
   assert.equal(sinceStart(marks).amount, '+$29.69');
@@ -1097,7 +1103,7 @@ test('the floor page leads with the portfolio, its venue chips and the real bala
   const line = tapeLine(floorMark());
   assert.equal(line.label, 'Floor balance');
   assert.equal(line.group, 'trades', 'the balance belongs with the money, not with the alerts');
-  assert.match(line.text, /Balance \$979\.69/);
+  assert.match(line.text, /balance \$979\.69/);
   assert.match(line.text, /Kalshi \$492\.29, Coinbase \$487\.40/);
 
   const board = [desk('mullins', { name: 'Mullins', family: 'mullins', mode: 'live', equity: '210.55', gate: null })];
@@ -1106,36 +1112,32 @@ test('the floor page leads with the portfolio, its venue chips and the real bala
     if (path.includes('kind=floor.mark')) return { schema_version: 1, latest_seq: 302, events };
     return { schema_version: 1, latest_seq: 302, events: [] };
   };
-  const root = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape']);
-  await withBrowser('', routes(checkpoint({ desks: board, floor: accountFloor() }), marks), async () => {
+  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape'];
+  const root = stubPage('floor', ids);
+  await withBrowser('', routes(checkpoint({ desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
     const feed = await startCapital(root);
     feed.stop();
-    const numbers = root.querySelector('#floor-numbers').textContent;
-    assert.match(numbers, /Portfolio · Kalshi \+ Coinbase/, 'the headline names the accounts it added up');
-    assert.match(numbers, /\$979\.69/, 'the real balance, not the ledger equity');
-    assert.match(numbers, /real account balances/);
-    assert.match(numbers, /Kalshi \$492\.29 · Coinbase \$487\.40/, 'one chip per account');
-    assert.match(numbers, /−\$250/, "today's P&L still comes from the ledger");
-
-    const history = root.querySelector('#floor-history');
-    assert.equal(history.getAttribute('aria-busy'), 'false');
-    const [chart] = history.find('svg');
-    assert.equal(chart.find('path').length, 1, 'one real-balance line');
-    assert.match(history.textContent, /\$950\.00 → \$979\.69/);
-    assert.match(history.textContent, /since start \+\$29\.69/);
+    const holdings = root.querySelector('#floor-positions');
+    assert.equal(holdings.getAttribute('aria-busy'), 'false');
+    const accounts = holdings.withClass('holdings-line')[0];
+    assert.match(accounts.textContent, /^\$979\.69 Kalshi \$492\.29 Coinbase \$487\.40/, 'the real balance, then each account');
+    assert.equal(accounts.find('svg').length, 1, 'the balance line rides with the accounts');
+    assert.match(accounts.textContent, /since start \+\$29\.69/);
+    assert.match(holdings.textContent, /Flat\. \$980 in cash across 2 accounts\. 7 sessions today, no trade taken\./);
   });
 
   // A venue that stopped answering keeps its last balance on the chip and says it is stale.
-  const stale = stubPage('floor', ['floor-status', 'floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-tape']);
+  const stale = stubPage('floor', ids);
   const outage = accountFloor({ venues: [venueRow('kalshi', { stale: true }), venueRow('coinbase', COINBASE)] });
   await withBrowser('', routes(checkpoint({ desks: board, floor: outage }), []), async () => {
     const feed = await startCapital(stale);
     feed.stop();
-    const numbers = stale.querySelector('#floor-numbers');
-    assert.match(numbers.textContent, /Kalshi \$492\.29 stale/, 'the stale account is still counted, and labelled');
-    const [chip] = numbers.withClass('venue-chip-stale');
+    const accounts = stale.querySelector('#floor-positions').withClass('holdings-line')[0];
+    assert.match(accounts.textContent, /Kalshi \$492\.29 stale/, 'the stale account is still counted, and labelled');
+    const [chip] = accounts.withClass('venue-chip-stale');
     assert.match(chip.getAttribute('title'), /Kalshi did not answer the last balance request/);
-    assert.match(stale.querySelector('#floor-history').textContent, /appears with the floor’s first published mark/);
+    assert.equal(accounts.find('svg').length, 0, 'no marks, no line');
+    assert.match(stale.querySelector('#floor-positions').textContent, /Flat\. \$980 in cash across 2 accounts\. No trade taken yet\./);
   });
 });
 
@@ -1340,7 +1342,7 @@ test('trade stories fold intent, risk, order, fills, exit plan and outcome; cali
   assert.equal(closed.steps[1].tone, 'positive');
   assert.equal(closed.steps[2].text, 'filled · filled 0.01 · avg $76,800.50');
   assert.equal(closed.steps[3].text, 'buy 0.01 · @ $76,800.50 · fee $1.9200');
-  assert.match(closed.steps[4].text, /^BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · bracket held at the venue$/);
+  assert.match(closed.steps[4].text, /^exit plan for BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · held at the venue$/);
   assert.equal(closed.steps[5].text, 'resolved target · P&L +$31.99 · 40h held');
   assert.equal(closed.steps[5].tone, 'positive');
   assert.equal(stories[0].steps[1].text, 'blocked · order notional above the desk limit');
@@ -1362,28 +1364,28 @@ test('trade stories fold intent, risk, order, fills, exit plan and outcome; cali
   assert.equal(reliabilitySeries([]).points.length, 0);
 
   assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:hilibrand', payload: { trigger: 'price_move', detail: 'BTC fell 2.1% in an hour', decision: 'wake', reason: 'A held thesis is under its invalidation.' } }).text,
-    'price move → woke the desk · BTC fell 2.1% in an hour · A held thesis is under its invalidation.');
-  assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:hilibrand', payload: { trigger: 'headline', decision: 'ignore', reason: 'Old news.' } }).text, 'headline → let it pass · Old news.');
+    'price move: woke the desk · BTC fell 2.1% in an hour · A held thesis is under its invalidation.');
+  assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:hilibrand', payload: { trigger: 'headline', decision: 'ignore', reason: 'Old news.' } }).text, 'headline: let it pass · Old news.');
   assert.equal(tapeLine(forecast()).text, 'puts 93% on KXFEDDECISION-26SEP-H25 yes · market 89% · Reuters poll and a hot CPI; the market is a few cents shy of the evidence.');
-  assert.match(tapeLine(exitPlan()).text, /^BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · bracket held at the venue$/);
+  assert.match(tapeLine(exitPlan()).text, /^exit plan for BTC-USD · target \$80,000\.00 · stop \$75,500\.00 · out by .+ · held at the venue$/);
   assert.equal(tapeLine({ kind: 'desk.exit_plan', stream: 'desk:mullins', payload: { ...exitPlan().payload, venue_native: false, order_ids: ['a'] } }).text.split(' · ').at(-1), '1 exit order resting');
   assert.equal(tapeLine({ kind: 'desk.exit_plan', stream: 'desk:mullins', payload: { ...exitPlan().payload, venue_native: false, order_ids: [] } }).text.split(' · ').at(-1), 'the floor enforces it');
-  assert.equal(tapeLine({ kind: 'desk.code_run', stream: 'desk:mullins', payload: { session_id: 's', code_sha256: 'x', language: 'python', stdout: 'brier 0.18\nn 12', exit_code: 0, seconds: '1.4', sandbox: null } }).text, 'ran · 1.4s · brier 0.18');
-  assert.equal(tapeLine(calibration()).text, 'Mullins · 12 forecasts · Brier 0.18');
-  assert.equal(tapeLine({ kind: 'lab.experiment', stream: 'lab', payload: experiment() }).text, 'running · Mullins trades better with a slot before the close. · variant Mullins 4');
-  assert.equal(tapeLine({ kind: 'lab.verdict', stream: 'lab', payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', reason: 'Beat its parent.' } }).text, 'adopted · exp-0123456789ab · Beat its parent.');
-  assert.equal(tapeLine({ kind: 'broker.order', stream: 'broker:coinbase', payload: { status: 'filled', purpose: 'exit', exit_reason: 'time_stop', filled_quantity: '0.01', average_price: '77000' } }).text, 'exit on time stop · filled · filled 0.01 · avg $77,000.0000');
+  assert.equal(tapeLine({ kind: 'desk.code_run', stream: 'desk:mullins', payload: { session_id: 's', code_sha256: 'x', language: 'python', stdout: 'brier 0.18\nn 12', exit_code: 0, seconds: '1.4', sandbox: null } }).text, 'ran code in 1.4s · brier 0.18');
+  assert.equal(tapeLine(calibration()).text, 'Mullins scored · 12 forecasts · Brier 0.18');
+  assert.equal(tapeLine({ kind: 'lab.experiment', stream: 'lab', payload: experiment() }).text, 'running: Mullins trades better with a slot before the close. · as Mullins 4');
+  assert.equal(tapeLine({ kind: 'lab.verdict', stream: 'lab', payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', reason: 'Beat its parent.' } }).text, 'adopted exp-0123456789ab · Beat its parent.');
+  assert.equal(tapeLine({ kind: 'broker.order', stream: 'broker:coinbase', payload: { status: 'filled', purpose: 'exit', exit_reason: 'time_stop', filled_quantity: '0.01', average_price: '77000' } }).text, 'exit on time stop · filled · filled 0.01 · at $77,000.00');
   assert.equal(tapeLine({ kind: 'desk.forecast', stream: 'desk:mullins', payload: forecast().payload }).tone, 'forecast');
   assert.equal(tapeLine({ kind: 'desk.watch', stream: 'desk:mullins', payload: {} }).icon, '◉');
 });
 
-test('the floor page mounts the book, the night desk, the lineage tree and the lab', async () => {
-  const ids = ['floor-status', 'floor-numbers', 'floor-positions', 'floor-watch', 'floor-partners', 'floor-lineage', 'floor-lab', 'tape-filters', 'floor-tape'];
+test('the floor page mounts the holdings with their reasons, the now cards, the night desk and the race', async () => {
+  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape'];
   const root = stubPage('floor', ids);
   const board = checkpoint({
     desks: [
-      desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [position()], live_session: liveSession() }),
-      desk('hilibrand-2', { name: 'Hilibrand II', family: 'crypto', generation: 2, parent_id: 'hilibrand', mode: 'shadow', venues: ['coinbase'], mutation: mutation(), positions: [position({ thesis: 'Shadow copy of the same setup.', exit_orders: [] })] }),
+      desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], return_pct: '1.2', positions: [position()], live_session: liveSession() }),
+      desk('hilibrand-2', { name: 'Hilibrand II', family: 'crypto', generation: 2, parent_id: 'hilibrand', mode: 'shadow', venues: ['coinbase'], return_pct: '0.4', mutation: mutation(), positions: [position({ thesis: 'Shadow copy of the same setup.', exit_orders: [] })] }),
     ],
     lab: lab(), watch: watch(),
   });
@@ -1396,35 +1398,45 @@ test('the floor page mounts the book, the night desk, the lineage tree and the l
     assert.equal(cards.length, 2);
     assert.match(cards[0].textContent, /Hilibrand.*live.*long · BTC-USD · Coinbase/s);
     assert.match(cards[0].textContent, /\+\$4\.10/);
+    assert.match(cards[0].textContent, /Trend continuation on the daily bars/, 'the desk’s own reason, inline');
     assert.match(cards[0].textContent, /target \$80,000\.00.*stop \$75,500\.00.*out by.*2 resting/s);
     assert.match(cards[1].textContent, /shadow/);
     assert.match(cards[1].textContent, /floor enforces/);
     assert.ok(cards[1].className.includes('position-shadow'));
     assert.deepEqual(positions.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=hilibrand-2']);
-    assert.match(root.querySelector('#floor-watch').textContent, /Night desk.*12 looks today · 3 woke a desk/s);
-    const tree = root.querySelector('#floor-lineage');
-    assert.match(tree.textContent, /crypto family/);
-    const nodes = tree.withClass('lineage-node');
-    assert.equal(nodes.length, 2);
-    assert.match(nodes[0].textContent, /Hilibrand.*live now · cadence 14 00/s);
-    assert.match(nodes[1].textContent, /Hilibrand 2.*DeepSeek V4 Pro.*effort high.*\+45 min/s);
-    assert.deepEqual(nodes.map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=hilibrand-2']);
-    const labBox = root.querySelector('#floor-lab');
-    assert.match(labBox.textContent, /Experiments.*running.*kalshi family · variant Mullins 4.*Mullins trades better/s);
-    assert.match(labBox.textContent, /The improvement curve.*cost-adjusted excess.*Brier score.*P&L per inference/s);
-    assert.match(labBox.textContent, /Generation 2 beats generation 1 on cost-adjusted return by 0\.90%; forecasts sharper\./);
-    assert.equal(labBox.find('svg').length, 3, 'three small multiples');
-    assert.equal(labBox.find('circle').length, 6);
+
+    const now = root.querySelector('#floor-now');
+    const live = now.withClass('now-card');
+    assert.equal(live.length, 1);
+    assert.match(live[0].textContent, /Hilibrand sat down for the 14:00 slot/);
+    assert.match(live[0].textContent, /thinking…/, 'no thought published yet');
+    assert.match(now.withClass('now-idle')[0].textContent, /Hilibrand II.*shadow.*no session yet/s);
+    assert.match(now.withClass('now-night')[0].textContent, /^night desk: 12 looks, 3 wakes today$/);
+
+    const race = root.querySelector('#floor-race');
+    const rows = race.withClass('race-row');
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].textContent, /^Crypto/);
+    const chips = rows[0].withClass('race-chip');
+    assert.deepEqual(chips.map(chip => chip.textContent.trim().split(/\s+/).slice(0, 2).join(' ')), ['Hilibrand +1.20%', 'Hilibrand II']);
+    assert.ok(chips[0].className.includes('race-leader'), 'the higher score leads');
+    assert.match(chips[0].textContent, /★ leads.*thinking/s);
+    assert.match(chips[1].getAttribute('title'), /shadow: scored, never sent · DeepSeek V4 Pro · effort high · \+45 min/);
+    assert.match(race.withClass('race-line')[0].textContent, /^1 experiment running · generation II vs I: \+0\.90%$/);
+    const differ = race.find('details')[0];
+    assert.match(differ.textContent, /how the children differ.*Hilibrand II.*DeepSeek V4 Pro.*effort high.*\+45 min.*the loop/s);
   });
-  // A floor with nothing open says so, and an older checkpoint mounts no lab at all.
+  // A floor with nothing open says so, and a founder alone is still a race.
   const quiet = stubPage('floor', ids);
   await withBrowser('', path => (path.startsWith('/api/capital/checkpoint') ? checkpoint() : { schema_version: 1, latest_seq: 3, events: [] }), async () => {
     const feed = await startCapital(quiet);
     feed.stop();
-    assert.match(quiet.querySelector('#floor-positions').textContent, /Flat\. Every desk is in cash/);
-    assert.equal(quiet.querySelector('#floor-watch').children.length, 0);
-    assert.match(quiet.querySelector('#floor-lab').textContent, /has not proposed an experiment yet.*appears with the first generation/s);
-    assert.equal(quiet.querySelector('#floor-lineage').withClass('lineage-node').length, 1, 'a founder alone is still a tree');
+    assert.match(quiet.querySelector('#floor-positions').textContent, /Flat\. No trade taken yet\./);
+    assert.equal(quiet.querySelector('#floor-now').withClass('now-card').length, 0);
+    assert.match(quiet.querySelector('#floor-now').textContent, /Rosenfeld.*no session yet/s);
+    assert.equal(quiet.querySelector('#floor-now').withClass('now-night').length, 0, 'no watch block, no night line');
+    assert.equal(quiet.querySelector('#floor-race').withClass('race-chip').length, 1, 'a founder alone is still a race');
+    assert.match(quiet.querySelector('#floor-race').textContent, /The race starts with the first bred variant\./);
   });
 });
 
@@ -1568,16 +1580,22 @@ test('the portfolio leads with the accounts and each holding carries the desk’
     feed.stop();
     const clock = root.querySelector('#floor-run');
     assert.equal(clock.getAttribute('aria-busy'), 'false');
-    assert.match(clock.textContent, /Run clock.*running \d+d \d+h.*since Sep 12, 2026.*Profit per Sail dollar.*\+\$1\.51.*P&L.*\+\$63\.40.*Sail spend.*\$41\.97.*\$3\.10 today · models \$41\.20 · box \$0\.77, about a cent an hour/s);
-    assert.match(clock.textContent, /Up.*99\.2% of the last 7 days.*Sessions.*412 \(18 today\).*Decisions.*57.*Models.*DeepSeek V4 Pro, Kimi K2\.6, GLM-5\.3/s);
-    assert.match(clock.textContent, /The desks stop only when the credit does\./);
+    assert.match(clock.textContent, /^running \d+d \d+h since Sep 12, 2026 \$41\.97 of Sail credit spent profit \+\$63\.40 \+\$1\.51 per Sail dollar 412 sessions \$4\.21 \/ \$25 today (loading|reconnecting)$/);
+    const strip = runStrip(run(), { spent_today_usd: '0.10', cap_usd: '269.82', mode: 'open', balance_usd: '279.82', runway_days: '385.4' }, Date.parse('2026-09-15T14:05:00.000Z'));
+    assert.equal(strip.elapsed, 'running 3d 4h');
+    assert.equal(strip.credit, '$280 credit · open');
+    assert.equal(strip.mode, 'open');
+    assert.equal(strip.perDollar, '+$1.51 per Sail dollar');
+    assert.equal(runStrip(run({ pnl_per_sail_dollar: null }), null).perDollar, 'profit per Sail dollar: not yet');
+    assert.equal(runStrip(null, null).elapsed, 'starting up');
     const positions = root.querySelector('#floor-positions');
-    assert.match(positions.withClass('portfolio-line')[0].textContent, /^Portfolio \$979\.60 · Kalshi \$492\.29 · Coinbase \$487\.31$/);
+    assert.match(positions.withClass('holdings-line')[0].textContent, /^\$979\.60 Kalshi \$492\.29 Coinbase \$487\.31/);
     const cards = positions.withClass('position');
     assert.equal(cards.length, 3);
-    assert.match(cards[2].textContent, /shadow · scored, never sent/);
+    assert.match(cards[2].textContent, /shadow/);
+    assert.match(cards[2].withClass('badge')[0].getAttribute('title') || '', /never sent|Competing for a live sleeve|^$/);
     const why = cards[1].find('button')[0];
-    assert.equal(why.textContent, 'why the desk holds it');
+    assert.equal(why.textContent, 'why');
     assert.equal(why.getAttribute('aria-expanded'), 'false');
     why.click();
     for (let i = 0; i < 20; i += 1) await new Promise(resolve => setTimeout(resolve, 0));
@@ -1589,4 +1607,68 @@ test('the portfolio leads with the accounts and each holding carries the desk’
     why.click();
     assert.equal(why.getAttribute('aria-expanded'), 'false');
   });
+});
+
+test('the floor’s new helpers read as words: the strip, the now lines, the flat line, the race', () => {
+  assert.equal(ago('2026-09-15T14:00:00.000Z', Date.parse('2026-09-15T14:00:30.000Z')), 'just now');
+  assert.equal(ago('2026-09-15T14:00:00.000Z', Date.parse('2026-09-15T14:14:00.000Z')), '14 min ago');
+  assert.equal(ago('2026-09-15T14:00:00.000Z', Date.parse('2026-09-15T16:30:00.000Z')), '2 h ago');
+  assert.equal(ago('2026-09-12T14:00:00.000Z', Date.parse('2026-09-15T16:30:00.000Z')), '3 d ago');
+  assert.equal(ago('nope'), '');
+  assert.deepEqual([1, 2, 3, 4, 9].map(roman), ['I', 'II', 'III', 'IV', 'IX']);
+  assert.equal(raceName(desk('mullins-2', { family: 'kalshi', generation: 2 })), 'Mullins II');
+  assert.equal(raceName(desk('mullins', { family: 'kalshi' })), 'Mullins');
+
+  assert.equal(triggerText('cadence:13:30'), 'sat down for the 13:30 slot');
+  assert.equal(triggerText('watch:price_move'), 'woke on a price move');
+  assert.equal(triggerText('event_resolution'), 'woke because a market resolved');
+  assert.equal(triggerText('postmortem'), 'writing its post-mortem');
+  assert.equal(triggerText(''), 'in session');
+  assert.equal(tapeLine({ kind: 'desk.session_started', stream: 'desk:mullins', payload: { session_id: 's', trigger: 'cadence:08:10' } }).text, 'sat down for the 08:10 slot');
+  assert.equal(tapeLine({ kind: 'desk.session_ended', stream: 'desk:mullins', payload: { session_id: 's', reason: 'end_session', requests: 6, cost_usd: '0.0306' } }).text, 'ended · 6 model calls · $0.03');
+  assert.equal(tapeLine({ kind: 'desk.memo', stream: 'desk:mullins', payload: { session_id: 's', title: 'No trade', text: 'Priced.' } }).text, 'wrote "No trade" · Priced.');
+  assert.equal(tapeLine({ kind: 'evolution.spawned', stream: 'evolution', payload: { desk_id: 'mullins-2', parent_id: 'mullins', family: 'kalshi', generation: 2, mutation: mutation({ session_shift_minutes: -45 }) } }).text, 'bred Mullins 2 from Mullins · DeepSeek V4 Pro, effort high, −45 min');
+  assert.equal(tapeLine({ kind: 'ops.budget', stream: 'ops', payload: { scope: 'floor', mode: 'open', balance_usd: '279', runway_days: '539', spent_usd: '0.26' } }).text, 'credit $279 · 539 days of runway · open · $0.26 spent today');
+  assert.equal(isInteresting({ kind: 'desk.thought' }), true);
+  assert.equal(isInteresting({ kind: 'desk.tool_call' }), false);
+  assert.equal(isInteresting({ kind: 'ledger.mark' }), false);
+  assert.equal(isInteresting({ kind: 'desk.watch', payload: { decision: 'wake' } }), true);
+  assert.equal(isInteresting({ kind: 'desk.watch', payload: { decision: 'ignore' } }), false, 'a pass is plumbing');
+  for (const kind of INTERESTING_KINDS) assert.ok(Object.hasOwn(EVENT_KINDS, kind), kind);
+
+  const record = deskRecord([
+    { kind: 'desk.session_started', at: '2026-09-15T14:00:00.000Z', payload: { trigger: 'cadence:14:00' } },
+    { kind: 'desk.thought', at: '2026-09-15T14:00:10.000Z', payload: { text: 'Let me look at the book.' } },
+    { kind: 'desk.tool_call', at: '2026-09-15T14:00:12.000Z', payload: { tool: 'event_markets' } },
+    { kind: 'desk.thought', at: '2026-09-15T14:00:40.000Z', payload: { text: 'No edge here.' } },
+  ]);
+  assert.equal(record.thought, 'No edge here.');
+  assert.equal(record.tool, 'event markets');
+  const ended = deskRecord([
+    { kind: 'desk.memo', at: '2026-09-15T14:01:00.000Z', payload: { title: 'No trade', text: 'x' } },
+    { kind: 'desk.session_ended', at: '2026-09-15T14:02:00.000Z', payload: { reason: 'end_session' } },
+  ], record);
+  assert.equal(ended.tool, '', 'a session that ended is not using a tool');
+  assert.equal(idleLine(ended, Date.parse('2026-09-15T14:16:00.000Z')), 'last session 14 min ago · No trade');
+  assert.equal(idleLine(null), 'no session yet');
+  const rows = nowRows(checkpoint({ desks: [desk('mullins', { family: 'kalshi', live_session: liveSession({ trigger: 'watch:headline' }) }), desk('rosenfeld')] }), new Map([['rosenfeld', ended]]), Date.parse('2026-09-15T14:16:00.000Z'));
+  assert.deepEqual(rows.map(row => [row.name, row.inSession, row.trigger || row.idle]), [['Mullins', true, 'woke on a headline'], ['Rosenfeld', false, 'last session 14 min ago · No trade']]);
+  assert.equal(nightLine(checkpoint({ watch: watch({ triggers_today: 1, wakes_today: 1 }) })), 'night desk: 1 look, 1 wake today');
+  assert.equal(nightLine(checkpoint()), '');
+
+  assert.equal(flatLine(checkpoint({ run: run({ sessions_today: 1 }) })), 'Flat. 1 session today, no trade taken.');
+  assert.equal(flatLine(checkpoint({ floor: accountFloor(), run: run({ sessions_today: 3 }) })), 'Flat. $980 in cash across 2 accounts. 3 sessions today, no trade taken.');
+
+  const race = raceRows(checkpoint({ desks: [
+    desk('mullins-3', { family: 'kalshi', generation: 3, parent_id: 'mullins', mode: 'shadow', return_pct: '2.5', mutation: mutation({ model_profile: 'oss_asap', model_changed: true }) }),
+    desk('mullins', { family: 'kalshi', mode: 'live', return_pct: '1.0' }),
+    desk('mullins-2', { family: 'kalshi', generation: 2, parent_id: 'mullins', mode: 'shadow', return_pct: '2.5' }),
+    desk('hilibrand', { family: 'crypto', mode: 'live', return_pct: '0' }),
+  ] }));
+  assert.deepEqual(race.map(row => [row.label, row.live, row.members.map(member => member.name)]), [['Kalshi', 'Mullins', ['Mullins', 'Mullins II', 'Mullins III']], ['Crypto', 'Hilibrand', ['Hilibrand']]]);
+  assert.deepEqual(race[0].members.map(member => member.leader), [false, false, false], 'a tie has no leader');
+  assert.equal(race[0].members[2].badges[0].text, 'gpt-oss-120b');
+  assert.equal(raceLine(lab(), race), '1 experiment running · generation II vs I: +0.90%');
+  assert.equal(raceLine({ experiments: [experiment({ status: 'adopted' })], curve: [curveRow(1)] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
+  assert.equal(raceLine(null, raceRows(checkpoint())), 'The race starts with the first bred variant.');
 });
