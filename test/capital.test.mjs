@@ -20,6 +20,7 @@ import {
   money, percent, signedMoney, streamUrl, streamLabel, startCapital, PARTNERS, PARTNER_ORDER, TAPE_FILTERS,
   floorCounts, floorEquity, floorDaily, deskCountLine, infraRows, uptimeText, boxShort, cardNumbers, modeBadge, creditLine,
   accountEquity, accountVenues, portfolioLabel, venueLabel, venueChipText, floorBalanceSeries, sinceStart,
+  agoText, typingSchedule, sessionThoughts, idleLine, thoughtStream, codeRuns, holdingRows, lineageBadges, genomeSummary, allocationReasons,
   positionRows, exitChips, liveSessionText, watchLine, lineageGrid, mutationBadges, experimentRows, changeSummary,
   curveSeries, curveReading, tradeStories, latestCalibration, familyCalibrations, reliabilitySeries, probabilityText,
   instrumentLabel, profileName, LOOPS, runClock, portfolioLine, positionRationale, storyAnchor, storyHref,
@@ -494,7 +495,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   const disclosure = 'Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.';
-  const titles = { 'index.html': 'Long Term Capital Management', 'desk/index.html': 'Desk · LTCM', 'committee/index.html': 'Committee · LTCM' };
+  const titles = { 'index.html': 'Long Term Capital Management', 'desk/index.html': 'Desk · LTCM', 'committee/index.html': 'The loop · LTCM' };
   for (const [page, title] of Object.entries(titles)) {
     const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
     assert.match(html, new RegExp(`<title>${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</title>`), page);
@@ -517,8 +518,18 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   assert.match(floorHtml, /Read more about the loop/);
   for (const id of ['committee-lab', 'committee-calibration']) assert.match(await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8'), new RegExp(`id="${id}"`));
   const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
-  assert.match(committeeHtml, /<h1 id="committee-title">Meriwether<\/h1>/);
-  assert.ok(committeeHtml.indexOf('id="committee-memos"') < committeeHtml.indexOf('id="committee-allocations"'), 'the memo leads the committee page');
+  assert.match(committeeHtml, /<h1 id="committee-title">The loop<\/h1>/);
+  assert.ok(committeeHtml.indexOf('id="loop-curve"') < committeeHtml.indexOf('id="committee-lab"'), 'the improvement curve leads the loop page');
+  assert.ok(committeeHtml.indexOf('id="committee-calibration"') < committeeHtml.indexOf('id="committee-memos"'), 'the memo sits behind a chevron at the end');
+  assert.match(committeeHtml, /<details class="panel">\s*<summary>Meriwether’s memo<\/summary>/);
+  const deskHtml = await readFile(new URL('../capital/desk/index.html', import.meta.url), 'utf8');
+  for (const id of ['desk-header', 'desk-status', 'desk-think', 'think-state', 'desk-detail', 'desk-tape']) assert.match(deskHtml, new RegExp(`id="${id}"`), id);
+  assert.ok(deskHtml.indexOf('id="desk-think"') < deskHtml.indexOf('id="desk-detail"'), 'watch it think is the hero');
+  assert.match(deskHtml, /<summary>Everything it published<\/summary>/);
+  // Fewer words: what a visitor reads before anything loads.
+  const staticWords = html => html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+  assert.ok(staticWords(deskHtml) < 60, `desk page static words: ${staticWords(deskHtml)}`);
+  assert.ok(staticWords(committeeHtml) < 100, `loop page static words: ${staticWords(committeeHtml)}`);
 
   const home = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(home, /Long Term Capital Management[\s\S]{0,400}Six AI portfolio managers trading real money in public\./);
@@ -679,52 +690,53 @@ test('the floor page mounts the headline numbers, partner cards and a filterable
   });
 });
 
-test('a desk page mounts its mandate, equity line, playbook diff, book, blotter, gate and lineage', async () => {
-  const root = stubPage('desk', ['desk-header', 'desk-detail', 'desk-tape', 'desk-status']);
+test('a desk page leads with its thinking, then holdings, stories and the playbook behind a chevron', async () => {
+  const root = stubPage('desk', ['desk-header', 'desk-status', 'desk-think', 'think-state', 'desk-detail', 'desk-tape']);
   const marks = [0, 1, 2].map(index => markEvent('merton', index));
   const deskEvents = [
-    published(1, { id: 'desk.merton.thought.1', stream: 'desk:merton', payload: { session_id: 's', text: 'Margins widened for a third quarter.' } }),
+    { seq: 1, id: 'desk.merton.session.1', stream: 'desk:merton', kind: 'desk.session_started', at: '2026-09-15T13:30:00.000Z', digest: 'a'.repeat(64), payload: { session_id: 'merton:s1', trigger: 'cadence:09:30' } },
+    published(2, { id: 'desk.merton.thought.1', stream: 'desk:merton', at: '2026-09-15T13:30:05.000Z', payload: { session_id: 'merton:s1', text: 'Margins widened for a third quarter.' } }),
+    { seq: 3, id: 'desk.merton.call.1', stream: 'desk:merton', kind: 'desk.tool_call', at: '2026-09-15T13:30:06.000Z', digest: 'b'.repeat(64), payload: { session_id: 'merton:s1', call_id: 'c1', tool: 'filing', arguments: { symbol: 'MSFT', form: '10-Q' } } },
+    { seq: 4, id: 'desk.merton.memo.1', stream: 'desk:merton', kind: 'desk.memo', at: '2026-09-15T13:31:00.000Z', digest: 'c'.repeat(64), payload: { session_id: 'merton:s1', title: 'No trade: priced fairly', text: 'The filing says what the price says.' } },
+    { seq: 5, id: 'desk.merton.session.1.end', stream: 'desk:merton', kind: 'desk.session_ended', at: '2026-09-15T13:31:10.000Z', digest: 'd'.repeat(64), payload: { session_id: 'merton:s1', requests: 3, cost_usd: '0.02', reason: 'end_session' } },
     {
       seq: 60, id: 'desk.merton.playbook.5', stream: 'desk:merton', kind: 'desk.playbook_updated', at: '2026-09-15T02:00:00.000Z',
-      digest: 'c'.repeat(64), payload: { version: 5, reason: 'The drift stopped paying after day three.', diff: '@@ sizing @@\n-hold 5 days\n+hold 3 days' },
+      digest: 'e'.repeat(64), payload: { version: 5, reason: 'The drift stopped paying after day three.', diff: '@@ sizing @@\n-hold 5 days\n+hold 3 days' },
     },
   ];
-  const fills = [{
-    seq: 30, id: 'broker.alpaca.fill.1', stream: 'broker:alpaca', kind: 'broker.fill', at: '2026-09-15T13:30:00.000Z',
-    digest: 'a'.repeat(64), payload: { fill_id: 'f1', order_id: 'o1', desk_id: 'merton', instrument: 'MSFT', side: 'buy', quantity: '20', price: '500.25', fee: '0' },
-  }];
-  const spawned = [{
-    seq: 40, id: 'evolution.spawn.1', stream: 'evolution', kind: 'evolution.spawned', at: '2026-09-01T00:00:00.000Z',
-    digest: 'b'.repeat(64), payload: { desk_id: 'merton', family: 'merton', parent_id: null, generation: 1, mutation: 'seeded from the filings bank' },
-  }];
   await withBrowser('?id=merton', path => {
-    if (path.startsWith('/api/capital/desks/')) return desk('merton', { name: 'Merton', family: 'merton' });
+    if (path.startsWith('/api/capital/desks/')) return desk('merton', { name: 'Merton', family: 'merton', mode: 'live', cash: '12000' });
     if (path.includes('ledger%3Amerton')) return { schema_version: 1, latest_seq: 60, events: marks.slice().reverse() };
-    if (path.includes('kind=broker.fill')) return { schema_version: 1, latest_seq: 60, events: fills };
-    if (path.includes('stream=evolution')) return { schema_version: 1, latest_seq: 60, events: spawned };
     if (path.includes('desk%3Amerton')) return { schema_version: 1, latest_seq: 60, events: deskEvents };
     return { schema_version: 1, latest_seq: 60, events: [] };
   }, async () => {
     const feed = await startCapital(root);
     feed.stop();
     assert.equal(globalThis.document.title, 'Merton · LTCM');
-    const header = root.querySelector('#desk-header').textContent;
-    assert.match(header, /Merton/);
-    assert.match(header, /Robert · filings, long horizon · Alpaca/);
-    assert.match(header, /Reads filings and holds for quarters/, 'the mandate');
-    assert.equal(root.querySelector('#desk-header').find('details').length, 1, 'the mandate sits in a details block');
+    const header = root.querySelector('#desk-header');
+    assert.match(header.textContent, /Merton/);
+    assert.match(header.textContent, /Robert · filings, long horizon · Alpaca/);
+    assert.match(header.textContent, /Trading real money\./);
+    assert.match(header.textContent, /founder/, 'the lineage badge');
+    assert.match(header.textContent, /Reads filings and holds for quarters/, 'the mandate');
+    assert.equal(header.find('details').length, 1, 'the mandate sits behind a chevron');
+    assert.equal(header.find('svg').length, 1, 'the equity sparkline sits in the header');
+    // The hero: the session's words, in order, tool calls as one short line each.
+    const think = root.querySelector('#desk-think');
+    assert.equal(think.getAttribute('aria-busy'), 'false');
+    assert.equal(think.withClass('thought').length, 2);
+    assert.match(think.withClass('thought')[0].textContent, /Margins widened for a third quarter\./);
+    assert.match(think.withClass('thought-call')[0].textContent, /→ filing · symbol=MSFT form=10-Q/);
+    assert.match(root.querySelector('#think-state').textContent, /^ended .* · No trade: priced fairly$/);
     const detail = root.querySelector('#desk-detail');
     const text = detail.textContent;
-    assert.match(text, /Sixty forward days · not met/);
-    assert.match(text, /MSFT/);
-    assert.match(text, /seeded from the filings bank/);
+    assert.match(text, /Holdings.*Flat · \$12,000 cash/s);
+    assert.match(text, /Trade stories.*No order yet/s);
+    assert.match(text, /Playbook · rewritten/);
     assert.match(text, /The drift stopped paying after day three\./, 'the playbook reason');
-    assert.equal(detail.getAttribute('aria-busy'), 'false');
-    const [chart] = detail.find('svg');
-    assert.equal(chart.find('path').length, 1, 'one equity line drawn from the marks');
-    assert.match(chart.find('path')[0].attributes.d, /^M2\.00,/);
     const [diff] = detail.find('pre');
     assert.deepEqual(diff.children.map(line => line.className), ['diff-line diff-meta', 'diff-line diff-remove', 'diff-line diff-add']);
+    assert.equal(detail.getAttribute('aria-busy'), 'false');
     assert.match(root.querySelector('#desk-tape').textContent, /Margins widened/);
   });
 });
@@ -953,7 +965,7 @@ test('the floor page badges live against shadow and mounts the infrastructure st
 });
 
 test('a shadow desk page says nothing on it was ever sent', async () => {
-  const root = stubPage('desk', ['desk-header', 'desk-detail', 'desk-tape', 'desk-status']);
+  const root = stubPage('desk', ['desk-header', 'desk-status', 'desk-think', 'think-state', 'desk-detail', 'desk-tape']);
   await withBrowser('?id=merton', path => {
     if (path.startsWith('/api/capital/desks/')) return desk('merton', { name: 'Merton', family: 'merton', mode: 'shadow' });
     return { schema_version: 1, latest_seq: 1, events: [] };
@@ -962,11 +974,11 @@ test('a shadow desk page says nothing on it was ever sent', async () => {
     feed.stop();
     const header = root.querySelector('#desk-header').textContent;
     assert.match(header, /shadow/);
-    assert.match(header, /Nothing below was sent/);
-    assert.match(header, /Notional budget/);
-    assert.match(header, /Equity \(hypothetical\)/);
-    assert.match(header, /Return \(hypothetical\)/);
-    assert.match(root.querySelector('#desk-detail').textContent, /Shadow to live money, on evidence/);
+    assert.match(header, /Shadow: scored on real prices, never sent\./);
+    assert.match(header, /Equity \(shadow\)/);
+    assert.doesNotMatch(header, /hypothetical/);
+    assert.match(root.querySelector('#think-state').textContent, /no session yet/);
+    assert.match(root.querySelector('#desk-think').textContent, /Nothing said yet\./);
   });
 });
 
@@ -1429,7 +1441,7 @@ test('the floor page mounts the book, the night desk, the lineage tree and the l
 });
 
 test('a desk page tells its trade stories, shows its calibration and mutation, and says when it is live now', async () => {
-  const root = stubPage('desk', ['desk-header', 'desk-detail', 'desk-tape', 'desk-status']);
+  const root = stubPage('desk', ['desk-header', 'desk-status', 'desk-think', 'think-state', 'desk-detail', 'desk-tape']);
   const instrument = { symbol: 'KXFED-26SEP-T3.75', asset_class: 'event', venue: 'kalshi' };
   const deskEvents = [
     { seq: 1, id: 'intent:oi-fed', stream: 'desk:mullins-2', kind: 'desk.intent', at: '2026-09-15T13:31:00.000Z', digest: 'a'.repeat(64), payload: { intent_id: 'oi-fed', desk_id: 'mullins-2', instrument, side: 'buy', quantity: '10', order_type: 'limit', limit_price: '0.89', rationale: 'A hike is 93% likely; the market says 89.' } },
@@ -1457,7 +1469,8 @@ test('a desk page tells its trade stories, shows its calibration and mutation, a
     assert.match(text, /Calibration.*Forecasts scored.*12.*Brier score.*0\.18 · 0 is perfect, 0\.25 is a coin/s);
     assert.match(text, /said → happened/);
     assert.equal(detail.find('circle').length, 2, 'one dot per reliability bin');
-    assert.ok(text.indexOf('Trade stories') < text.indexOf('Book'), 'stories come before the book');
+    assert.ok(text.indexOf('Holdings') < text.indexOf('Trade stories') && text.indexOf('Trade stories') < text.indexOf('Calibration'), 'holdings, then stories, then calibration');
+    assert.match(root.querySelector('#think-state').textContent, /thinking now · event resolution/, 'the checkpoint says it is in session before a thought arrives');
     assert.match(root.querySelector('#desk-tape').textContent, /puts 93% on KXFEDDECISION-26SEP-H25 yes · market 89%/);
   });
 });
@@ -1588,5 +1601,154 @@ test('the portfolio leads with the accounts and each holding carries the desk’
     assert.deepEqual(body.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand#story-oi-abc123']);
     why.click();
     assert.equal(why.getAttribute('aria-expanded'), 'false');
+  });
+});
+
+test('watch it think: sessions fold in order, the state line says when it stopped, and the stream types what arrives', async () => {
+  const now = Date.parse('2026-09-15T14:00:00.000Z');
+  assert.equal(agoText('2026-09-15T13:59:50.000Z', now), 'just now');
+  assert.equal(agoText('2026-09-15T13:46:00.000Z', now), '14 min ago');
+  assert.equal(agoText('2026-09-15T11:00:00.000Z', now), '3 h ago');
+  assert.equal(agoText('2026-09-13T14:00:00.000Z', now), '2 d ago');
+  assert.equal(agoText('not a time', now), '');
+  // A readable pace that never drags: chunks cover the text, and the cap holds for a long thought.
+  const short = typingSchedule('a'.repeat(90));
+  assert.equal(short.totalMs, 1024);
+  assert.ok(short.chunk * short.frames >= 90);
+  const long = typingSchedule('a'.repeat(20000));
+  assert.ok(long.totalMs <= 4000 + long.frameMs);
+  assert.ok(long.chunk * long.frames >= 20000);
+  assert.equal(typingSchedule('').chunk, 1);
+
+  const session = { seq: 1, id: 's1', stream: 'desk:mullins', kind: 'desk.session_started', at: '2026-09-15T13:30:00.000Z', payload: { session_id: 'm:1', trigger: 'cadence:13:30' } };
+  const thought = { seq: 2, id: 't1', stream: 'desk:mullins', kind: 'desk.thought', at: '2026-09-15T13:30:05.000Z', payload: { session_id: 'm:1', text: 'The Fed decides tomorrow.' } };
+  const call = { seq: 3, id: 'c1', stream: 'desk:mullins', kind: 'desk.tool_call', at: '2026-09-15T13:30:06.000Z', payload: { session_id: 'm:1', call_id: 'c1', tool: 'event_markets', arguments: { query: 'fed' } } };
+  const later = { seq: 4, id: 't2', stream: 'desk:mullins', kind: 'desk.thought', at: '2026-09-15T13:30:30.000Z', payload: { session_id: 'm:1', text: 'No edge at 89 cents.' } };
+  const other = { seq: 5, id: 'x1', stream: 'desk:hilibrand', kind: 'desk.thought', at: '2026-09-15T13:30:31.000Z', payload: { session_id: 'h:1', text: 'BTC drifts.' } };
+  const stale = { seq: 0, id: 't0', stream: 'desk:mullins', kind: 'desk.thought', at: '2026-09-15T08:10:05.000Z', payload: { session_id: 'm:0', text: 'Morning look.' } };
+  const running = sessionThoughts([later, other, thought, session, call, stale], 'mullins');
+  assert.equal(running.sessionId, 'm:1');
+  assert.equal(running.trigger, 'cadence:13:30');
+  assert.equal(running.running, true);
+  assert.deepEqual(running.items.map(item => [item.kind, item.text]), [['thought', 'The Fed decides tomorrow.'], ['call', 'event_markets · query=fed'], ['thought', 'No edge at 89 cents.']]);
+  assert.equal(idleLine(running, now), 'thinking now · cadence 13 30');
+  const memo = { seq: 6, id: 'm1', stream: 'desk:mullins', kind: 'desk.memo', at: '2026-09-15T13:31:00.000Z', payload: { session_id: 'm:1', title: 'No trade: FOMC priced efficiently', text: '…' } };
+  const ended = { seq: 7, id: 'e1', stream: 'desk:mullins', kind: 'desk.session_ended', at: '2026-09-15T13:46:00.000Z', payload: { session_id: 'm:1', reason: 'end_session', requests: 6, cost_usd: '0.03' } };
+  const done = sessionThoughts([session, thought, call, later, memo, ended], 'mullins');
+  assert.equal(done.running, false);
+  assert.equal(done.memo, 'No trade: FOMC priced efficiently');
+  assert.equal(idleLine(done, now), 'ended 14 min ago · No trade: FOMC priced efficiently');
+  assert.equal(idleLine(sessionThoughts([session, thought, { ...ended, payload: { session_id: 'm:1', reason: 'budget_exceeded' } }], 'mullins'), now), 'ended 14 min ago · budget exceeded');
+  assert.equal(idleLine(sessionThoughts([], 'mullins'), now), 'no session yet');
+  assert.equal(idleLine(sessionThoughts([stale], 'mullins'), now), 'last thought 6 h ago');
+  assert.equal(idleLine(done, now, { trigger: 'watch:price_move' }), 'thinking now · watch price move');
+
+  // The stream: a finished session draws instantly; live arrivals type, in order, once each.
+  await withBrowser('', () => ({ schema_version: 1, latest_seq: 0, events: [] }), () => {
+  const box = new StubElement('div');
+  const stream = thoughtStream(box, { instant: true });
+  stream.load(sessionThoughts([], 'mullins'));
+  assert.match(box.textContent, /Nothing said yet\./);
+  stream.load(done);
+  assert.equal(box.withClass('thought').length, 3);
+  assert.match(box.withClass('thought')[2].textContent, /No edge at 89 cents\./);
+  stream.push([later, { ...later, id: 't3', payload: { session_id: 'm:1', text: 'Second look.' } }], 'mullins');
+  assert.equal(box.withClass('thought').length, 4, 'a repeated id is not typed twice');
+  assert.match(box.withClass('thought')[3].textContent, /Second look\./);
+  stream.push([other], 'mullins');
+  assert.equal(box.withClass('thought').length, 4, 'another desk’s thought never enters this stream');
+  stream.stop();
+
+  // Typing without the instant flag reveals the text over frames and stays in order.
+  const timers = [];
+  const slow = new StubElement('div');
+  const typed = thoughtStream(slow, { setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {}, schedule: () => ({ chunk: 5, frameMs: 32, frames: 4, totalMs: 128, length: 20 }) });
+  typed.load({ running: true, items: [{ id: 'a', at: thought.at, kind: 'thought', text: 'Twenty characters!!!' }] });
+  assert.equal(slow.withClass('thought-text')[0].textContent, 'Twent', 'the first frame shows one chunk');
+  while (timers.length) timers.shift().fn();
+  assert.equal(slow.withClass('thought-text')[0].textContent, 'Twenty characters!!!');
+  typed.stop();
+  });
+});
+
+test('the desk page projects its holdings with reasons, its code runs and its lineage badges from published records', () => {
+  const instrument = { symbol: 'BTC-USD', asset_class: 'crypto', venue: 'coinbase' };
+  const position = { instrument, side: 'long', quantity: '0.01', entry_price: '76000', mark_price: '76500', market_value: '765', unrealized_pnl: '5', opened_at: '2026-09-15T13:00:00.000Z', thesis: 'Trend continuation after a three-day base.', target_price: '80000', stop_price: '75000', time_stop_at: '2026-09-18T13:00:00.000Z', exit_orders: [{ id: 'tp', kind: 'target', price: '80000' }], intent_id: 'oi-1', session_id: 'h:1' };
+  const held = desk('hilibrand', { name: 'Hilibrand', family: 'crypto', mode: 'live', venues: ['coinbase'], positions: [position] });
+  const events = [
+    { seq: 1, id: 'i1', stream: 'desk:hilibrand', kind: 'desk.intent', at: '2026-09-15T13:00:00.000Z', payload: { intent_id: 'oi-1', desk_id: 'hilibrand', instrument, side: 'buy', quantity: '0.01', order_type: 'limit', limit_price: '76000', rationale: 'Trend continuation after a three-day base. Invalidation below 75000; out by Friday.' } },
+    { seq: 2, id: 'r1', stream: 'risk', kind: 'risk.decision', at: '2026-09-15T13:00:01.000Z', payload: { intent_id: 'oi-1', desk_id: 'hilibrand', approved: true, reasons: [] } },
+  ];
+  const [row] = holdingRows(held, events);
+  assert.equal(row.instrument, 'BTC-USD');
+  assert.equal(row.rationale, 'Trend continuation after a three-day base. Invalidation below 75000; out by Friday.');
+  assert.equal(row.engine, 'risk engine approved');
+  assert.deepEqual(row.chips.map(chip => chip.kind), ['target', 'stop', 'time_stop', 'resting']);
+  assert.deepEqual(holdingRows(desk('mullins', { positions: [] }), []), []);
+  assert.deepEqual(holdingRows(null, []), []);
+
+  const runs = codeRuns([
+    { id: 'c1', kind: 'desk.code_run', at: '2026-09-15T13:10:00.000Z', payload: { session_id: 'h:1', code_sha256: 'ab'.repeat(32), language: 'python', stdout: 'vol 2.1%\n', exit_code: 0, seconds: '1.5', sandbox: 'sb_1', purpose: 'realized vol', saved_as: 'vol' } },
+    { id: 'c2', kind: 'desk.code_run', at: '2026-09-15T13:12:00.000Z', payload: { session_id: 'h:1', code_sha256: 'cd'.repeat(32), language: 'python', stdout: 'Traceback', exit_code: 1, seconds: '0.4', sandbox: 'sb_1', purpose: 'bad idea' } },
+    { id: 't1', kind: 'desk.thought', at: '2026-09-15T13:13:00.000Z', payload: { text: 'not a run' } },
+  ]);
+  assert.deepEqual(runs.map(run => [run.purpose, run.exit, run.hash, run.savedAs]), [['bad idea', 1, 'cdcdcdcdcdcd', ''], ['realized vol', 0, 'abababababab', 'vol']]);
+
+  assert.deepEqual(lineageBadges(desk('mullins', { generation: 1, parent_id: null })).map(badge => badge.text), ['founder']);
+  const child = lineageBadges(desk('mullins-2', { generation: 2, parent_id: 'mullins', mutation: mutation({ model_profile: 'kimi_flex', model_changed: true }) }));
+  assert.equal(child[0].text, 'generation 2');
+  assert.equal(child[1].text, 'from Mullins');
+  assert.equal(child[1].href, '/capital/desk/?id=mullins');
+  assert.ok(child.some(badge => badge.changed && /Kimi K2\.6/.test(badge.text)), 'a changed model is highlighted');
+  assert.deepEqual(lineageBadges(null), []);
+});
+
+test('the loop page leads with the curve, then experiments, the house genome, capital with reasons, and the memo behind a chevron', async () => {
+  const spawned = [
+    { seq: 1, id: 'evolution.spawn.2', stream: 'evolution', kind: 'evolution.spawned', at: '2026-09-15T19:16:00.000Z', digest: 'a'.repeat(64), payload: { desk_id: 'mullins-2', family: 'kalshi', parent_id: 'mullins', generation: 2, mutation: mutation({ model_profile: 'pro_flex', reasoning_effort: 'low' }) } },
+    { seq: 2, id: 'evolution.spawn.3', stream: 'evolution', kind: 'evolution.spawned', at: '2026-09-15T20:16:00.000Z', digest: 'b'.repeat(64), payload: { desk_id: 'mullins-3', family: 'kalshi', parent_id: 'mullins', generation: 3, mutation: mutation({ model_profile: 'oss_asap', reasoning_effort: 'low', model_changed: true }) } },
+  ];
+  const labEvents = [
+    { seq: 3, id: 'lab:exp:1', stream: 'lab', kind: 'lab.experiment', at: '2026-09-15T02:00:00.000Z', digest: 'c'.repeat(64), payload: experiment() },
+    { seq: 4, id: 'lab:verdict:1', stream: 'lab', kind: 'lab.verdict', at: '2026-09-15T03:00:00.000Z', digest: 'd'.repeat(64), payload: { experiment_id: 'exp-0123456789ab', status: 'adopted', evidence: {}, reason: 'Beat its parent for four days.', as_of: '2026-09-15T03:00:00.000Z' } },
+  ];
+  const genome = genomeSummary(spawned, labEvents);
+  assert.equal(genome.length, 1);
+  assert.equal(genome[0].family, 'kalshi');
+  assert.equal(genome[0].children, 2);
+  assert.deepEqual(genome[0].models, ['DeepSeek V4 Pro', 'gpt-oss-120b']);
+  assert.deepEqual(genome[0].efforts, ['low']);
+  assert.equal(genome[0].adopted.length, 1);
+  assert.match(genome[0].adopted[0].change, /cadence sessions 08:10, 13:30, 16:30 · effort high/);
+  assert.deepEqual(genomeSummary([], []), []);
+
+  const allocation = { seq: 5, id: 'committee.allocation.9', stream: 'committee', kind: 'committee.allocation', at: '2026-09-14T21:10:00.000Z', digest: 'e'.repeat(64), payload: { allocations: { mullins: '492', hilibrand: '487' }, reasons: { mullins: 'bandit draw +1.2% on 14 decisions', hilibrand: 'bandit draw +0.4% on 9 decisions' } } };
+  const reasons = allocationReasons([allocation]);
+  assert.deepEqual(reasons.rows.map(row => [row.name, row.usd, row.reason]), [['Mullins', '492', 'bandit draw +1.2% on 14 decisions'], ['Hilibrand', '487', 'bandit draw +0.4% on 9 decisions']]);
+  assert.deepEqual(allocationReasons([]).rows, []);
+
+  const root = stubPage('committee', ['committee-status', 'loop-curve', 'committee-lab', 'loop-genome', 'committee-allocations', 'committee-gates', 'committee-evolution', 'committee-calibration', 'committee-memos']);
+  const memo = { seq: 6, id: 'committee.memo.1', stream: 'committee', kind: 'committee.memo', at: '2026-09-14T21:00:00.000Z', digest: 'f'.repeat(64), payload: { period: '2026-09-14', text: 'Capital stays where the evidence is.' } };
+  await withBrowser('', path => {
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ committee: { last_memo_at: '2026-09-14T21:00:00.000Z', allocations: { mullins: '492', hilibrand: '487' } }, lab: lab() });
+    if (path.includes('stream=committee')) return { schema_version: 1, latest_seq: 6, events: [allocation, memo] };
+    if (path.includes('stream=evolution')) return { schema_version: 1, latest_seq: 6, events: spawned };
+    if (path.includes('stream=lab')) return { schema_version: 1, latest_seq: 6, events: labEvents };
+    return { schema_version: 1, latest_seq: 6, events: [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const curve = root.querySelector('#loop-curve');
+    assert.match(curve.textContent, /Generation 2 beats generation 1 on cost-adjusted return by 0\.90%; forecasts sharper\./);
+    assert.equal(curve.find('svg').length, 3, 'three small multiples');
+    assert.equal(curve.getAttribute('aria-busy'), 'false');
+    const genomeBox = root.querySelector('#loop-genome');
+    assert.match(genomeBox.textContent, /kalshi family.*2 children.*models DeepSeek V4 Pro, gpt-oss-120b.*cadence sessions 08:10, 13:30, 16:30/s);
+    const allocations = root.querySelector('#committee-allocations');
+    assert.match(allocations.textContent, /Mullins.*bandit draw \+1\.2% on 14 decisions.*\$492/s);
+    assert.match(allocations.textContent, /memo .* ago/);
+    assert.match(root.querySelector('#committee-lab').textContent, /Mullins trades better with a slot before the close\./);
+    assert.match(root.querySelector('#committee-memos').textContent, /Capital stays where the evidence is\./);
+    assert.equal(root.querySelector('#committee-memos').withClass('memo-latest').length, 1);
   });
 });
