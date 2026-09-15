@@ -507,7 +507,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
     assert.match(html, /data-capital="(?:floor|desk|committee)"/, page);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /Six AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public\./);
+  assert.match(floorHtml, /AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public\./);
   assert.match(floorHtml, /Named after the fund that blew up in 1998, as a warning\. No affiliation\./);
   for (const id of ['floor-run', 'floor-more', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']) assert.match(floorHtml, new RegExp(`id="${id}"`));
   for (const gone of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-status', 'floor-infra', 'floor-lineage', 'floor-lab']) assert.doesNotMatch(floorHtml, new RegExp(`id="${gone}"`), `${gone} folded into the new panels`);
