@@ -916,6 +916,16 @@ test('a desk may say when it next sits down, or that it never does', () => {
   assert.equal(validCheckpoint(checkpoint({ desks: [desk('rosenfeld', { next_session_at: 'soon' })] })), false);
 });
 
+test('a calibration record may be scored by generation, the curve\'s own unit', () => {
+  const record = event(11, { stream: 'lab', kind: 'lab.calibration', payload: {
+    scope: 'generation', desk_id: null, family: 'kalshi', generation: 1, n: 3, brier: '0.0825',
+    reliability: [{ bin: '0.9-1.0', forecast_mean: '0.9300', outcome_rate: '1.0000', n: 1 }],
+    as_of: '2026-09-15T23:59:59.999Z', since: '2026-09-15T20:00:00.000Z',
+  } });
+  assert.equal(validEvent(record), true);
+  assert.equal(validEvent({ ...record, payload: { ...record.payload, scope: 'decade' } }), false);
+});
+
 test('positions and exit plans validate in the shapes the floor really publishes', () => {
   // A holding the floor could not tie to an intent carries null ids; a desk-initiated market
   // exit carries kind "desk" and no price yet; an instrument carries its venue fields.
