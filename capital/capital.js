@@ -1507,8 +1507,19 @@ export function flatLine(checkpoint) {
 }
 
 // ---- past trades: every settled or exited trade, who took it and why
+// The four partners the owner wrote; families the floor founded itself start in a shadow book.
+const HUMAN_FOUNDERS = new Set(['mullins', 'scholes', 'haghani', 'hilibrand']);
+function isFounded(desk) {
+  return !HUMAN_FOUNDERS.has(show(desk.id));
+}
+
 export function closedRows(events, checkpoint, { limit = 40 } = {}) {
-  const live = new Set(orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object' && isLive(desk)).map(desk => show(desk.id)));
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const live = new Set(desks.filter(desk => isLive(desk)).map(desk => show(desk.id)));
+  // The four founders traded real money from the first day; an outcome written before the
+  // runtime recorded `real_money` is real when its desk is live now or is a founder, so a
+  // later demotion does not turn a real loss into practice.
+  const founders = new Set(desks.filter(desk => desk.parent_id === null && Number(desk.generation) === 1 && !isFounded(desk)).map(desk => show(desk.id)));
   return (Array.isArray(events) ? events : [])
     .filter(event => event?.kind === 'desk.outcome' && typeof event.stream === 'string' && event.stream.startsWith('desk:'))
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
@@ -1520,7 +1531,8 @@ export function closedRows(events, checkpoint, { limit = 40 } = {}) {
       const result = show(p.result);
       const reason = thesisParts(p.rationale_excerpt, 90);
       return {
-        id: show(event.id), at: show(event.at), desk, name: floorName(desk), live: live.has(desk),
+        id: show(event.id), at: show(event.at), desk, name: floorName(desk),
+        live: typeof p.real_money === 'boolean' ? p.real_money : live.has(desk) || founders.has(desk),
         instrument: show(p.market_id) || instrumentLabel(p.instrument) || '—', market: marketTitle(outcomeSymbol(p)) || '—', right: show(p.instrument?.right).toUpperCase(),
         result: humanize(result), outcome: result === 'sold' ? 'sold' : !pnl ? 'closed' : Number(pnl) > 0 ? 'won' : Number(pnl) < 0 ? 'lost' : 'even',
         settled: result && result !== 'sold' ? `settled ${result.toUpperCase()}` : '',

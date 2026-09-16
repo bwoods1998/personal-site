@@ -1834,6 +1834,12 @@ test('past trades name the desk, the market, the result and the reason; the lead
   assert.equal(rows[2].short, 'Floor exit: the mark reached the stop at 114.81.', 'an intent id is not a reason');
   assert.equal(closedRecord(rows), '2 real-money trades · 1 won · +$2.16');
   assert.equal(closedRecord(rows.filter(row => !row.live)), '');
+  // A founder demoted to a shadow book keeps its real trades real; an outcome that says so wins.
+  const demoted = { desks: checkpoint.desks.map(desk => desk.id === 'scholes' ? { ...desk, mode: 'shadow', parent_id: null } : desk) };
+  const after = closedRows(events, demoted);
+  assert.equal(after[1].live, true, 'a legacy outcome of a human founder stays real money after its demotion');
+  const flagged = closedRows([{ ...events[0], payload: { ...events[0].payload, real_money: false } }], checkpoint);
+  assert.equal(flagged[0].live, false, 'the recorded flag decides when present');
 
   const leaders = leaderboardRows(checkpoint);
   assert.deepEqual(leaders.map(row => [row.rank, row.name, row.pnlText]), [[1, 'Scholes', '+$8.00'], [2, 'Haghani', '$0.00'], [3, 'Scholes II', '−$2.00']], 'ranked by lifetime P&L');
