@@ -71,3 +71,16 @@ Sentence case. No acronym without its expansion the first time on the page (FOMC
 fine). "Shadow" not "paper" or "hypothetical". "Sail credit" not "inference budget". "Woke"
 not "triggered". Never "hypothetical" more than once on a page. Tape lines: subject, verb,
 object, number; no jargon.
+
+
+## Floor page, revised Sept 16, 2026
+
+Five things, in this order, nothing else: the run strip (hours running, Sail credit spent,
+profit, profit per Sail dollar); **Live** (the partners in session with their thoughts typing,
+then the tape of thoughts, research and trades; "everything" is one toggle away); **Portfolio**
+(balance, venues, sparkline, every open position with its reason, resting orders); **Closed
+trades** (every settled trade with the partner and its reason, real first, shadow behind a
+chevron); **Partners** (one row each, sorted by profit per Sail dollar, with hours of
+self-improvement, sessions, decisions and whether the newest generation beats the last). The
+race, the box facts and the explainer diagram moved to the loop page. Idle partners are rows in
+the table, not lines in the live panel.

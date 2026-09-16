@@ -2191,7 +2191,8 @@ function toolboxPanel(events) {
     if (run.output) item.append(details('output', element('pre', run.output, 'run-output')));
     list.append(item);
   }
-  block.append(list);
+  // Code runs are the desk's workshop, not its shop window: one line, open on demand.
+  block.append(details(`${runs.length} run${runs.length === 1 ? '' : 's'}, newest first`, list));
   return block;
 }
 function playbookPanel(events) {
