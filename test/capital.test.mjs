@@ -1927,6 +1927,10 @@ test('the floor opens on thoughts and trades, and the closed board names the des
   const partners = partnerRows(checkpoint);
   assert.deepEqual(partners.map(row => row.id), ['scholes', 'haghani', 'scholes-2'], 'live first, then by profit per Sail dollar');
   assert.deepEqual([partners[0].pnlText, partners[0].perDollarText, partners[0].costText, partners[0].budget, partners[0].strategies], ['+$8.00', '+$4.00', '$2.00', 1.5, 1]);
+  const exact = partnerRows({ desks: [{ ...checkpoint.desks[0], pnl_usd: '-51.25' }] })[0];
+  assert.equal(exact.pnlText, '−$51.25', 'the published lifetime P&L wins over equity minus allocation');
+  assert.equal(validDesk(desk('merton', { pnl_usd: '-51.25' }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { pnl_usd: 'lots' }), '2026-09-15T14:05:00.000Z'), false);
   assert.equal(partners[1].perDollarText, '—', 'no Sail spend, no ratio');
   assert.equal(partners[2].pnlTone, 'negative');
 

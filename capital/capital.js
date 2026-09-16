@@ -1657,7 +1657,9 @@ export function partnerRows(checkpoint) {
     const equity = numeric(desk.equity) ? Number(desk.equity) : null;
     const capital = numeric(desk.capital_usd) ? Number(desk.capital_usd) : null;
     const cost = numeric(desk.cost_usd) ? Number(desk.cost_usd) : null;
-    const pnl = equity !== null && capital !== null ? equity - capital : null;
+    // Lifetime P&L as the runtime publishes it (equity less net capital flows); the difference
+    // between equity and the current allocation is the fallback for an older checkpoint.
+    const pnl = numeric(desk.pnl_usd) ? Number(desk.pnl_usd) : (equity !== null && capital !== null ? equity - capital : null);
     const perDollar = pnl !== null && cost !== null && cost > 0 ? pnl / cost : null;
     return {
       id: show(desk.id), name: raceName(desk), live: isLive(desk), inSession: Boolean(desk.live_session),
