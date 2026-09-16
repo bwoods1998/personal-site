@@ -1931,3 +1931,21 @@ test('the floor opens on thoughts and trades, and the closed board names the des
   const line = learningLine({ ...checkpoint, run: { started_at: '2026-09-15T18:11:00.000Z', sessions_total: 96, decisions_total: 361, sail_spend_total_usd: '11.47', pnl_total_usd: '-7.25', pnl_per_sail_dollar: '-0.63' } }, now);
   assert.match(line, /^13h 24m of self-improvement · 96 sessions · 361 decisions$/);
 });
+
+
+import { tapeDefault } from '../capital/capital.js';
+
+test('the default tape keeps thoughts, research questions and the real desks\u2019 trades; shadow quotes and code runs wait behind everything', () => {
+  const state = { active: new Set(['thoughts', 'trades']), liveIds: new Set(['scholes', 'hilibrand']) };
+  const at = '2026-09-16T07:40:00.000Z';
+  const ev = (kind, stream, payload = {}) => ({ id: `${kind}:${stream}`, kind, stream, at, payload });
+  assert.equal(tapeDefault(ev('desk.thought', 'desk:scholes-2', { text: 'a shadow thinks too' }), state), true);
+  assert.equal(tapeDefault(ev('desk.tool_call', 'desk:scholes-2', { tool: 'news' }), state), true, 'the question is research');
+  assert.equal(tapeDefault(ev('desk.tool_result', 'desk:scholes', { tool: 'news', summary: 'x' }), state), false, 'the answer is noise');
+  assert.equal(tapeDefault(ev('desk.code_run', 'desk:scholes', { purpose: 'strategy run' }), state), false);
+  assert.equal(tapeDefault(ev('desk.intent', 'desk:scholes', { rationale: 'real' }), state), true);
+  assert.equal(tapeDefault(ev('desk.intent', 'desk:scholes-2', { rationale: 'shadow' }), state), false, 'a shadow quote is not a trade');
+  assert.equal(tapeDefault(ev('broker.fill', 'broker:coinbase', { desk_id: 'hilibrand', side: 'buy' }), state), true);
+  assert.equal(tapeDefault(ev('broker.fill', 'broker:shadow', { desk_id: 'scholes-3', shadow: true }), state), false);
+  assert.equal(tapeDefault(ev('desk.intent', 'desk:scholes-2', {}), { active: new Set(['thoughts', 'trades']), liveIds: new Set() }), true, 'without a checkpoint nothing is hidden');
+});

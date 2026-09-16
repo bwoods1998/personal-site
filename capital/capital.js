@@ -646,9 +646,26 @@ function tapeEntry(event, state) {
   entry.append(who, icon, body);
   return entry;
 }
+// The default tape on the floor: what a visitor came for. Thoughts and the questions the
+// partners ask their tools; the real desks' orders, fills, exits and outcomes. Shadow desks'
+// quotes, tool answers and code runs are one toggle away, not on the first screen.
+const QUIET_BY_DEFAULT = new Set(['desk.code_run', 'desk.tool_result']);
+const MONEY_KINDS = new Set(['desk.intent', 'broker.order', 'broker.fill', 'desk.exit_plan', 'desk.outcome']);
+export function tapeDefault(event, state) {
+  // A tool call is the partner's research question, and research is what the visitor came to see.
+  if (!(event?.kind === 'desk.tool_call' || isInteresting(event)) || !matchesFilters(event, state?.active)) return false;
+  if (QUIET_BY_DEFAULT.has(event?.kind)) return false;
+  if (MONEY_KINDS.has(event?.kind) && state?.liveIds instanceof Set && state.liveIds.size) {
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+    if (payload.shadow === true) return false;
+    const desk = typeof event.stream === 'string' && event.stream.startsWith('desk:') ? event.stream.slice(5) : show(payload.desk_id);
+    if (desk && !state.liveIds.has(desk)) return false;
+  }
+  return true;
+}
 function renderTape(target, events, state) {
   const selected = [...events]
-    .filter(event => !state || (state.everything ? true : (isInteresting(event) && matchesFilters(event, state.active))))
+    .filter(event => !state || (state.everything ? true : tapeDefault(event, state)))
     .sort((left, right) => right.seq - left.seq)
     .slice(0, TAPE_LIMIT);
   const entries = selected.map(event => tapeEntry(event, state));
@@ -1787,7 +1804,7 @@ async function startFloor(root) {
   const toggle = root.querySelector('#tape-toggle');
   const tape = root.querySelector('#floor-tape');
   const state = {
-    checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [], outcomes: [],
+    checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [], outcomes: [], liveIds: new Set(),
     everything: false, active: new Set(LIVE_GROUPS), expanded: new Set(), ticker: null, statusNode: null,
     redraw: () => { if (tape) renderTape(tape, state.events, state); },
   };
@@ -1807,7 +1824,8 @@ async function startFloor(root) {
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
-      drawStrip(); drawMore(); drawNow(); drawHoldings(); drawClosed(); drawPartners();
+      state.liveIds = new Set(orderDesks(state.checkpoint.desks).filter(desk => desk && typeof desk === 'object' && isLive(desk)).map(desk => show(desk.id)));
+      drawStrip(); drawMore(); drawNow(); drawHoldings(); drawClosed(); drawPartners(); state.redraw();
     } catch {
       if (state.checkpoint) return;
       const notice = element('p', 'The floor checkpoint is unavailable. ', 'unavailable');
