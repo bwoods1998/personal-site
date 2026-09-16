@@ -808,10 +808,13 @@ test('a shadow desk is published, validated and rendered as hypothetical', async
     'a note with markup': { ...strategy, last_notes: '<b>edge</b>' },
     'a run from the future': { ...strategy, last_run_at: '2026-09-15T15:05:00.000Z' },
     'a negative count': { ...strategy, fills: -1 },
-    'an extra field': { ...strategy, params: {} },
+    'an extra field': { ...strategy, extra: 'x' },
     'a missing field': Object.fromEntries(Object.entries(strategy).filter(([k]) => k !== 'wins')),
   })) assert.equal(validDesk(desk('merton', { strategies: [bad] }), '2026-09-15T14:05:00.000Z'), false, label);
   assert.equal(validDesk(desk('merton', { strategies: [strategy, strategy] }), '2026-09-15T14:05:00.000Z'), false, 'duplicate names');
+  assert.equal(validDesk(desk('merton', { strategies: [{ ...strategy, note: 'promoted from merton-2: 14 settled, +0.120 per $', params: { min_edge: 0.01, window: '5m', symbols: ['BTC-USD'] } }] }), '2026-09-15T14:05:00.000Z'), true, 'a note and params ride along');
+  assert.equal(validDesk(desk('merton', { strategies: [{ ...strategy, note: 'x'.repeat(201) }] }), '2026-09-15T14:05:00.000Z'), false, 'a note is 200 characters at most');
+  assert.equal(validDesk(desk('merton', { strategies: [{ ...strategy, params: { note: '<b>' } }] }), '2026-09-15T14:05:00.000Z'), false, 'params are a safe payload');
   // Working orders: what the desk is bidding and offering now. Optional.
   const working = {
     order_id: 'ord-abc', instrument: { symbol: 'KXBTC-26SEP1602-B75750', asset_class: 'event', venue: 'kalshi', market_id: 'KXBTC-26SEP1602-B75750', right: 'no' },

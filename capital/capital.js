@@ -2189,6 +2189,11 @@ export function strategiesPanel(desk) {
       row.errors > 0 ? `${show(row.errors)} errors` : '',
     );
     item.append(element('p', record, `strategy-record ${row.settled > 0 ? (pnl >= 0 ? 'up' : 'down') : ''}`));
+    // Why these settings: a promotion from a sibling, a lab experiment, or the house. Then the settings.
+    if (row.note) item.append(element('p', show(row.note), 'strategy-note'));
+    if (row.params && typeof row.params === 'object' && Object.keys(row.params).length) {
+      item.append(element('p', Object.entries(row.params).map(([key, value]) => `${key} ${Array.isArray(value) ? value.join(',') : show(value)}`).join(' · '), 'strategy-params'));
+    }
     if (row.last_notes) item.append(element('p', row.last_notes, 'strategy-notes'));
     list.append(item);
   }

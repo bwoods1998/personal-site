@@ -571,3 +571,5 @@ main > .disclosure { margin-top: 24px; }
   .partner { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, .7fr)); }
   .partner > span:nth-child(4), .partner > span:nth-child(6) { display: none; }
 }
+.strategy-note { margin: 0; font-size: 13px; line-height: 1.6; color: var(--accent); }
+.strategy-params { margin: 0; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); overflow-wrap: anywhere; }
