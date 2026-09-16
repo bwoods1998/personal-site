@@ -26,58 +26,31 @@
     <main id="main" data-capital="floor">
       <section class="masthead masthead-floor" aria-labelledby="title">
         <h1 id="title">Long Term Capital Management</h1>
-        <p class="lede">AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public.</p>
+        <p class="lede">AI partners trading real money on Kalshi and Coinbase, rewriting themselves from the results. Every thought, order and fill is public as it happens.</p>
         <div id="floor-run" class="run-strip-box" aria-busy="true" aria-label="Run clock"><p class="loading" role="status">Loading…</p></div>
-        <details id="floor-more" class="masthead-more">
-          <summary>About the box</summary>
-          <div id="floor-more-body"></div>
-          <p class="disclosure">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.</p>
-          <p class="footnote">Named after the fund that blew up in 1998, as a warning. No affiliation.</p>
-        </details>
       </section>
-      <section class="block" aria-labelledby="now-title">
-        <h2 id="now-title" class="section-title">Now</h2>
+      <section class="block" aria-labelledby="live-title">
+        <div class="section-heading"><h2 id="live-title" class="section-title">Live</h2><div id="tape-toggle" role="group" aria-label="What the tape shows"></div></div>
         <div id="floor-now" aria-busy="true" aria-live="polite"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section class="block" aria-labelledby="holdings-title">
-        <h2 id="holdings-title" class="section-title">Holdings</h2>
-        <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section class="block" aria-labelledby="race-title">
-        <h2 id="race-title" class="section-title">The race</h2>
-        <div id="floor-race" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section class="block" aria-labelledby="tape-title">
-        <div class="section-heading"><h2 id="tape-title" class="section-title">The tape</h2><div id="tape-toggle" role="group" aria-label="What the tape shows"></div></div>
         <div id="floor-tape" class="tape" aria-busy="true" aria-live="polite"><p class="loading" role="status">Connecting…</p></div>
       </section>
-      <section class="block how" aria-labelledby="how-title">
-        <h2 id="how-title" class="section-title">How it works</h2>
-        <figure class="loops" aria-label="The three loops the floor turns">
-          <div class="loop loop-trade">
-            <h3>Trade</h3>
-            <span class="loop-pace">minutes to hours</span>
-            <ol><li>see</li><li>decide</li><li>act</li><li>outcome</li></ol>
-          </div>
-          <span class="loop-arrow" aria-hidden="true">→</span>
-          <div class="loop loop-desk">
-            <h3>Desk</h3>
-            <span class="loop-pace">days</span>
-            <ol><li>post-mortem</li><li>playbook</li><li>tools</li></ol>
-          </div>
-          <span class="loop-arrow" aria-hidden="true">→</span>
-          <div class="loop loop-floor">
-            <h3>Floor</h3>
-            <span class="loop-pace">weeks</span>
-            <ol><li>variants</li><li>evidence</li><li>capital</li></ol>
-          </div>
-          <figcaption>A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money. Shadow desks are scored on the same prices and never send an order. What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch.</figcaption>
-        </figure>
+      <section class="block" aria-labelledby="holdings-title">
+        <h2 id="holdings-title" class="section-title">Portfolio</h2>
+        <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+      </section>
+      <section class="block" aria-labelledby="closed-title">
+        <h2 id="closed-title" class="section-title">Closed trades</h2>
+        <div id="floor-closed" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+      </section>
+      <section class="block" aria-labelledby="partners-title">
+        <h2 id="partners-title" class="section-title">Partners</h2>
+        <div id="floor-partners" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+        <p class="note how-line">A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money. Shadow partners are scored on the same prices and never send an order. Named after the fund that blew up in 1998, as a warning. No affiliation. <a href="/capital/committee/">How the loop works ↗</a></p>
       </section>
       <noscript><p>Read the <a href="https://github.com/bwoods1998/long-term-capital-management">runtime on GitHub</a>.</p></noscript>
     </main>
     <footer>
-      <span class="footer-note">Prices here are the floor's own fills and account-level marks, never live quotes. Blake Woods &amp; AI agents.</span>
+      <span class="footer-note">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill. Prices are the floor's own fills and account-level marks, never live quotes.</span>
       <a href="/capital/committee/">The loop ↗</a>
     </footer>
   </div>

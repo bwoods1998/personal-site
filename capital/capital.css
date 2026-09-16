@@ -540,3 +540,34 @@ main > .disclosure { margin-top: 24px; }
   .holdings-spark { width: 100%; }
 }
 /* end floor */
+
+/* 2e — closed trades: what settled, who took it, why, what it made. */
+.closed-line, .partners-line { margin: 0 0 12px; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.closed { display: grid; gap: 8px; }
+.closed-row { border: 1px solid var(--line); background: var(--surface); padding: 10px 14px; display: grid; gap: 6px; min-width: 0; }
+.closed-shadow { border-style: dashed; }
+.closed-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.closed-result { font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.closed-pnl { margin-left: auto; font: 14px/1.6 'Courier New', Courier, monospace; font-variant-numeric: tabular-nums; }
+.closed-numbers { margin: 0; font: 12px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
+.closed-why { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.closed-more { margin-top: 12px; }
+.closed-summary { cursor: pointer; font: 12px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.closed-more[open] .closed-summary { margin-bottom: 10px; }
+/* 2f — the partners: one row each, sorted by profit per Sail dollar. */
+.partners { display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+.partner { display: grid; grid-template-columns: minmax(0, 2.6fr) repeat(5, minmax(0, 1fr)); gap: 8px 12px; align-items: baseline; padding: 9px 12px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.partner-shadow { border-style: dashed; }
+.partner-head { border: 0; background: transparent; padding: 4px 12px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.partner-head span:not(:first-child) { text-align: right; }
+.partner-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.partner-name { font-size: 15px; letter-spacing: -.3px; text-decoration: none; }
+.partner-family, .partner-budget { font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); font-style: normal; }
+.partner-budget { color: var(--accent); }
+.partner-num { text-align: right; font: 13px/1.6 'Courier New', Courier, monospace; }
+.badge-thinking { background: var(--tone-thought); color: var(--background); }
+.how-line { margin-top: 22px; }
+@media (max-width: 720px) {
+  .partner { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, .7fr)); }
+  .partner > span:nth-child(4), .partner > span:nth-child(6) { display: none; }
+}

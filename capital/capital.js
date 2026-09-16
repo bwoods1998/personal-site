@@ -68,6 +68,8 @@ export const TAPE_FILTERS = [
   { key: 'committee', label: 'committee' },
   { key: 'evolution', label: 'evolution' },
 ];
+//: What the floor page shows by default: what the partners think, look up and trade.
+export const LIVE_GROUPS = ['thoughts', 'trades'];
 const FILTER_GROUPS = {
   thoughts: ['desk.session_started', 'desk.thought', 'desk.tool_call', 'desk.tool_result', 'desk.memo', 'desk.postmortem', 'desk.session_ended',
     'desk.watch', 'desk.forecast', 'desk.code_run'],
@@ -646,7 +648,7 @@ function tapeEntry(event, state) {
 }
 function renderTape(target, events, state) {
   const selected = [...events]
-    .filter(event => !state || ((state.everything || isInteresting(event)) && matchesFilters(event, state.active)))
+    .filter(event => !state || (state.everything ? true : (isInteresting(event) && matchesFilters(event, state.active))))
     .sort((left, right) => right.seq - left.seq)
     .slice(0, TAPE_LIMIT);
   const entries = selected.map(event => tapeEntry(event, state));
@@ -1462,7 +1464,7 @@ function typeInto(node, text) {
   };
   step();
 }
-function nowPanel(checkpoint, records) {
+function nowPanel(checkpoint, records, { idle = true } = {}) {
   const rows = nowRows(checkpoint, records);
   const nodes = [];
   for (const row of rows.filter(item => item.inSession)) {
@@ -1479,10 +1481,10 @@ function nowPanel(checkpoint, records) {
     if (row.tool) card.append(element('span', `using ${row.tool}`, 'now-tool'));
     nodes.push(card);
   }
-  const idle = rows.filter(item => !item.inSession);
-  if (idle.length) {
+  const idleRows = idle ? rows.filter(item => !item.inSession) : [];
+  if (idleRows.length) {
     const list = element('div', null, 'now-idle-list');
-    for (const row of idle) {
+    for (const row of idleRows) {
       const line = element('p', null, 'now-idle');
       line.append(link(row.name, deskHref(row.id), 'now-idle-name'));
       if (!row.live) line.append(element('span', 'shadow', 'badge badge-shadow'));
@@ -1491,10 +1493,19 @@ function nowPanel(checkpoint, records) {
     }
     nodes.push(list);
   }
-  const night = nightLine(checkpoint);
+  const night = idle ? nightLine(checkpoint) : '';
   if (night) nodes.push(element('p', night, 'now-night'));
-  if (!nodes.length) nodes.push(element('p', 'The desks appear with the first checkpoint.', 'empty-state'));
+  if (!nodes.length) nodes.push(element('p', idle ? 'The desks appear with the first checkpoint.' : quietLine(checkpoint), 'empty-state'));
   return nodes;
+}
+// Between sessions: when the next partner sits down. The tape below keeps moving meanwhile.
+export function quietLine(checkpoint, now = Date.now()) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  if (!desks.length) return 'The partners appear with the first checkpoint.';
+  const soonest = desks.map(desk => ({ desk, at: Date.parse(desk.next_session_at) })).filter(row => Number.isFinite(row.at)).sort((left, right) => left.at - right.at)[0];
+  if (!soonest) return 'No partner is in session. Their strategies keep quoting between sessions.';
+  const when = untilText(soonest.desk.next_session_at, now);
+  return `No partner is in session. ${partnerName(show(soonest.desk.id))} sits down ${when === 'now' ? 'now' : when}. Their strategies keep quoting meanwhile.`;
 }
 
 // ---- holdings: the accounts, the balance line, every position with its reason
@@ -1557,6 +1568,137 @@ export function workingBoard(checkpoint) {
     board.append(item);
   }
   return board;
+}
+
+// ---- closed: every settled or exited trade, who took it and why
+export function closedRows(events, checkpoint, { limit = 40 } = {}) {
+  const live = new Set(orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object' && isLive(desk)).map(desk => show(desk.id)));
+  return (Array.isArray(events) ? events : [])
+    .filter(event => event?.kind === 'desk.outcome' && typeof event.stream === 'string' && event.stream.startsWith('desk:'))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, limit)
+    .map(event => {
+      const p = event.payload && typeof event.payload === 'object' ? event.payload : {};
+      const desk = event.stream.slice(5);
+      const pnl = show(p.pnl);
+      return {
+        id: show(event.id), at: show(event.at), desk, name: partnerName(desk), live: live.has(desk),
+        instrument: show(p.market_id) || instrumentLabel(p.instrument) || '—', right: show(p.instrument?.right).toUpperCase(),
+        result: humanize(show(p.result)), pnl, pnlText: pnl ? signedMoney(pnl, 2) : '—', tone: pnl ? signOf(pnl) : '',
+        held: p.held_for_hours === undefined || p.held_for_hours === null ? '' : `held ${show(p.held_for_hours)}h`,
+        entry: show(p.entry_price), exit: show(p.exit_price), quantity: quantity(p.quantity),
+        why: truncate(show(p.rationale_excerpt).replace(/^\[strategy [a-z0-9_]+\]\s*/, ''), 240).text,
+        strategy: (show(p.rationale_excerpt).match(/^\[strategy ([a-z0-9_]+)\]/) || [])[1] || '',
+      };
+    });
+}
+function closedRow(row) {
+  const item = element('article', null, row.live ? 'closed-row' : 'closed-row closed-shadow');
+  const head = element('div', null, 'closed-head');
+  head.append(timeNode(row.at, 'clock'), link(row.name, deskHref(row.desk), 'position-desk'));
+  head.append(element('span', row.live ? 'live' : 'shadow', row.live ? 'badge badge-live' : 'badge badge-shadow'));
+  head.append(element('span', join(row.right, row.instrument), 'position-what'));
+  if (row.result) head.append(element('span', row.result, 'closed-result'));
+  head.append(element('b', row.pnlText, `closed-pnl ${row.tone}`));
+  item.append(head);
+  const numbers = join(row.quantity ? `${row.quantity}` : '', row.entry ? `in ${priceText(row.entry)}` : '', row.exit ? `out ${priceText(row.exit)}` : '', row.held, row.strategy ? `by ${row.strategy}` : '');
+  if (numbers) item.append(element('p', numbers, 'closed-numbers'));
+  if (row.why) item.append(element('p', row.why, 'closed-why'));
+  return item;
+}
+export function closedBoard(events, checkpoint) {
+  const rows = closedRows(events, checkpoint);
+  if (!rows.length) return [element('p', 'No trade has closed yet. The first settled contract lands here with its reason and its result.', 'empty-state')];
+  const live = rows.filter(row => row.live);
+  const shadow = rows.filter(row => !row.live);
+  const nodes = [];
+  if (live.length) {
+    const won = live.filter(row => Number(row.pnl) > 0).length;
+    const total = live.reduce((sum, row) => sum + (Number(row.pnl) || 0), 0);
+    nodes.push(element('p', `${plural(live.length, 'real trade')} closed, ${won} won, ${signedMoney(total.toFixed(2), 2)} together`, 'closed-line'));
+    const list = element('div', null, 'closed');
+    for (const row of live) list.append(closedRow(row));
+    nodes.push(list);
+  }
+  if (shadow.length) {
+    const box = element('details', null, 'closed-more');
+    const summary = element('summary', `${plural(shadow.length, 'shadow trade')} closed on the same prices, no money`, 'closed-summary');
+    box.append(summary);
+    const list = element('div', null, 'closed');
+    for (const row of shadow) list.append(closedRow(row));
+    box.append(list);
+    if (!live.length) box.open = true;
+    nodes.push(box);
+  }
+  return nodes;
+}
+
+// ---- the partners: who is earning their compute, and whether the generations improve
+export function partnerRows(checkpoint) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const rows = desks.map(desk => {
+    const equity = numeric(desk.equity) ? Number(desk.equity) : null;
+    const capital = numeric(desk.capital_usd) ? Number(desk.capital_usd) : null;
+    const cost = numeric(desk.cost_usd) ? Number(desk.cost_usd) : null;
+    const pnl = equity !== null && capital !== null ? equity - capital : null;
+    const perDollar = pnl !== null && cost !== null && cost > 0 ? pnl / cost : null;
+    return {
+      id: show(desk.id), name: raceName(desk), live: isLive(desk), inSession: Boolean(desk.live_session),
+      family: humanize(show(desk.family)), generation: Number.isSafeInteger(desk.generation) ? desk.generation : 1,
+      returnText: numeric(desk.return_pct) ? percent(desk.return_pct) : '—', returnTone: numeric(desk.return_pct) ? signOf(desk.return_pct) : '',
+      pnl, pnlText: pnl === null ? '—' : signedMoney(pnl.toFixed(2), 2), pnlTone: pnl === null ? '' : signOf(pnl.toFixed(2)),
+      costText: cost === null ? '—' : money(cost.toFixed(2), 2),
+      perDollar, perDollarText: perDollar === null ? '—' : signedMoney(perDollar.toFixed(2), 2), perDollarTone: perDollar === null ? '' : signOf(perDollar.toFixed(2)),
+      days: Number(desk.days_live) || 0, strategies: Array.isArray(desk.strategies) ? desk.strategies.length : 0,
+      budget: numeric(desk.budget_factor) ? Number(desk.budget_factor) : null,
+    };
+  });
+  const key = row => (row.perDollar === null ? -Infinity : row.perDollar);
+  return rows.sort((left, right) => Number(right.live) - Number(left.live) || key(right) - key(left) || left.id.localeCompare(right.id));
+}
+// One sentence on the loop itself: how long it has run, how many decisions, and whether the
+// newest generation beats the one before it.
+export function learningLine(checkpoint, now = Date.now()) {
+  const run = checkpoint?.run && typeof checkpoint.run === 'object' ? checkpoint.run : null;
+  const parts = [];
+  if (run) {
+    const clock = runClock(run, now);
+    if (clock?.elapsed) parts.push(`${clock.elapsed} of self-improvement`);
+    if (Number(run.sessions_total)) parts.push(`${plural(Number(run.sessions_total), 'session')}`);
+    if (Number(run.decisions_total)) parts.push(`${plural(Number(run.decisions_total), 'decision')}`);
+  }
+  const curve = (Array.isArray(checkpoint?.lab?.curve) ? checkpoint.lab.curve : []).filter(row => row && Number.isSafeInteger(row.generation));
+  if (curve.length >= 2 && curve.some(row => Number(row.decisions) > 0)) parts.push(curveReading(curve).replace(/\.$/, ''));
+  return parts.join(' · ');
+}
+export function partnersBoard(checkpoint) {
+  const rows = partnerRows(checkpoint);
+  if (!rows.length) return [element('p', 'The partners appear with the first checkpoint.', 'empty-state')];
+  const nodes = [];
+  const reading = learningLine(checkpoint);
+  if (reading) nodes.push(element('p', reading, 'partners-line'));
+  const table = element('div', null, 'partners');
+  const head = element('div', null, 'partner partner-head');
+  for (const label of ['partner', 'return', 'P&L', 'Sail spent', 'per Sail $', 'days']) head.append(element('span', label));
+  table.append(head);
+  for (const row of rows) {
+    const line = element('div', null, row.live ? 'partner' : 'partner partner-shadow');
+    const who = element('span', null, 'partner-who');
+    who.append(link(row.name, deskHref(row.id), 'partner-name'));
+    who.append(element('span', row.live ? 'live' : 'shadow', row.live ? 'badge badge-live' : 'badge badge-shadow'));
+    if (row.inSession) who.append(element('span', 'thinking', 'badge badge-thinking'));
+    if (row.family) who.append(element('i', row.family, 'partner-family'));
+    if (row.budget !== null && Math.abs(row.budget - 1) >= 0.005) who.append(element('i', `compute ×${row.budget.toFixed(2).replace(/\.?0+$/, '')}`, 'partner-budget'));
+    line.append(who);
+    line.append(element('span', row.returnText, `partner-num ${row.returnTone}`));
+    line.append(element('span', row.pnlText, `partner-num ${row.pnlTone}`));
+    line.append(element('span', row.costText, 'partner-num'));
+    line.append(element('span', row.perDollarText, `partner-num ${row.perDollarTone}`));
+    line.append(element('span', String(row.days), 'partner-num'));
+    table.append(line);
+  }
+  nodes.push(table);
+  return nodes;
 }
 
 // ---- the race: each family's live desk and its children, who leads, what is being tried
@@ -1640,20 +1782,22 @@ async function startFloor(root) {
   const moreBody = root.querySelector('#floor-more-body');
   const now = root.querySelector('#floor-now');
   const holdings = root.querySelector('#floor-positions');
-  const race = root.querySelector('#floor-race');
+  const closed = root.querySelector('#floor-closed');
+  const partners = root.querySelector('#floor-partners');
   const toggle = root.querySelector('#tape-toggle');
   const tape = root.querySelector('#floor-tape');
   const state = {
-    checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [],
-    everything: false, active: new Set(), expanded: new Set(), ticker: null, statusNode: null,
+    checkpoint: null, events: [], mode: 'loading', records: new Map(), floorMarks: [], outcomes: [],
+    everything: false, active: new Set(LIVE_GROUPS), expanded: new Set(), ticker: null, statusNode: null,
     redraw: () => { if (tape) renderTape(tape, state.events, state); },
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawStrip = () => { if (!strip || !state.checkpoint) return; strip.replaceChildren(runStripPanel(state.checkpoint, state)); ready(strip); };
   const drawMore = () => { if (moreBody && state.checkpoint) moreBody.replaceChildren(mastheadMore(state.checkpoint)); };
-  const drawNow = () => { if (!now || !state.checkpoint) return; now.replaceChildren(...nowPanel(state.checkpoint, state.records)); ready(now); };
+  const drawNow = () => { if (!now || !state.checkpoint) return; now.replaceChildren(...nowPanel(state.checkpoint, state.records, { idle: false })); ready(now); };
   const drawHoldings = () => { if (!holdings || !state.checkpoint) return; holdings.replaceChildren(...holdingsPanel(state.checkpoint, state.floorMarks)); ready(holdings); };
-  const drawRace = () => { if (!race || !state.checkpoint) return; race.replaceChildren(...racePanel(state.checkpoint)); ready(race); };
+  const drawClosed = () => { if (!closed || !state.checkpoint) return; closed.replaceChildren(...closedBoard(state.outcomes, state.checkpoint)); ready(closed); };
+  const drawPartners = () => { if (!partners || !state.checkpoint) return; partners.replaceChildren(...partnersBoard(state.checkpoint)); ready(partners); };
   const drawToggle = () => { if (toggle) toggle.replaceChildren(tapeToggle(state, () => { drawToggle(); state.redraw(); })); };
   const setStatus = () => {
     if (!state.statusNode) return;
@@ -1663,13 +1807,13 @@ async function startFloor(root) {
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
-      drawStrip(); drawMore(); drawNow(); drawHoldings(); drawRace();
+      drawStrip(); drawMore(); drawNow(); drawHoldings(); drawClosed(); drawPartners();
     } catch {
       if (state.checkpoint) return;
       const notice = element('p', 'The floor checkpoint is unavailable. ', 'unavailable');
       notice.append(link('Read the runtime on GitHub.', REPOSITORY));
       if (strip) { strip.replaceChildren(notice); ready(strip); }
-      for (const box of [now, holdings, race]) if (box) { box.replaceChildren(); ready(box); }
+      for (const box of [now, holdings, closed, partners]) if (box) { box.replaceChildren(); ready(box); }
     }
   }
   await refresh();
@@ -1678,6 +1822,12 @@ async function startFloor(root) {
     const marks = await loadEvents({ stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT }).catch(() => ({ events: [] }));
     state.floorMarks = marks.events;
     drawHoldings();
+  }
+  // Every closed trade the desks have published, real and shadow.
+  if (closed) {
+    const outcomes = await loadEvents({ kind: 'desk.outcome', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] }));
+    state.outcomes = outcomes.events;
+    drawClosed();
   }
   // What each desk is thinking now, from its own stream.
   if (state.checkpoint && now) {
@@ -1705,7 +1855,9 @@ async function startFloor(root) {
       state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2);
       let cards = false;
       let balance = false;
+      let outcomes = false;
       for (const event of events) {
+        if (event.kind === 'desk.outcome') { state.outcomes = [event, ...state.outcomes].slice(0, MAX_EVENT_LIMIT); outcomes = true; }
         if (event.kind === FLOOR_MARK.kind) {
           state.floorMarks = [...state.floorMarks, event].slice(-FLOOR_MARK_LIMIT);
           balance = true;
@@ -1718,6 +1870,7 @@ async function startFloor(root) {
       }
       if (cards) drawNow();
       if (balance) drawHoldings();
+      if (outcomes) drawClosed();
       state.redraw();
     },
   });

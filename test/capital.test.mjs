@@ -513,16 +513,15 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
     assert.match(html, /data-capital="(?:floor|desk|committee)"/, page);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public\./);
+  assert.match(floorHtml, /AI partners trading real money on Kalshi and Coinbase, rewriting themselves from the results\./);
   assert.match(floorHtml, /Named after the fund that blew up in 1998, as a warning\. No affiliation\./);
-  for (const id of ['floor-run', 'floor-more', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']) assert.match(floorHtml, new RegExp(`id="${id}"`));
-  for (const gone of ['floor-numbers', 'floor-history', 'floor-partners', 'tape-filters', 'floor-status', 'floor-infra', 'floor-lineage', 'floor-lab']) assert.doesNotMatch(floorHtml, new RegExp(`id="${gone}"`), `${gone} folded into the new panels`);
-  // The explainer is the three loops, in reading order, and one line of what cannot change.
-  for (const loop of LOOPS) assert.match(floorHtml, new RegExp(`<h3>${loop.label}</h3>`));
-  assert.ok(floorHtml.indexOf('<h3>Trade</h3>') < floorHtml.indexOf('<h3>Desk</h3>') && floorHtml.indexOf('<h3>Desk</h3>') < floorHtml.indexOf('<h3>Floor</h3>'));
-  assert.match(floorHtml, /What cannot change: the risk engine, the critic, the order caps, the keys, the reserve, the kill switch\./);
-  assert.ok(floorHtml.indexOf('id="floor-run"') < floorHtml.indexOf('id="floor-now"') && floorHtml.indexOf('id="floor-now"') < floorHtml.indexOf('id="floor-positions"')
-    && floorHtml.indexOf('id="floor-positions"') < floorHtml.indexOf('id="floor-race"') && floorHtml.indexOf('id="floor-race"') < floorHtml.indexOf('id="floor-tape"'), 'the brief\u2019s order: clock, now, holdings, race, tape');
+  for (const id of ['floor-run', 'floor-now', 'floor-positions', 'floor-closed', 'floor-partners', 'tape-toggle', 'floor-tape']) assert.match(floorHtml, new RegExp(`id="${id}"`));
+  for (const gone of ['floor-numbers', 'floor-history', 'floor-race', 'floor-more', 'tape-filters', 'floor-status', 'floor-infra', 'floor-lineage', 'floor-lab']) assert.doesNotMatch(floorHtml, new RegExp(`id="${gone}"`), `${gone} folded into the new panels`);
+  // Five things, in this order: the clock, what is happening live, the money, what closed, who is winning.
+  const order = ['floor-run', 'floor-now', 'floor-tape', 'floor-positions', 'floor-closed', 'floor-partners'].map(id => floorHtml.indexOf(`id="${id}"`));
+  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'the brief\u2019s order: clock, live, tape, portfolio, closed, partners');
+  assert.match(floorHtml, /How the loop works/, 'the mechanics live on the loop page, one link away');
+  assert.doesNotMatch(floorHtml, /<h3>Trade<\/h3>/, 'no explainer diagram on the floor');
   // The word budget: under 120 static words above the tape, so the live things carry the page.
   const aboveTape = floorHtml.slice(floorHtml.indexOf('<main'), floorHtml.indexOf('id="floor-tape"')).replace(/<[^>]+>/g, ' ');
   assert.ok(aboveTape.split(/\s+/).filter(Boolean).length < 120, 'static words above the tape');
@@ -637,7 +636,7 @@ function markEvent(id, index) {
 }
 
 test('the floor page mounts the run strip, the now cards, the holdings, the race and a tape with one toggle', async () => {
-  const root = stubPage('floor', ['floor-run', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']);
+  const root = stubPage('floor', ['floor-run', 'floor-now', 'floor-positions', 'floor-closed', 'floor-partners', 'tape-toggle', 'floor-tape']);
   const board = [
     desk('merton', { name: 'Merton', family: 'merton', mode: 'live', equity: '90000', return_pct: '9', gate: null, live_session: { session_id: 'merton:s', trigger: 'cadence:09:45', started_at: '2026-09-15T13:45:00.000Z' } }),
     desk('rosenfeld'),
@@ -668,7 +667,6 @@ test('the floor page mounts the run strip, the now cards, the holdings, the race
     assert.equal(strip.getAttribute('aria-busy'), 'false');
     assert.match(strip.textContent, /running \d+d \d+h since Sep 12, 2026 \$41\.97 of Sail credit spent profit \+\$63\.40 \+\$1\.51 per Sail dollar 412 sessions \$4\.21 \/ \$25 today/);
     assert.equal(strip.withClass('run-item')[1].className, 'run-item positive', 'profit is toned');
-    assert.match(root.querySelector('#floor-more-body').textContent, /running on a Sail cloud VM.*box 9f2c1ad4.*118.*keys never leave Cloudflare/s, 'the box facts sit behind the chevron');
 
     const now = root.querySelector('#floor-now');
     assert.equal(now.getAttribute('aria-busy'), 'false');
@@ -677,15 +675,13 @@ test('the floor page mounts the run strip, the now cards, the holdings, the race
     assert.match(cards[0].textContent, /Merton sat down for the 09:45 slot/);
     assert.match(cards[0].textContent, /Filing lands at four\./, 'the newest thought');
     assert.match(cards[0].textContent, /using filing/, 'the last tool it asked');
-    const idle = now.withClass('now-idle');
-    assert.equal(idle.length, 1);
-    assert.match(idle[0].textContent, /Rosenfeld.*shadow.*last session .* ago · No trade/s);
-    assert.deepEqual(now.find('a').map(node => node.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
+    assert.equal(now.withClass('now-idle').length, 0, 'idle partners sit in the table, not the live panel');
+    assert.deepEqual(now.find('a').map(node => node.href), ['/capital/desk/?id=merton']);
 
-    const race = root.querySelector('#floor-race');
-    assert.equal(race.getAttribute('aria-busy'), 'false');
-    assert.deepEqual(race.withClass('race-chip').map(chip => chip.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
-    assert.match(race.withClass('race-chip')[0].textContent, /Merton.*\+9\.00%.*thinking/s);
+    const partners = root.querySelector('#floor-partners');
+    assert.equal(partners.getAttribute('aria-busy'), 'false');
+    assert.deepEqual(partners.withClass('partner-name').map(node => node.href), ['/capital/desk/?id=merton', '/capital/desk/?id=rosenfeld']);
+    assert.match(partners.withClass('partner')[1].textContent, /Merton.*live.*thinking.*\+9\.00%/s);
 
     const toggle = () => root.querySelector('#tape-toggle').find('button')[0];
     assert.equal(toggle().textContent, 'everything');
@@ -1004,7 +1000,7 @@ test('the runway spend policy is accepted, rendered, and refused when it is not 
 });
 
 test('the race badges live against shadow, and the box facts sit behind the chevron', async () => {
-  const root = stubPage('floor', ['floor-run', 'floor-more-body', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape']);
+  const root = stubPage('floor', ['floor-run', 'floor-now', 'floor-positions', 'floor-closed', 'floor-partners', 'tape-toggle', 'floor-tape']);
   const board = [
     desk('mullins', { name: 'Mullins', family: 'mullins', mode: 'live', equity: '210.55', return_pct: '5.2', gate: null }),
     desk('merton', { name: 'Merton', family: 'merton', mode: 'shadow', equity: '2000', return_pct: '3.5', gate: null }),
@@ -1023,27 +1019,13 @@ test('the race badges live against shadow, and the box facts sit behind the chev
   }, async () => {
     const feed = await startCapital(root);
     feed.stop();
-    const more = root.querySelector('#floor-more-body');
-    assert.match(more.textContent, /running on a Sail cloud VM/);
-    assert.match(more.textContent, /box 9f2c1ad4/);
-    assert.match(more.textContent, /1d 2h/);
-    assert.match(more.textContent, /118/);
-    assert.match(more.textContent, /\$4\.21 of \$25/);
-    assert.match(more.textContent, /37/, 'Sail requests today');
-    assert.match(more.textContent, /The desks think on Sail\. Their keys never leave Cloudflare\. Every order passes a risk engine and a critic\./);
     assert.doesNotMatch(root.querySelector('#floor-run').textContent, /\$2,000/, 'a notional book never reaches the headline');
 
-    // The founding order decides the row order, so Merton (shadow) leads and Mullins (live) follows.
-    const chips = root.querySelector('#floor-race').withClass('race-chip');
-    assert.deepEqual(chips.map(chip => chip.className), ['race-chip', 'race-chip race-live']);
-    assert.equal(chips[1].withClass('badge-dot').length, 1, 'live pulses');
-    assert.equal(chips[0].withClass('badge-dot').length, 0, 'shadow does not');
-    assert.match(chips[0].getAttribute('title'), /shadow: scored, never sent/);
-    assert.match(chips[1].getAttribute('title'), /live: real money/);
-    assert.match(chips[1].textContent, /Mullins.*\+5\.20%/s);
-    assert.match(chips[0].textContent, /Merton.*\+3\.50%/s);
-    assert.equal(root.querySelector('#floor-race').withClass('race-leader').length, 0, 'a family of one has no leader');
-    assert.match(root.querySelector('#floor-race').textContent, /The race starts with the first bred variant\./);
+    // Live partners lead the table; shadows follow, dashed.
+    const rows = root.querySelector('#floor-partners').withClass('partner').slice(1);
+    assert.deepEqual(rows.map(row => row.className), ['partner', 'partner partner-shadow']);
+    assert.match(rows[0].textContent, /Mullins.*live.*\+5\.20%/s);
+    assert.match(rows[1].textContent, /Merton.*shadow.*\+3\.50%/s);
   });
 });
 
@@ -1074,8 +1056,8 @@ test('the pages say shadow, never paper', async () => {
     assert.equal(mentions, ruledOut, `${page} still says paper`);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /id="floor-more"/);
-  assert.match(floorHtml, /Shadow desks are scored on the same prices and never send an order\./);
+  assert.match(floorHtml, /id="floor-partners"/);
+  assert.match(floorHtml, /Shadow partners are scored on the same prices and never send an order\./);
   // The runtime repository was renamed; every link on the pages follows it.
   const REPO = 'https://github.com/bwoods1998/long-term-capital-management';
   for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
@@ -1201,7 +1183,7 @@ test('the holdings lead with the accounts, the balance line and what has changed
     if (path.includes('kind=floor.mark')) return { schema_version: 1, latest_seq: 302, events };
     return { schema_version: 1, latest_seq: 302, events: [] };
   };
-  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape'];
+  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-closed', 'floor-partners', 'tape-toggle', 'floor-tape'];
   const root = stubPage('floor', ids);
   await withBrowser('', routes(checkpoint({ desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
     const feed = await startCapital(root);
@@ -1471,7 +1453,7 @@ test('trade stories fold intent, risk, order, fills, exit plan and outcome; cali
 });
 
 test('the floor page mounts the holdings with their reasons, the now cards, the night desk and the race', async () => {
-  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-race', 'tape-toggle', 'floor-tape'];
+  const ids = ['floor-run', 'floor-now', 'floor-positions', 'floor-closed', 'floor-partners', 'tape-toggle', 'floor-tape'];
   const root = stubPage('floor', ids);
   const board = checkpoint({
     desks: [
@@ -1501,21 +1483,15 @@ test('the floor page mounts the holdings with their reasons, the now cards, the 
     assert.equal(live.length, 1);
     assert.match(live[0].textContent, /Hilibrand sat down for the 14:00 slot/);
     assert.match(live[0].textContent, /thinking…/, 'no thought published yet');
-    assert.match(now.withClass('now-idle')[0].textContent, /Hilibrand II.*shadow.*no session yet/s);
-    assert.match(now.withClass('now-night')[0].textContent, /^night desk: 12 looks, 3 wakes today$/);
+    assert.equal(now.withClass('now-idle').length, 0);
+    assert.equal(now.withClass('now-night').length, 0, 'the night desk lives on the loop page now');
 
-    const race = root.querySelector('#floor-race');
-    const rows = race.withClass('race-row');
-    assert.equal(rows.length, 1);
-    assert.match(rows[0].textContent, /^Crypto/);
-    const chips = rows[0].withClass('race-chip');
-    assert.deepEqual(chips.map(chip => chip.textContent.trim().split(/\s+/).slice(0, 2).join(' ')), ['Hilibrand +1.20%', 'Hilibrand II']);
-    assert.ok(chips[0].className.includes('race-leader'), 'the higher score leads');
-    assert.match(chips[0].textContent, /★ leads.*thinking/s);
-    assert.match(chips[1].getAttribute('title'), /shadow: scored, never sent · DeepSeek V4 Pro · effort high · \+45 min/);
-    assert.match(race.withClass('race-line')[0].textContent, /^1 experiment running · generation II vs I: \+0\.90%$/);
-    const differ = race.find('details')[0];
-    assert.match(differ.textContent, /how the children differ.*Hilibrand II.*DeepSeek V4 Pro.*effort high.*\+45 min.*the loop/s);
+    const partners = root.querySelector('#floor-partners');
+    const rows = partners.withClass('partner').slice(1);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0].textContent, /Hilibrand.*live.*thinking.*\+1\.20%/s);
+    assert.match(rows[1].textContent, /Hilibrand II.*shadow.*\+0\.40%/s);
+    assert.match(partners.withClass('partners-line')[0].textContent, /Generation 2 beats generation 1 on cost-adjusted return/);
   });
   // A floor with nothing open says so, and a founder alone is still a race.
   const quiet = stubPage('floor', ids);
@@ -1524,10 +1500,9 @@ test('the floor page mounts the holdings with their reasons, the now cards, the 
     feed.stop();
     assert.match(quiet.querySelector('#floor-positions').textContent, /Flat\. No trade taken yet\./);
     assert.equal(quiet.querySelector('#floor-now').withClass('now-card').length, 0);
-    assert.match(quiet.querySelector('#floor-now').textContent, /Rosenfeld.*no session yet/s);
-    assert.equal(quiet.querySelector('#floor-now').withClass('now-night').length, 0, 'no watch block, no night line');
-    assert.equal(quiet.querySelector('#floor-race').withClass('race-chip').length, 1, 'a founder alone is still a race');
-    assert.match(quiet.querySelector('#floor-race').textContent, /The race starts with the first bred variant\./);
+    assert.match(quiet.querySelector('#floor-now').textContent, /No partner is in session\./);
+    assert.ok(quiet.querySelector('#floor-partners').withClass('partner').length >= 2, 'a founder alone still has a row');
+    assert.match(quiet.querySelector('#floor-closed').textContent, /No trade has closed yet\./);
   });
 });
 
@@ -1922,4 +1897,37 @@ test('the floor’s new helpers read as words: the strip, the now lines, the fla
   assert.equal(raceLine({ experiments: [experiment({ status: 'adopted' })], curve: [curveRow(1)] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
   assert.equal(raceLine(null, raceRows(checkpoint())), 'The race starts with the first bred variant.');
   assert.equal(raceLine({ experiments: [], curve: [curveRow(1, { decisions: 0 }), curveRow(2, { decisions: 0 })] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
+});
+
+import { closedRows, partnerRows, learningLine, quietLine, LIVE_GROUPS } from '../capital/capital.js';
+
+test('the floor opens on thoughts and trades, and the closed board names the desk, the reason and the result', () => {
+  assert.deepEqual(LIVE_GROUPS, ['thoughts', 'trades']);
+  const checkpoint = { desks: [
+    { id: 'scholes', family: 'ranges', mode: 'live', generation: 1, equity: '150.00', capital_usd: '142', cost_usd: '2.00', return_pct: '0.0563', days_live: 2, strategies: [{ name: 'a' }], budget_factor: '1.50', next_session_at: '2026-09-16T08:05:00.000Z' },
+    { id: 'scholes-2', family: 'ranges', mode: 'shadow', generation: 2, parent_id: 'scholes', equity: '140.00', capital_usd: '142', cost_usd: '1.00', return_pct: '-0.0141', days_live: 1, strategies: [] },
+    { id: 'haghani', family: 'weather', mode: 'live', generation: 1, equity: '150.00', capital_usd: '150', cost_usd: '0', return_pct: '0', days_live: 1 },
+  ] };
+  const events = [
+    { id: 'o1', stream: 'desk:scholes', kind: 'desk.outcome', at: '2026-09-16T06:02:28.000Z', payload: { instrument: { symbol: 'ETH-USD', asset_class: 'event', venue: 'kalshi', market_id: 'KXETH-26SEP1602-B2397', right: 'no' }, market_id: 'KXETH-26SEP1602-B2397', result: 'no', entry_price: '0.79', exit_price: '1', quantity: '12', pnl: '2.52', held_for_hours: 1, rationale_excerpt: '[strategy hourly_quotes] Quote: ETH-USD spot 2,400; resting NO bid at 0.79' } },
+    { id: 'o2', stream: 'desk:scholes-2', kind: 'desk.outcome', at: '2026-09-16T06:02:30.000Z', payload: { market_id: 'KXBTC-26SEP1602-B75750', result: 'yes', pnl: '-9.86', quantity: '58', rationale_excerpt: 'shadow bet' } },
+    { id: 'x', stream: 'desk:scholes', kind: 'desk.thought', at: '2026-09-16T06:03:00.000Z', payload: { text: 'not an outcome' } },
+  ];
+  const rows = closedRows(events, checkpoint);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].desk, 'scholes-2', 'newest first');
+  assert.deepEqual([rows[1].name, rows[1].live, rows[1].instrument, rows[1].right, rows[1].pnlText, rows[1].tone, rows[1].strategy, rows[1].held], ['Scholes', true, 'KXETH-26SEP1602-B2397', 'NO', '+$2.52', 'positive', 'hourly_quotes', 'held 1h']);
+  assert.equal(rows[1].why, 'Quote: ETH-USD spot 2,400; resting NO bid at 0.79', 'the strategy prefix is lifted into its own field');
+  assert.equal(rows[0].live, false);
+
+  const partners = partnerRows(checkpoint);
+  assert.deepEqual(partners.map(row => row.id), ['scholes', 'haghani', 'scholes-2'], 'live first, then by profit per Sail dollar');
+  assert.deepEqual([partners[0].pnlText, partners[0].perDollarText, partners[0].costText, partners[0].budget, partners[0].strategies], ['+$8.00', '+$4.00', '$2.00', 1.5, 1]);
+  assert.equal(partners[1].perDollarText, '—', 'no Sail spend, no ratio');
+  assert.equal(partners[2].pnlTone, 'negative');
+
+  const now = Date.parse('2026-09-16T07:35:00.000Z');
+  assert.equal(quietLine(checkpoint, now), 'No partner is in session. Scholes sits down in 30 min. Their strategies keep quoting meanwhile.');
+  const line = learningLine({ ...checkpoint, run: { started_at: '2026-09-15T18:11:00.000Z', sessions_total: 96, decisions_total: 361, sail_spend_total_usd: '11.47', pnl_total_usd: '-7.25', pnl_per_sail_dollar: '-0.63' } }, now);
+  assert.match(line, /^13h 24m of self-improvement · 96 sessions · 361 decisions$/);
 });
