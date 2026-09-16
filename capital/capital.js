@@ -1535,7 +1535,28 @@ function holdingsPanel(checkpoint, floorMarks) {
   const rows = positionRows(checkpoint);
   if (!rows.length) { nodes.push(element('p', flatLine(checkpoint), 'empty-state holdings-flat')); return nodes; }
   nodes.push(positionsBoard(checkpoint, { line: false }));
+  const working = workingBoard(checkpoint);
+  if (working) nodes.push(working);
   return nodes;
+}
+// The book as it stands across every desk: each resting bid and offer, who placed it and why.
+export function workingBoard(checkpoint) {
+  const rows = workingRows(checkpoint);
+  if (!rows.length) return null;
+  const board = element('div', null, 'working working-board');
+  board.append(element('p', `${plural(rows.length, 'order')} resting on the book`, 'working-line'));
+  for (const row of rows) {
+    const item = element('article', null, row.live ? 'working-order' : 'working-order working-shadow');
+    const head = element('div', null, 'working-head');
+    head.append(link(row.name, deskHref(row.desk), 'position-desk'));
+    head.append(element('span', row.live ? 'live' : 'shadow', row.live ? 'badge badge-live' : 'badge badge-shadow'));
+    head.append(element('span', join(row.side, row.instrument, row.venue), 'position-what'));
+    if (row.submittedAt) head.append(timeNode(row.submittedAt, 'clock'));
+    item.append(head);
+    item.append(element('p', join(row.quantity, `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
+    board.append(item);
+  }
+  return board;
 }
 
 // ---- the race: each family's live desk and its children, who leads, what is being tried
@@ -1937,6 +1958,43 @@ function cadenceText(seconds) {
   if (n % 60 === 0) return `every ${n / 60} min`;
   return `every ${n}s`;
 }
+// Working orders: what a desk is bidding and offering right now, and which strategy put it there.
+export function workingRows(checkpoint) {
+  const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
+  const rows = [];
+  for (const desk of orderDesks(desks)) {
+    for (const order of Array.isArray(desk?.working) ? desk.working : []) {
+      if (!order || typeof order !== 'object') continue;
+      const leg = order.instrument?.right ? String(order.instrument.right).toUpperCase() : '';
+      rows.push({
+        desk: show(desk.id), name: partnerName(show(desk.id)), live: isLive(desk),
+        instrument: instrumentLabel(order.instrument) || '—', venue: venueLabel(order.instrument?.venue),
+        side: join(show(order.side), leg), quantity: quantity(order.quantity), price: order.limit_price === null ? 'market' : show(order.limit_price),
+        purpose: show(order.purpose), strategy: order.strategy ? show(order.strategy) : 'session', submittedAt: show(order.submitted_at),
+        story: order.intent_id ? storyHref(show(desk.id), show(order.intent_id)) : '',
+      });
+    }
+  }
+  return rows.sort((left, right) => (Number(right.live) - Number(left.live)) || String(right.submittedAt).localeCompare(String(left.submittedAt)));
+}
+export function workingPanel(desk) {
+  const rows = workingRows({ desks: desk ? [desk] : [] });
+  if (!rows.length) return null;
+  const block = section('Working orders', 'resting on the book now');
+  const list = element('div', null, 'working');
+  for (const row of rows) {
+    const item = element('article', null, 'working-order');
+    const head = element('div', null, 'working-head');
+    head.append(element('b', join(row.side, row.instrument)), element('span', row.venue, 'holding-venue'));
+    if (row.submittedAt) head.append(timeNode(row.submittedAt, 'clock'));
+    item.append(head);
+    item.append(element('p', join(row.quantity, `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
+    if (row.story) item.append(link('story ↓', row.story, 'exit-chip exit-link'));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
 // Strategies: code the desk deployed to trade for it between sessions, with each one's record.
 export function strategiesPanel(desk) {
   const rows = Array.isArray(desk?.strategies) ? desk.strategies : [];
@@ -2064,6 +2122,8 @@ async function startDesk(root) {
   ];
   const eventDesk = Array.isArray(desk?.venues) && desk.venues.includes('kalshi') || (desk?.calibration && typeof desk.calibration === 'object');
   if (eventDesk || latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })) panels.push(calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })));
+  const working = workingPanel(desk);
+  if (working) panels.splice(1, 0, working);  // right under the holdings: the book as it stands
   const strategies = strategiesPanel(desk);
   if (strategies) panels.push(strategies);
   const toolbox = toolboxPanel(deskEvents.events);

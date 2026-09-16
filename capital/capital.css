@@ -218,6 +218,13 @@ button.tape-expand:hover { color: var(--accent); }
 .position-what { font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .position-numbers { display: flex; flex-wrap: wrap; gap: 8px 22px; }
 .position-numbers > span { display: flex; flex-direction: column; gap: 2px; }
+.working { display: grid; gap: 8px; }
+.working-line { margin: 0; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.working-order { border: 1px solid var(--line); background: var(--surface); padding: 10px 14px; display: grid; gap: 6px; min-width: 0; }
+.working-shadow { border-style: dashed; }
+.working-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.working-head b { font-weight: 600; letter-spacing: -.2px; overflow-wrap: anywhere; }
+.working-numbers { margin: 0; font: 13px/1.6 'Courier New', Courier, monospace; }
 .position-numbers b { font-weight: 400; font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
 .position-numbers i { font: 9px/1.6 'Courier New', Courier, monospace; font-style: normal; color: var(--muted); }
 .position-thesis { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }

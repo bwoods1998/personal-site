@@ -815,6 +815,22 @@ test('a shadow desk is published, validated and rendered as hypothetical', async
     'a missing field': Object.fromEntries(Object.entries(strategy).filter(([k]) => k !== 'wins')),
   })) assert.equal(validDesk(desk('merton', { strategies: [bad] }), '2026-09-15T14:05:00.000Z'), false, label);
   assert.equal(validDesk(desk('merton', { strategies: [strategy, strategy] }), '2026-09-15T14:05:00.000Z'), false, 'duplicate names');
+  // Working orders: what the desk is bidding and offering now. Optional.
+  const working = {
+    order_id: 'ord-abc', instrument: { symbol: 'KXBTC-26SEP1602-B75750', asset_class: 'event', venue: 'kalshi', market_id: 'KXBTC-26SEP1602-B75750', right: 'no' },
+    side: 'buy', quantity: '13', limit_price: '0.75', submitted_at: '2026-09-15T14:00:00.000Z', purpose: 'entry', strategy: 'hourly_quotes', intent_id: 'oi-1',
+  };
+  assert.equal(validDesk(desk('merton', { working: [working], budget_factor: '1.50' }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { working: [{ ...working, limit_price: null, strategy: null, intent_id: null, submitted_at: null }] }), '2026-09-15T14:05:00.000Z'), true);
+  for (const [label, bad] of Object.entries({
+    'a side that is not buy or sell': { ...working, side: 'hold' },
+    'a strategy name with spaces': { ...working, strategy: 'Hourly Quotes' },
+    'an order from the future': { ...working, submitted_at: '2026-09-15T15:05:00.000Z' },
+    'an extra field': { ...working, note: 'x' },
+  })) assert.equal(validDesk(desk('merton', { working: [bad] }), '2026-09-15T14:05:00.000Z'), false, label);
+  assert.equal(validDesk(desk('merton', { working: [working, working] }), '2026-09-15T14:05:00.000Z'), false, 'duplicate order ids');
+  assert.equal(validDesk(desk('merton', { budget_factor: '0' }), '2026-09-15T14:05:00.000Z'), false, 'a zero budget factor');
+  assert.equal(validDesk(desk('merton', { budget_factor: '11' }), '2026-09-15T14:05:00.000Z'), false, 'an absurd budget factor');
   assert.equal(validDesk(desk('merton', { strategies: Array.from({ length: 9 }, (_, i) => ({ ...strategy, name: `s${i}` })) }), '2026-09-15T14:05:00.000Z'), false, 'too many');
   assert.equal(deskMode('paper'), 'shadow');
   assert.equal(deskMode('live'), 'live');
