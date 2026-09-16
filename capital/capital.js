@@ -1581,7 +1581,7 @@ export function workingBoard(checkpoint) {
     head.append(element('span', join(row.side, row.instrument, row.venue), 'position-what'));
     if (row.submittedAt) head.append(timeNode(row.submittedAt, 'clock'));
     item.append(head);
-    item.append(element('p', join(row.quantity, `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
+    item.append(element('p', join(row.quantity, row.price === 'market' ? 'at market' : `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
     board.append(item);
   }
   return board;
@@ -2161,7 +2161,7 @@ export function workingPanel(desk) {
     head.append(element('b', join(row.side, row.instrument)), element('span', row.venue, 'holding-venue'));
     if (row.submittedAt) head.append(timeNode(row.submittedAt, 'clock'));
     item.append(head);
-    item.append(element('p', join(row.quantity, `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
+    item.append(element('p', join(row.quantity, row.price === 'market' ? 'at market' : `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
     if (row.story) item.append(link('story ↓', row.story, 'exit-chip exit-link'));
     list.append(item);
   }

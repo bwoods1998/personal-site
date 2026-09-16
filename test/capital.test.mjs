@@ -831,6 +831,8 @@ test('a shadow desk is published, validated and rendered as hypothetical', async
   assert.equal(validDesk(desk('merton', { working: [working, working] }), '2026-09-15T14:05:00.000Z'), false, 'duplicate order ids');
   assert.equal(validDesk(desk('merton', { budget_factor: '0' }), '2026-09-15T14:05:00.000Z'), false, 'a zero budget factor');
   assert.equal(validDesk(desk('merton', { budget_factor: '11' }), '2026-09-15T14:05:00.000Z'), false, 'an absurd budget factor');
+  const marketRow = workingRows({ desks: [{ id: 'merton', mode: 'live', working: [{ ...working, limit_price: null }] }] })[0];
+  assert.equal(marketRow.price, 'market', 'a market order reads as market, never as a dash');
   assert.equal(validDesk(desk('merton', { strategies: Array.from({ length: 9 }, (_, i) => ({ ...strategy, name: `s${i}` })) }), '2026-09-15T14:05:00.000Z'), false, 'too many');
   assert.equal(deskMode('paper'), 'shadow');
   assert.equal(deskMode('live'), 'live');
@@ -1903,7 +1905,7 @@ test('the floor’s new helpers read as words: the strip, the now lines, the fla
   assert.equal(raceLine({ experiments: [], curve: [curveRow(1, { decisions: 0 }), curveRow(2, { decisions: 0 })] }, race), 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.');
 });
 
-import { closedRows, partnerRows, learningLine, quietLine, LIVE_GROUPS } from '../capital/capital.js';
+import { closedRows, partnerRows, learningLine, quietLine, LIVE_GROUPS, workingRows } from '../capital/capital.js';
 
 test('the floor opens on thoughts and trades, and the closed board names the desk, the reason and the result', () => {
   assert.deepEqual(LIVE_GROUPS, ['thoughts', 'trades']);
