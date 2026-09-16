@@ -46,11 +46,46 @@ Focus: say no to everything else. Depth lives on the desk pages and the loop pag
    beats the live partner, and "bred · retired · promoted · experiments".
 6. **Footer.** How it works in one sentence, The loop and GitHub, and the disclaimer.
 
-## Desk page and loop page
+## Loop page, top to bottom (`/capital/committee/`)
 
-Unchanged by the floor redesign. The desk page leads with "watch it think", then holdings with
-reasons, trade stories, calibration, strategies, toolbox and playbook. The loop page leads with the
-improvement curve, then the race, experiments, house genome, capital, gates and the memo.
+How the floor improves itself and who is winning, in two screens. Same principles as the floor.
+1. **Masthead.** "The loop", one sentence, eight numbers: families, partners (with how many trade
+   real money), bred, promoted, demoted, retired, founded, experiments. Under them the nightly
+   clock in Eastern time with the next job pulsing: committee 6:00 PM, evolution 7:00 PM, lab
+   8:00 PM, founding 9:30 PM.
+2. **Is it getting better?** The floor's family × generation grid, larger, each cell's P&L under
+   its return. Hover (or a first tap) reads a cell out below with its decisions; the readout starts
+   on the best child. One sentence counts families where a practice child beats the live partner.
+3. **The race.** "Closest to promotion: X, gate A: 5 of 6 met; short on days live (1)." Then a row
+   per family: live partner first, challengers with return, a star for the family's best, a
+   six-bar gate meter, "demoted" and "founded by the floor" tags. Gate evidence and how the
+   children differ sit behind two quiet disclosures.
+4. **What changed.** One timeline, newest first, fifteen lines and "more": bred, founded,
+   promoted, moved back to a shadow book, retired, lab experiments and verdicts, a real-money sleeve
+   resized ("Meriwether moved Hilibrand $487 → $369"), a playbook rewritten. A child's first
+   playbook is its birth, not a second line.
+5. **Capital.** Real-money sleeves only: partner, sleeve, P&L, Meriwether's latest reason. One line
+   for the rest: "17 shadow partners score against notional books."
+6. **Meriwether's memo** (first paragraph, "read the memo") and **calibration by family** render
+   only when the log holds them.
+
+## Desk page, top to bottom (`/capital/desk/?id=`)
+
+Who the partner is, how it is doing, what it is thinking, what it holds, what it has learned.
+1. **Header.** Name with generation numeral; real money or practice, "demoted", "founded by the
+   floor"; family, generation, parent. The mandate in one sentence (founders from the manifests,
+   a founded family from its universe), what a child was born with, a live sleeve and its reason,
+   the demotion and its reason. Five numbers: equity, lifetime P&L, return, trades, compute (×).
+2. **Now.** The newest session: six thoughts clamped to three lines (tap to open), tool calls in
+   plain words, repeats folded (×2, +5 more), the last thought typed while live, the desk's own
+   end-of-session summary. Earlier sessions are one disclosure, a line each, opening in place.
+3. **Holdings** (floor table, eight rows, dust counted), **Record** (one line, then eight closed
+   trades), **Strategies** (one row each; settings and code runs behind disclosures), **What it
+   learned** (post-mortem, playbook reason with its diff, the three newest lessons), and
+   **Calibration**. A section with nothing to show is not drawn.
+
+A demotion is published as `evolution.promoted` with `to: "shadow"`; every page reads it as
+"moved back to a shadow book", never as a promotion.
 
 ## Copy rules
 

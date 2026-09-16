@@ -9,9 +9,7 @@ const API = '/api/capital';
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_CHECKPOINT_BYTES = 512 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
-const TAPE_LIMIT = 120;
 const TAPE_TEXT_LIMIT = 140;
-const SPARK_POINTS = 40;
 // The floor's own balance marks: kind, payload field, and how many of them the page holds.
 const FLOOR_MARK = { kind: 'floor.mark', field: 'account_equity' };
 const FLOOR_MARK_LIMIT = 200;
@@ -142,6 +140,8 @@ function date(value, style = 'datetime') {
   const options = style === 'clock'
     ? { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }
     : style === 'hm' ? { hour: '2-digit', minute: '2-digit', hour12: false }
+    : style === 'time' ? { hour: 'numeric', minute: '2-digit' }
+    : style === 'md' ? { month: 'short', day: 'numeric' }
     : style === 'day' ? { month: 'short', day: 'numeric', year: 'numeric' }
       : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' };
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', ...options }).format(new Date(value));
@@ -171,33 +171,12 @@ function metric(label, value, tone, note) {
   row.append(result);
   return row;
 }
-function facts(entries) {
-  const list = element('dl', null, 'facts');
-  for (const [label, value] of entries) list.append(element('dt', label), element('dd', value));
-  return list;
-}
 function svgElement(tag, attributes, content) {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
   if (content) node.textContent = content;
   return node;
 }
-function table(columns, rows, className = 'data-table') {
-  const node = element('table', null, className);
-  const head = element('thead');
-  const header = element('tr');
-  for (const column of columns) header.append(element('th', column));
-  head.append(header);
-  const body = element('tbody');
-  for (const row of rows) {
-    const line = element('tr');
-    for (const cell of row) line.append(typeof cell === 'string' ? element('td', cell) : cell);
-    body.append(line);
-  }
-  node.append(head, body);
-  return node;
-}
-
 const show = value => typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 const join = (...parts) => parts.map(part => (part === null || part === undefined ? '' : String(part))).filter(Boolean).join(' · ');
 const quantity = value => show(value) || '—';
@@ -248,25 +227,6 @@ export function orderDesks(desks) {
   }).map(entry => entry.desk);
 }
 export const filterGroup = kind => GROUP_OF_KIND[kind] || null;
-// What a first-time visitor should see scroll by: thinking, decisions and money. The plumbing
-// (tool calls, marks, budgets, gates, the night desk's passes) is one toggle away.
-export const INTERESTING_KINDS = new Set([
-  'desk.thought', 'desk.memo', 'desk.forecast', 'desk.watch', 'desk.intent', 'desk.postmortem', 'desk.outcome',
-  'desk.exit_plan', 'desk.code_run', 'desk.playbook_updated', 'risk.decision', 'risk.review', 'risk.breaker',
-  'broker.order', 'broker.fill', 'committee.allocation', 'committee.memo',
-  'evolution.spawned', 'evolution.retired', 'evolution.promoted', 'lab.experiment', 'lab.verdict',
-]);
-export function isInteresting(event) {
-  if (!INTERESTING_KINDS.has(event?.kind)) return false;
-  if (event.kind === 'desk.watch') return event.payload?.decision === 'wake';
-  return true;
-}
-// Chips are inclusive. Turning every chip off reads as no filter rather than an empty page.
-export function matchesFilters(event, active) {
-  const group = filterGroup(event?.kind);
-  if (!group || !(active instanceof Set) || active.size === 0) return true;
-  return active.has(group);
-}
 export function truncate(value, max = TAPE_TEXT_LIMIT) {
   const full = show(value).replace(/\s+/g, ' ').trim();
   if (full.length <= max) return { text: full, full, truncated: false };
@@ -301,7 +261,11 @@ const DETAILS = {
   'committee.gate': p => join(`${partnerName(show(p.desk_id))} ${p.passed === true ? 'passed' : p.passed === false ? 'did not pass' : 'faced'} gate ${show(p.gate)}`),
   'evolution.spawned': p => join(`bred ${partnerName(show(p.desk_id))}${p.parent_id ? ` from ${partnerName(show(p.parent_id))}` : ''}`, mutationWords(p.mutation)),
   'evolution.retired': p => join(`retired ${partnerName(show(p.desk_id))}`, show(p.reason)),
-  'evolution.promoted': p => join(`promoted ${partnerName(show(p.desk_id))} to real money`, show(p.venue) ? `on ${venueLabel(p.venue)}` : ''),
+  // A demotion is published as a promotion "to" a shadow book; it never reads as a promotion.
+  'evolution.promoted': p => (isDemotion(p)
+    ? join(`moved ${floorName(show(p.desk_id))} back to a shadow book`, reasonText(p.reason))
+    : join(`promoted ${floorName(show(p.desk_id))} to real money`, show(p.venue) ? `on ${venueLabel(p.venue)}` : '', reasonText(p.reason))),
+  'evolution.founded': p => join(`founded ${show(p.name) || floorName(show(p.desk_id))}, a new ${humanize(show(p.family)) || 'family'} family`, show(p.universe)),
   'lab.hypothesis': p => join(show(p.text), show(p.test_plan)),
   'lab.result': p => join(show(p.verdict), show(p.hypothesis_id)),
   'desk.watch': p => join(`${humanize(show(p.trigger))}: ${p.decision === 'wake' ? 'woke the desk' : p.decision === 'ignore' ? 'let it pass' : show(p.decision)}`, show(p.detail), show(p.reason)),
@@ -383,23 +347,6 @@ export function markSeries(events, selector) {
     ticks: [max, (max + min) / 2, min].map(value => ({ value, y: y(value) })),
   };
 }
-// The card line: the newest forty marks, scaled to their own range.
-export function sparkline(events, { width = 148, height = 34, limit = SPARK_POINTS, selector } = {}) {
-  const points = markPoints(events, selector).slice(-limit);
-  if (points.length < 2) return null;
-  const values = points.map(point => point.equity);
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-  if (min === max) { min -= 1; max += 1; }
-  const span = points.at(-1).at - points[0].at || 1;
-  const x = at => 1 + (at - points[0].at) / span * (width - 2);
-  const y = value => height - 3 - (value - min) / (max - min) * (height - 6);
-  return {
-    width, height, points, first: points[0], last: points.at(-1),
-    path: points.map((point, index) => `${index ? 'L' : 'M'}${x(point.at).toFixed(2)},${y(point.equity).toFixed(2)}`).join(' '),
-    direction: points.at(-1).equity >= points[0].equity ? 'positive' : 'negative',
-  };
-}
 // The newest playbook rewrite, with the diff the desk wrote for itself.
 export function latestPlaybook(events) {
   const latest = (Array.isArray(events) ? events : [])
@@ -428,7 +375,7 @@ export function lineage(events, id) {
     .map(event => ({
       at: event.at,
       kind: event.kind,
-      label: EVENT_KINDS[event.kind]?.label || event.kind,
+      label: event.kind === 'evolution.promoted' && isDemotion(event.payload) ? 'Desk demoted' : EVENT_KINDS[event.kind]?.label || event.kind,
       text: event.payload?.desk_id === id ? tapeLine(event).text : `${show(event.payload?.desk_id)} spawned from this desk`,
     }));
 }
@@ -456,17 +403,6 @@ export function fillRows(events, id = null) {
     price: show(event.payload?.price),
     fee: show(event.payload?.fee),
   }));
-}
-// Meriwether's allocation rounds, newest first, over the desks he has funded.
-export function allocationSeries(events, limit = 12) {
-  const rows = (Array.isArray(events) ? events : [])
-    .filter(event => event?.kind === 'committee.allocation'
-      && event.payload?.allocations && typeof event.payload.allocations === 'object' && !Array.isArray(event.payload.allocations))
-    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
-    .slice(0, limit)
-    .map(event => ({ at: event.at, amounts: event.payload.allocations }));
-  const desks = [...new Set(rows.flatMap(row => Object.keys(row.amounts)))].slice(0, 8);
-  return { desks, rows };
 }
 export function streamUrl(streams, location) {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -596,79 +532,6 @@ function diffBlock(value) {
   for (const line of diffLines(value)) block.append(element('span', line.text || ' ', `diff-line diff-${line.type}`));
   return block;
 }
-function tapeEntry(event, state) {
-  const line = tapeLine(event);
-  const entry = element('div', null, `tape-entry tone-${line.tone}`);
-  entry.append(timeNode(line.at, 'clock'));
-  const who = element('span', null, 'tape-who');
-  const onDesk = typeof line.stream === 'string' && line.stream.startsWith('desk:');
-  who.append(onDesk ? link(line.source, deskHref(line.stream.slice(5))) : element('span', line.source));
-  const icon = element('span', line.icon, 'tape-icon');
-  icon.setAttribute('role', 'img');
-  icon.setAttribute('aria-label', line.label);
-  icon.setAttribute('title', line.label);
-  const body = element('div', null, 'tape-body');
-  const cut = truncate(line.text, TAPE_TEXT_LIMIT);
-  if (cut.truncated && state) {
-    const open = state.expanded.has(event.id);
-    const button = element('button', open ? cut.full : cut.text, 'tape-text tape-expand');
-    button.type = 'button';
-    button.setAttribute('aria-expanded', open ? 'true' : 'false');
-    button.addEventListener('click', () => {
-      if (state.expanded.has(event.id)) state.expanded.delete(event.id);
-      else state.expanded.add(event.id);
-      state.redraw();
-    });
-    body.append(button);
-  } else body.append(element('span', cut.text, 'tape-text'));
-  if (event?.kind === 'desk.playbook_updated' && event.payload?.diff) body.append(diffBlock(event.payload.diff));
-  entry.append(who, icon, body);
-  return entry;
-}
-// The default tape (desk and loop pages): what a visitor came for. Thoughts and the questions the
-// partners ask their tools; the real desks' orders, fills, exits and outcomes. Shadow desks'
-// quotes, tool answers and code runs are one toggle away, not on the first screen.
-const QUIET_BY_DEFAULT = new Set(['desk.code_run', 'desk.tool_result']);
-const MONEY_KINDS = new Set(['desk.intent', 'broker.order', 'broker.fill', 'desk.exit_plan', 'desk.outcome']);
-export function tapeDefault(event, state) {
-  // A tool call is the partner's research question, and research is what the visitor came to see.
-  if (!(event?.kind === 'desk.tool_call' || isInteresting(event)) || !matchesFilters(event, state?.active)) return false;
-  if (QUIET_BY_DEFAULT.has(event?.kind)) return false;
-  if (MONEY_KINDS.has(event?.kind) && state?.liveIds instanceof Set && state.liveIds.size) {
-    const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
-    if (payload.shadow === true) return false;
-    const desk = typeof event.stream === 'string' && event.stream.startsWith('desk:') ? event.stream.slice(5) : show(payload.desk_id);
-    if (desk && !state.liveIds.has(desk)) return false;
-  }
-  return true;
-}
-function renderTape(target, events, state) {
-  const selected = [...events]
-    .filter(event => !state || (state.everything ? true : tapeDefault(event, state)))
-    .sort((left, right) => right.seq - left.seq)
-    .slice(0, TAPE_LIMIT);
-  const entries = selected.map(event => tapeEntry(event, state));
-  target.replaceChildren(...(entries.length ? entries : [element('p', events.length ? 'Quiet. The next thought appears here.' : 'Nothing published yet.', 'empty-state')]));
-  target.setAttribute('aria-busy', 'false');
-}
-function statusLine(target, mode, publishedAt) {
-  const state = element('span', mode === 'live' ? 'Live · streaming' : mode === 'polling' ? 'Live · reconnecting' : 'Loading', mode === 'live' ? 'status-live' : 'status-polling');
-  const published = element('span', 'Checkpoint ');
-  if (publishedAt) published.append(timeNode(publishedAt));
-  else published.textContent = 'Awaiting first checkpoint';
-  target.replaceChildren(state, published);
-}
-function sparkFigure(marks) {
-  const series = sparkline(marks);
-  if (!series) return element('span', 'equity line starts at the second mark', 'spark-empty');
-  const svg = svgElement('svg', {
-    viewBox: `0 0 ${series.width} ${series.height}`, preserveAspectRatio: 'none', class: `spark spark-${series.direction}`,
-    role: 'img', 'aria-label': `Equity over the desk's last ${series.points.length} marks.`,
-  });
-  svg.append(svgElement('path', { d: series.path, class: 'spark-line' }));
-  return svg;
-}
-
 // Live carries a pulsing dot; shadow is muted and says so. The two never look alike.
 export function modeBadge(desk) {
   const mode = deskMode(desk?.mode);
@@ -700,40 +563,6 @@ export function accountVenues(floor) {
     }));
 }
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
-// ------------------------------------------------------------------- the positions board
-// Every open position the checkpoint carried, live desks first, largest first. A shadow desk's
-// position is a scored position and is labelled so; the board never adds it to any money.
-export function exitChips(position) {
-  const chips = [];
-  if (numeric(position?.target_price)) chips.push({ kind: 'target', text: `target ${priceText(position.target_price)}` });
-  if (numeric(position?.stop_price)) chips.push({ kind: 'stop', text: `stop ${priceText(position.stop_price)}` });
-  if (typeof position?.time_stop_at === 'string' && position.time_stop_at) chips.push({ kind: 'time_stop', text: `out by ${date(position.time_stop_at)}` });
-  const resting = Array.isArray(position?.exit_orders) ? position.exit_orders.length : 0;
-  if (resting) chips.push({ kind: 'resting', text: `${resting} resting` });
-  else if (chips.length) chips.push({ kind: 'floor', text: 'floor enforces' });
-  else chips.push({ kind: 'none', text: 'no exit plan' });
-  return chips;
-}
-export function positionRows(checkpoint) {
-  const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
-  const rows = [];
-  for (const desk of orderDesks(desks)) {
-    for (const position of Array.isArray(desk?.positions) ? desk.positions : []) {
-      if (!position || typeof position !== 'object') continue;
-      rows.push({
-        desk: show(desk.id), name: partnerName(show(desk.id)), live: isLive(desk),
-        instrument: instrumentLabel(position.instrument) || '—', venue: venueLabel(position.instrument?.venue), side: show(position.side),
-        quantity: quantity(position.quantity), entry: show(position.entry_price), mark: show(position.mark_price),
-        value: show(position.market_value), pnl: show(position.unrealized_pnl), tone: signOf(show(position.unrealized_pnl)),
-        openedAt: show(position.opened_at), thesis: show(position.thesis), chips: exitChips(position),
-        intentId: show(position.intent_id), sessionId: show(position.session_id),
-        story: position.intent_id ? storyHref(show(desk.id), show(position.intent_id)) : '',
-      });
-    }
-  }
-  const size = row => Math.abs(Number(row.value)) || 0;
-  return rows.sort((left, right) => (Number(right.live) - Number(left.live)) || (size(right) - size(left)));
-}
 // "live now · cadence 13:30" while a session runs; nothing otherwise.
 export function liveSessionText(desk) {
   const session = desk?.live_session;
@@ -853,198 +682,7 @@ export function changeSummary(change) {
   }
   return parts.join(' · ');
 }
-export function experimentRows(lab) {
-  const list = Array.isArray(lab?.experiments) ? lab.experiments : [];
-  return list.filter(experiment => experiment && typeof experiment === 'object')
-    .map(experiment => ({
-      id: show(experiment.experiment_id), hypothesis: show(experiment.hypothesis), status: show(experiment.status),
-      family: show(experiment.family), parent: show(experiment.parent_id), variant: show(experiment.variant_desk_id),
-      variantName: experiment.variant_desk_id ? partnerName(show(experiment.variant_desk_id)) : '',
-      change: changeSummary(experiment.change), proposedAt: show(experiment.proposed_at), evaluateAfter: show(experiment.evaluate_after),
-      verdict: show(experiment.verdict_reason),
-    }))
-    .sort((left, right) => Date.parse(right.proposedAt) - Date.parse(left.proposedAt));
-}
-const CURVE_METRICS = [
-  { key: 'cost_adjusted_excess_pct', label: 'cost-adjusted excess', format: value => percent(value), better: 'higher' },
-  { key: 'brier', label: 'Brier score', format: value => show(value), better: 'lower' },
-  { key: 'pnl_per_inference_usd', label: 'P&L per inference $', format: value => signedMoney(value, 2), better: 'higher' },
-];
-// Three small multiples, one per metric, generation on the x axis. Pure geometry.
-export function curveSeries(curve, { width = 240, height = 120 } = {}) {
-  const rows = (Array.isArray(curve) ? curve : []).filter(row => row && Number.isSafeInteger(row.generation))
-    .sort((left, right) => left.generation - right.generation);
-  const generations = rows.map(row => row.generation);
-  return CURVE_METRICS.map(metric => {
-    const points = rows.map((row, index) => ({ generation: row.generation, index, value: numeric(row[metric.key]) ? Number(row[metric.key]) : null }))
-      .filter(point => point.value !== null);
-    if (!points.length) return { ...metric, generations, points: [], path: '', empty: true };
-    let min = Math.min(...points.map(point => point.value));
-    let max = Math.max(...points.map(point => point.value));
-    if (min === max) { min -= Math.abs(min) * 0.1 + 0.5; max += Math.abs(max) * 0.1 + 0.5; }
-    const step = generations.length > 1 ? (width - 24) / (generations.length - 1) : 0;
-    const x = index => (generations.length > 1 ? 12 + index * step : width / 2);
-    const y = value => 10 + (max - value) / (max - min) * (height - 24);
-    const plotted = points.map(point => ({ ...point, x: x(point.index), y: y(point.value), text: metric.format(String(point.value)) }));
-    return {
-      ...metric, generations, points: plotted, min, max, width, height, empty: false,
-      path: plotted.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' '),
-    };
-  });
-}
-// One sentence a visitor can act on: is the newest generation better than the one before it?
-export function curveReading(curve) {
-  const rows = (Array.isArray(curve) ? curve : []).filter(row => row && Number.isSafeInteger(row.generation))
-    .sort((left, right) => left.generation - right.generation);
-  if (!rows.length) return 'The curve appears with the first generation’s results.';
-  if (rows.length < 2) return `One generation so far (${rows[0].desks} desk${rows[0].desks === 1 ? '' : 's'}). The curve needs a second to say anything.`;
-  if (rows.every(row => !(Number(row.decisions) > 0))) return `${rows.length} generations running, none with a scored decision yet. The curve means something after the first settled trades.`;
-  const [before, after] = rows.slice(-2);
-  const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
-  const verb = delta > 0 ? 'beats' : delta < 0 ? 'trails' : 'matches';
-  const parts = [`Generation ${after.generation} ${verb} generation ${before.generation} on cost-adjusted return${delta ? ` by ${percent(delta.toFixed(4)).replace(/^[+−]/, '')}` : ''}`];
-  if (numeric(after.brier) && numeric(before.brier)) {
-    const change = Number(after.brier) - Number(before.brier);
-    parts.push(change < 0 ? 'forecasts sharper' : change > 0 ? 'forecasts looser' : 'forecasts unchanged');
-  }
-  return `${parts.join('; ')}.`;
-}
-function curveFigure(lab) {
-  const series = curveSeries(lab?.curve);
-  const wrap = element('div', null, 'curve');
-  if (series.every(metric => metric.empty)) {
-    wrap.append(element('p', curveReading(lab?.curve), 'empty-state'));
-    return wrap;
-  }
-  const grid = element('div', null, 'curve-grid');
-  for (const metric of series) {
-    const figure = element('figure', null, 'curve-metric');
-    figure.append(element('figcaption', join(metric.label, metric.better === 'lower' ? 'lower is better' : 'higher is better')));
-    if (metric.empty) { figure.append(element('p', 'not yet measured', 'empty-state')); grid.append(figure); continue; }
-    const svg = svgElement('svg', { viewBox: `0 0 ${metric.width} ${metric.height}`, role: 'img', 'aria-label': `${metric.label} by generation`, class: 'curve-svg' });
-    svg.append(svgElement('line', { x1: 12, x2: metric.width - 12, y1: metric.height - 14, y2: metric.height - 14, class: 'chart-grid' }));
-    if (metric.points.length > 1) svg.append(svgElement('path', { d: metric.path, class: 'curve-line' }));
-    for (const point of metric.points) {
-      svg.append(svgElement('circle', { cx: point.x.toFixed(2), cy: point.y.toFixed(2), r: 3.5, class: 'curve-point' }));
-      svg.append(svgElement('text', { x: point.x.toFixed(2), y: metric.height - 2, class: 'curve-label', 'text-anchor': 'middle' }, `g${point.generation}`));
-      svg.append(svgElement('text', { x: point.x.toFixed(2), y: (point.y - 7).toFixed(2), class: 'curve-value', 'text-anchor': 'middle' }, point.text));
-    }
-    figure.append(svg);
-    grid.append(figure);
-  }
-  wrap.append(grid, element('p', curveReading(lab?.curve), 'curve-reading'));
-  return wrap;
-}
-function experimentsPanel(lab, { empty = 'The lab has not proposed an experiment yet. The first one appears with the first nightly review.' } = {}) {
-  const rows = experimentRows(lab);
-  if (!rows.length) return element('p', empty, 'empty-state');
-  const list = element('div', null, 'experiments');
-  for (const row of rows) {
-    const item = element('article', null, `experiment experiment-${row.status}`);
-    const head = element('div', null, 'experiment-head');
-    head.append(element('span', row.status, `status status-${row.status}`));
-    head.append(element('span', join(`${row.family} family`, row.variantName && `variant ${row.variantName}`), 'experiment-meta'));
-    if (row.proposedAt) head.append(timeNode(row.proposedAt, 'day'));
-    item.append(head, element('p', row.hypothesis, 'experiment-hypothesis'));
-    if (row.change) item.append(element('p', row.change, 'experiment-change'));
-    if (row.verdict) item.append(element('p', row.verdict, 'experiment-verdict'));
-    list.append(item);
-  }
-  return list;
-}
-
-// -------------------------------------------------------------------- trade stories
-// One story per order intent: thesis, the risk engine's answer, the order, its fills, the exit
-// plan and the outcome, folded from events on four streams. Newest first.
-export function tradeStories(events, deskIdFilter = null) {
-  const list = Array.isArray(events) ? events.filter(event => event && typeof event === 'object') : [];
-  const byKind = kind => list.filter(event => event.kind === kind);
-  const intents = byKind('desk.intent').filter(event => deskIdFilter === null || event.payload?.desk_id === deskIdFilter || streamDeskOf(event.stream) === deskIdFilter);
-  const decisions = byKind('risk.decision');
-  const orders = byKind('broker.order');
-  const fills = byKind('broker.fill');
-  const exits = byKind('desk.exit_plan');
-  const outcomes = byKind('desk.outcome');
-  return intents.map(intent => {
-    const id = show(intent.payload?.intent_id) || show(intent.id);
-    const symbol = instrumentLabel(intent.payload?.instrument);
-    const decision = decisions.find(event => event.payload?.intent_id === id) || null;
-    const own = orders.filter(event => event.payload?.intent_id === id);
-    const orderIds = new Set(own.map(event => show(event.payload?.order_id)).filter(Boolean));
-    const ownFills = fills.filter(event => orderIds.has(show(event.payload?.order_id)));
-    const exit = exits.find(event => event.payload?.intent_id === id) || null;
-    const latestOrder = own.sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0] || null;
-    const traded = ownFills.length > 0 || ['filled', 'partially_filled'].includes(show(latestOrder?.payload?.status));
-    // An outcome is matched by instrument, so only a story that actually traded can own one.
-    const outcome = traded ? outcomes.find(event => Date.parse(event.at) >= Date.parse(intent.at)
-      && (show(event.payload?.market_id) === symbol || show(event.payload?.instrument) === symbol || show(event.payload?.instrument).startsWith(`${symbol}`))) || null : null;
-    const steps = [];
-    const p = intent.payload || {};
-    steps.push({ key: 'thesis', label: 'Thesis', at: intent.at, text: join(`${show(p.side)} ${quantity(p.quantity)} ${symbol}`.trim(), p.limit_price ? `limit ${priceText(show(p.limit_price))}` : show(p.order_type), show(p.rationale)) });
-    if (decision) {
-      const approved = decision.payload?.approved === true;
-      steps.push({ key: 'risk', label: 'Risk engine', at: decision.at, tone: approved ? 'positive' : 'negative', text: join(approved ? 'approved' : 'blocked', Array.isArray(decision.payload?.reasons) ? decision.payload.reasons.map(show).filter(Boolean).join('; ') : '') });
-    }
-    if (latestOrder) {
-      const o = latestOrder.payload || {};
-      steps.push({ key: 'order', label: 'Order', at: latestOrder.at, text: join(show(o.status), o.filled_quantity !== undefined && o.filled_quantity !== null ? `filled ${quantity(o.filled_quantity)}` : '', numeric(o.average_price) ? `avg ${priceText(o.average_price)}` : '', o.shadow === true ? 'shadow, never sent' : '') });
-    }
-    for (const fill of ownFills.sort((left, right) => Date.parse(left.at) - Date.parse(right.at))) {
-      const f = fill.payload || {};
-      steps.push({ key: 'fill', label: 'Fill', at: fill.at, text: join(`${show(f.side)} ${quantity(f.quantity)}`.trim(), numeric(f.price) ? `@ ${priceText(f.price)}` : '', numeric(f.fee) && Number(f.fee) ? `fee ${money(f.fee, 4)}` : '') });
-    }
-    if (exit) steps.push({ key: 'exit', label: 'Exit plan', at: exit.at, text: DETAILS['desk.exit_plan'](exit.payload || {}) });
-    if (outcome) {
-      const r = outcome.payload || {};
-      steps.push({ key: 'outcome', label: 'Outcome', at: outcome.at, tone: signOf(show(r.pnl)), text: join(r.result ? `resolved ${show(r.result)}` : '', numeric(r.pnl) ? `P&L ${signedMoney(r.pnl, 2)}` : '', r.held_for_hours === undefined ? '' : `${show(r.held_for_hours)}h held`) });
-    }
-    const state = outcome ? 'closed' : traded ? 'open' : decision && decision.payload?.approved === false ? 'blocked' : latestOrder ? show(latestOrder.payload?.status) || 'sent' : 'proposed';
-    return { id, at: intent.at, symbol, side: show(p.side), state, steps };
-  }).sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-}
 const streamDeskOf = stream => (typeof stream === 'string' && stream.startsWith('desk:') ? stream.slice(5) : null);
-// A story's anchor on the desk page, so the book can link a holding to the order behind it.
-export const storyAnchor = intentId => `story-${show(intentId).replace(/[^A-Za-z0-9_-]+/g, '-')}`;
-export const storyHref = (deskId, intentId) => `${deskHref(deskId)}#${storyAnchor(intentId)}`;
-// The desk's own words for a holding: the rationale it filed with the order, and what the risk
-// engine said about it. Read from the events the intent id names.
-export function positionRationale(events, intentId) {
-  const list = Array.isArray(events) ? events : [];
-  const intent = list.find(event => event?.kind === 'desk.intent' && show(event.payload?.intent_id) === show(intentId)) || null;
-  const decision = list.find(event => event?.kind === 'risk.decision' && show(event.payload?.intent_id) === show(intentId)) || null;
-  if (!intent && !decision) return null;
-  const reasons = Array.isArray(decision?.payload?.reasons) ? decision.payload.reasons.map(show).filter(Boolean) : [];
-  return {
-    rationale: show(intent?.payload?.rationale), at: intent?.at || decision?.at || null,
-    decision: decision ? (decision.payload?.approved === true ? 'approved' : decision.payload?.approved === false ? 'blocked' : '') : '',
-    reasons, text: join(decision ? `risk engine ${decision.payload?.approved === true ? 'approved' : 'blocked'}` : '', reasons.join('; ')),
-  };
-}
-function storiesSection(events, id) {
-  const stories = tradeStories(events, id);
-  const block = section('Trade stories');
-  if (!stories.length) { block.append(element('p', 'No order yet.', 'empty-state')); return block; }
-  const list = element('div', null, 'stories');
-  for (const story of stories.slice(0, 20)) {
-    const item = element('article', null, `story story-${story.state}`);
-    item.id = storyAnchor(story.id);
-    const head = element('div', null, 'story-head');
-    head.append(element('b', [story.side, story.symbol].filter(Boolean).join(' ')), element('span', story.state, `status status-${story.state}`), timeNode(story.at));
-    item.append(head);
-    const steps = element('ol', null, 'story-steps');
-    for (const step of story.steps) {
-      const line = element('li', null, `story-step story-${step.key}`);
-      line.append(element('span', step.label, 'story-label'));
-      line.append(element('span', truncate(step.text, 220).text, step.tone ? `story-text ${step.tone}` : 'story-text'));
-      steps.append(line);
-    }
-    item.append(steps);
-    list.append(item);
-  }
-  block.append(list);
-  return block;
-}
-
 // ----------------------------------------------------------------------- calibration
 // The newest calibration the lab published for a desk, a family, or the whole floor.
 export function latestCalibration(events, { scope = 'desk', desk_id: id = null, family = null } = {}) {
@@ -1091,29 +729,6 @@ function reliabilityFigure(calibration) {
   figure.append(svg, element('figcaption', 'said → happened. On the line is perfect; above it the desk is too shy, below it too sure.', 'chart-caption'));
   return figure;
 }
-function calibrationCard(desk, calibration) {
-  const block = section('Calibration', 'said vs happened');
-  const summary = desk?.calibration && typeof desk.calibration === 'object' ? desk.calibration : calibration;
-  if (summary && Number.isSafeInteger(summary.n) && summary.n > 0) {
-    block.append(facts([
-      ['Forecasts scored', String(summary.n)],
-      ['Brier score', numeric(summary.brier) ? `${summary.brier} · 0 is perfect, 0.25 is a coin` : 'pending'],
-      ['Since', summary.since ? date(summary.since, 'day') : calibration?.since ? date(calibration.since, 'day') : '—'],
-    ]));
-  } else block.append(element('p', 'No forecast resolved yet.', 'empty-state'));
-  block.append(reliabilityFigure(calibration));
-  return block;
-}
-function liveNow(desk) {
-  const text = liveSessionText(desk);
-  if (!text) return null;
-  const badge = element('span', null, 'live-now live-now-big');
-  const dot = element('span', null, 'badge-dot');
-  dot.setAttribute('aria-hidden', 'true');
-  badge.append(dot, element('span', text));
-  return badge;
-}
-
 // ============================================================================ the floor
 // One screen: what this is, how it is doing, and the partners thinking live. Then the real money
 // at work, what closed, and who is winning. Everything deeper is one link away.
@@ -1483,21 +1098,37 @@ export function openPositionRows(checkpoint, { minValue = 0.5 } = {}) {
     for (const position of Array.isArray(desk.positions) ? desk.positions : []) {
       if (!position || typeof position !== 'object') continue;
       if (!isLive(desk)) { practice += 1; continue; }
-      const value = Number(position.market_value);
-      if (!(Math.abs(value) >= minValue)) { dust += 1; continue; }
-      const unrealized = looseAmount(position.unrealized_pnl);
-      const symbol = instrumentLabel(position.instrument);
-      const event = show(position.instrument?.asset_class) === 'event' || symbol.startsWith('KX');
-      const side = show(position.side);
-      const pnl = numeric(unrealized) ? unrealized : '';
-      rows.push({
-        desk: show(desk.id), name: raceName(desk), symbol, market: marketTitle(symbol) || '—',
-        side: event ? (side === 'no' || side === 'short' ? 'NO' : 'YES') : side, value, valueText: money(looseAmount(position.market_value), 2),
-        pnlText: pnl ? signedMoney(pnl, 2) : '—', tone: pnl ? signOf(pnl) : '', ...thesisParts(position.thesis),
-      });
+      const row = positionRow(desk, position);
+      if (!(Math.abs(row.value) >= minValue)) { dust += 1; continue; }
+      rows.push(row);
     }
   }
   return { rows: rows.sort((left, right) => right.value - left.value), practice, dust };
+}
+// One holding as the tables show it: the market in words, the side, value, P&L and the reason.
+function positionRow(desk, position) {
+  const unrealized = looseAmount(position.unrealized_pnl);
+  const symbol = instrumentLabel(position.instrument);
+  const event = show(position.instrument?.asset_class) === 'event' || symbol.startsWith('KX');
+  const side = show(position.side);
+  const pnl = numeric(unrealized) ? unrealized : '';
+  return {
+    desk: show(desk.id), name: raceName(desk), symbol, market: marketTitle(symbol) || '—',
+    side: event ? (side === 'no' || side === 'short' ? 'NO' : 'YES') : side, value: Number(position.market_value), valueText: money(looseAmount(position.market_value), 2),
+    pnlText: pnl ? signedMoney(pnl, 2) : '—', tone: pnl ? signOf(pnl) : '', ...thesisParts(position.thesis),
+  };
+}
+// One desk's own book, real or practice, largest first; dust is counted, not listed.
+export function deskPositionRows(desk, { minValue = 0.5 } = {}) {
+  const rows = [];
+  let dust = 0;
+  for (const position of Array.isArray(desk?.positions) ? desk.positions : []) {
+    if (!position || typeof position !== 'object') continue;
+    const row = positionRow(desk, position);
+    if (!(Math.abs(row.value) >= minValue)) { dust += 1; continue; }
+    rows.push(row);
+  }
+  return { rows: rows.sort((left, right) => right.value - left.value), dust };
 }
 // The one line under an empty book.
 export function flatLine(checkpoint) {
@@ -1511,6 +1142,21 @@ export function flatLine(checkpoint) {
 const HUMAN_FOUNDERS = new Set(['mullins', 'scholes', 'haghani', 'hilibrand']);
 function isFounded(desk) {
   return !HUMAN_FOUNDERS.has(show(desk.id));
+}
+// A family's first desk that no person wrote: the floor founded it. The retired partners of the
+// first build (Merton and the drift desks) were written by hand too.
+const familyRoot = id => show(id).replace(/-\d+$/, '');
+export function floorFounded(desk, foundedIds = new Set()) {
+  const root = familyRoot(desk?.id);
+  if (foundedIds.has(root)) return true;
+  return generationOf(desk) === 1 && !desk?.parent_id && Boolean(root) && !HUMAN_FOUNDERS.has(root) && !PARTNERS[root];
+}
+export const isDemotion = payload => show(payload?.to) === 'shadow';
+// "drawdown 0.676875 >= 0.15" reads as "drawdown 67.7%, past the 15% limit".
+const shareText = value => `${Number((Number(value) * 100).toFixed(1))}%`;
+export function reasonText(value) {
+  return show(value).replace(/\b(drawdown|daily loss)\s+(\d+(?:\.\d+)?)\s*>=?\s*(\d+(?:\.\d+)?)/gi,
+    (_, what, actual, limit) => `${what} ${shareText(actual)}, past the ${shareText(limit)} limit`).replace(/\s+/g, ' ').trim();
 }
 
 export function closedRows(events, checkpoint, { limit = 40 } = {}) {
@@ -1558,6 +1204,8 @@ export function closedRecord(rows) {
 const deskPnl = desk => (numeric(looseAmount(desk?.pnl_usd)) ? Number(desk.pnl_usd)
   : numeric(desk?.equity) && numeric(desk?.capital_usd) ? Number(desk.equity) - Number(desk.capital_usd) : null);
 const generationOf = desk => (Number.isSafeInteger(desk?.generation) && desk.generation > 0 ? desk.generation : 1);
+// Scored decisions, as the gate counts them; the order count when the gate has not reported.
+const deskDecisions = desk => (Number.isSafeInteger(desk?.gate?.evidence?.decisions) ? desk.gate.evidence.decisions : Number.isSafeInteger(desk?.orders) ? desk.orders : null);
 export function leaderboardRows(checkpoint) {
   const rows = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object').map(desk => {
     const pnl = deskPnl(desk);
@@ -1586,7 +1234,10 @@ export function generationGrid(checkpoint) {
   const cellOf = desk => {
     const pnl = deskPnl(desk);
     const value = numeric(desk.return_pct) ? Number(desk.return_pct) : returnCell(pnl, Number(desk.capital_usd));
-    return { id: show(desk.id), name: raceName(desk), live: isLive(desk), value, text: pctText(value), tone: toneOf(value), leader: false };
+    return {
+      id: show(desk.id), name: raceName(desk), generation: generationOf(desk), live: isLive(desk), value, text: pctText(value), tone: toneOf(value), leader: false,
+      pnlText: pnl === null ? '—' : signedMoney(pnl.toFixed(2), 2), pnlTone: pnl === null ? '' : signOf(pnl.toFixed(2)), decisions: deskDecisions(desk),
+    };
   };
   const rows = families.map(family => {
     const members = desks.filter(desk => (show(desk.family) || show(desk.id)) === family);
@@ -1623,7 +1274,8 @@ export function generationGrid(checkpoint) {
 // event log is trimmed, so the checkpoint's own roster is a floor under each count.
 export function loopCounts(events, checkpoint) {
   const list = Array.isArray(events) ? events : [];
-  const count = kind => new Set(list.filter(event => event?.kind === kind).map(event => show(event.payload?.desk_id) || show(event.id))).size;
+  const count = (kind, test = () => true) => new Set(list.filter(event => event?.kind === kind && test(event.payload))
+    .map(event => show(event.payload?.desk_id) || show(event.id))).size;
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
   const experiments = new Set([
     ...list.filter(event => event?.kind === 'lab.experiment').map(event => show(event.payload?.experiment_id)).filter(Boolean),
@@ -1632,15 +1284,26 @@ export function loopCounts(events, checkpoint) {
   return {
     bred: Math.max(count('evolution.spawned'), desks.filter(desk => generationOf(desk) > 1 || desk.parent_id).length),
     retired: Math.max(count('evolution.retired'), desks.filter(desk => desk.status === 'retired').length),
-    promoted: count('evolution.promoted'), experiments: experiments.size,
+    // A move back to a shadow book is published as `evolution.promoted` with `to: "shadow"`.
+    promoted: count('evolution.promoted', payload => !isDemotion(payload)), demoted: count('evolution.promoted', isDemotion),
+    founded: Math.max(count('evolution.founded'), desks.filter(desk => floorFounded(desk)).length),
+    experiments: experiments.size,
   };
 }
-export const loopCountLine = counts => `bred ${counts.bred} · retired ${counts.retired} · promoted ${counts.promoted} · experiments ${counts.experiments}`;
+export const loopCountLine = counts => `bred ${counts.bred} · retired ${counts.retired} · promoted ${counts.promoted}${counts.demoted ? ` · demoted ${counts.demoted}` : ''} · experiments ${counts.experiments}`;
 
 // ---- the race (on the loop page): each family's live desk and its children, who leads
-export function raceRows(checkpoint) {
+// Each family's real-money partner and its challengers: return, the leader, how far each is
+// through its gate, and whether the floor founded the family or moved a partner back to shadow.
+export function raceRows(checkpoint, events = []) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
   const families = [...new Set(desks.map(desk => show(desk.family)).filter(Boolean))];
+  const list = Array.isArray(events) ? events : [];
+  const foundedIds = new Set(list.filter(event => event?.kind === 'evolution.founded').map(event => show(event.payload?.desk_id)));
+  const lastMove = new Map();
+  for (const event of list.filter(item => item?.kind === 'evolution.promoted').sort((left, right) => Date.parse(left.at) - Date.parse(right.at))) {
+    lastMove.set(show(event.payload?.desk_id), event.payload);
+  }
   return families.map(family => {
     const members = desks.filter(desk => show(desk.family) === family)
       .map(desk => ({
@@ -1648,7 +1311,8 @@ export function raceRows(checkpoint) {
         generation: Number.isSafeInteger(desk.generation) ? desk.generation : 1,
         score: numeric(desk.return_pct) ? Number(desk.return_pct) : null,
         scoreText: numeric(desk.return_pct) ? percent(desk.return_pct) : '—', tone: numeric(desk.return_pct) ? signOf(desk.return_pct) : '',
-        badges: mutationBadges(desk.mutation), leader: false,
+        badges: mutationBadges(desk.mutation), leader: false, gate: gateProgress(desk.gate),
+        demoted: !isLive(desk) && isDemotion(lastMove.get(show(desk.id))),
       }))
       .sort((left, right) => left.generation - right.generation || left.id.localeCompare(right.id));
     const scored = members.filter(member => member.score !== null);
@@ -1656,63 +1320,45 @@ export function raceRows(checkpoint) {
     const leaders = scored.filter(member => member.score === best);
     if (leaders.length === 1 && members.length > 1) leaders[0].leader = true;
     const live = members.find(member => member.live);
-    return { family, label: venueLabel(family), live: live ? live.name : '', members };
+    const founder = desks.find(desk => show(desk.family) === family && generationOf(desk) === 1) || desks.find(desk => show(desk.family) === family);
+    return {
+      family, label: venueLabel(family), name: partnerOf(founder).surname, word: FAMILY_WORDS[family] || humanize(family),
+      founded: floorFounded(founder, foundedIds), live: live ? live.name : '', members, closest: closestCandidate(members),
+    };
   });
 }
-// "2 experiments running · generation II vs I: +0.90%", or what the race is waiting for.
-export function raceLine(lab, rows = []) {
-  const running = (Array.isArray(lab?.experiments) ? lab.experiments : []).filter(item => item?.status === 'running').length;
-  const curve = (Array.isArray(lab?.curve) ? lab.curve : []).filter(row => row && Number.isSafeInteger(row.generation)).sort((left, right) => left.generation - right.generation);
-  const parts = [];
-  if (running) parts.push(`${running} experiment${running === 1 ? '' : 's'} running`);
-  if (curve.length >= 2 && curve.some(row => Number(row.decisions) > 0)) {
-    const [before, after] = curve.slice(-2);
-    const delta = Number(after.cost_adjusted_excess_pct) - Number(before.cost_adjusted_excess_pct);
-    parts.push(`generation ${roman(after.generation)} vs ${roman(before.generation)}: ${percent(delta.toFixed(4))}`);
-  }
-  if (!parts.length) {
-    const children = rows.reduce((sum, row) => sum + row.members.filter(member => member.generation > 1).length, 0);
-    return children ? 'Children are scored on real prices. The first to beat its parent on the published gate takes the sleeve.' : 'The race starts with the first bred variant.';
-  }
-  return parts.join(' · ');
+// The gate a desk faces next, as checks met. `failed` names the checks the evidence did not clear.
+const GATE_CHECKS = { days_live: 'days live', decisions: 'decisions', cost_adjusted_return: 'return after costs', drawdown: 'drawdown', breakers: 'breakers', reconciliation: 'clean books' };
+export function gateProgress(gate) {
+  if (!gate || typeof gate !== 'object') return null;
+  const evidence = gate.evidence && typeof gate.evidence === 'object' ? gate.evidence : {};
+  const raw = Array.isArray(gate.failed) ? gate.failed : evidence.failed;
+  const failed = (Array.isArray(raw) ? raw.map(show) : show(raw).split(',')).map(item => item.trim()).filter(Boolean);
+  if (gate.passed !== true && !failed.length) return null;
+  const total = new Set([...Object.keys(GATE_CHECKS), ...failed]).size;
+  const shown = key => {
+    const value = evidence[key === 'drawdown' ? 'max_drawdown_pct' : key === 'cost_adjusted_return' ? 'cost_adjusted_excess_pct' : key];
+    if (key === 'days_live' || key === 'decisions' || key === 'breakers') return Number.isSafeInteger(value) ? ` (${value})` : '';
+    if (key === 'drawdown') return numeric(show(value)) ? ` (${shareText(value)})` : '';
+    if (key === 'cost_adjusted_return') return numeric(show(value)) ? ` (${percent(show(value))})` : '';
+    return '';
+  };
+  return {
+    name: show(gate.name), passed: gate.passed === true, total, met: gate.passed === true ? total : total - failed.length,
+    missing: gate.passed === true ? [] : failed.map(key => `${GATE_CHECKS[key] || humanize(key)}${shown(key)}`),
+  };
 }
-function racePanel(checkpoint) {
-  const rows = raceRows(checkpoint);
-  if (!rows.length) return [element('p', 'The families appear with the first checkpoint.', 'empty-state')];
-  const nodes = [];
-  for (const row of rows) {
-    const line = element('div', null, 'race-row');
-    line.append(element('span', row.label, 'race-family'));
-    const chips = element('span', null, 'race-chips');
-    for (const member of row.members) {
-      const chip = link('', deskHref(member.id), `race-chip${member.live ? ' race-live' : ''}${member.leader ? ' race-leader' : ''}`);
-      if (member.live) { const dot = element('span', null, 'badge-dot'); dot.setAttribute('aria-hidden', 'true'); chip.append(dot); }
-      chip.append(element('b', member.name));
-      chip.append(element('span', member.scoreText, member.tone));
-      if (member.leader) chip.append(element('i', '★ leads'));
-      if (member.inSession) chip.append(element('i', 'thinking', 'race-thinking'));
-      chip.setAttribute('title', join(member.live ? 'live: real money' : 'shadow: scored, never sent', ...member.badges.map(badge => badge.text)));
-      chips.append(chip);
-    }
-    line.append(chips);
-    nodes.push(line);
-  }
-  nodes.push(element('p', raceLine(checkpoint?.lab, rows), 'race-line'));
-  const bred = rows.flatMap(row => row.members.filter(member => member.badges.length));
-  if (bred.length) {
-    const more = element('details', null, 'race-more');
-    more.append(element('summary', 'how the children differ'));
-    for (const member of bred) {
-      const item = element('div', null, 'race-diff');
-      item.append(element('b', member.name), badgeRow(member.badges));
-      more.append(item);
-    }
-    more.append(link('the loop: experiments, verdicts, the curve ↗', '/capital/committee/', 'race-loop-link'));
-    nodes.push(more);
-  } else nodes.push(link('the loop ↗', '/capital/committee/', 'race-loop-link'));
-  return nodes;
+// The challenger nearest its gate: most checks met, then the better return.
+function closestCandidate(members) {
+  return members.filter(member => !member.live && member.gate)
+    .sort((left, right) => (right.gate.met - left.gate.met) || ((right.score ?? -Infinity) - (left.score ?? -Infinity)))[0] || null;
 }
-
+export function gateLine(member) {
+  if (!member?.gate) return '';
+  const gate = member.gate;
+  const head = `${member.name}, gate ${gate.name}: ${gate.met} of ${gate.total} met`;
+  return gate.passed ? `${head}, passed` : `${head}${gate.missing.length ? `; short on ${gate.missing.join(', ')}` : ''}`;
+}
 // ---- the floor page, drawn
 const FEED_LINES = 12;
 const TRADE_ROWS = 8;
@@ -2171,12 +1817,12 @@ function section(title, note) {
   const node = element('section', null, 'block');
   const heading = element('div', null, 'section-heading');
   heading.append(element('h2', title));
-  if (note) heading.append(element('span', note));
+  if (note) heading.append(typeof note === 'string' ? element('span', note) : note);
   node.append(heading);
   return node;
 }
-function details(summaryText, body) {
-  const node = element('details', null, 'panel');
+function details(summaryText, body, className = 'panel') {
+  const node = element('details', null, className);
   node.append(element('summary', summaryText));
   node.append(body);
   return node;
@@ -2184,10 +1830,40 @@ function details(summaryText, body) {
 function setTitle(value) {
   try { if (typeof document !== 'undefined') document.title = value; } catch { /* The tab keeps its markup title. */ }
 }
+function numberCell(item) {
+  const row = element('div', null, `number number-${item.key}`);
+  const value = element('dd', null, item.tone || null);
+  value.append(element('span', item.value, 'number-value'));
+  if (item.note) value.append(element('span', item.note, `number-note ${item.noteTone || ''}`.trim()));
+  row.append(element('dt', item.label), value);
+  if (item.title) row.setAttribute('title', item.title);
+  return row;
+}
+// A "more" chip under a list that shows its first rows.
+function moreChip(open, hidden, toggle) {
+  const button = element('button', open ? 'fewer' : `${hidden} more`, 'chip more');
+  button.type = 'button';
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  button.addEventListener('click', toggle);
+  return button;
+}
+// "3:20 PM" today, "Sep 15" on an earlier day, both Eastern.
+export function whenText(value, now = Date.now()) {
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) return '';
+  const day = stamp => date(new Date(stamp).toISOString(), 'day');
+  return day(at) === day(now) ? date(value, 'time') : date(value, 'md');
+}
+function whenNode(value) {
+  const node = element('time', whenText(value));
+  node.dateTime = value;
+  node.setAttribute('title', date(value));
+  return node;
+}
 
 // ============================================================================ desk page
-// "Watch it think": the desk's newest session as a stream of its own words, typed out as they
-// arrive. Everything here is pure until thoughtStream, which is the one thing that owns timers.
+// Who this partner is, how it is doing, what it is thinking now, what it holds and why, what it
+// has traded, and what it has learned. Pure helpers first; the renderers and startDesk follow.
 
 // "just now", "14 min ago", "3 h ago", "2 d ago".
 export function agoText(value, now = Date.now()) {
@@ -2209,6 +1885,42 @@ export function typingSchedule(text, { charsPerSecond = 90, maxMs = 4000, frameM
   const frames = Math.max(1, Math.ceil(totalMs / frameMs));
   return { length, frames, frameMs, totalMs: frames * frameMs, chunk: Math.max(1, Math.ceil(length / frames)) };
 }
+// A thought as prose that keeps its paragraphs: the model's markdown marks are for a renderer the
+// page does not use.
+export const thoughtText = value => show(value).replace(/\*\*|__|`+/g, '').replace(/^#{1,6}\s+/gm, '')
+  .replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+// Tool calls in the words a person would use: the floor's research lines, and what a desk does
+// with its hands. A tool with no words here (reading a result, ending the session) stays out.
+const cents = (value, event) => (numeric(show(value)) ? (event && Number(value) < 1 ? centsText(show(value)) : priceText(show(value))) : '');
+export const ACTIONS = {
+  ...RESEARCH,
+  propose_order: args => {
+    const instrument = args?.instrument && typeof args.instrument === 'object' ? args.instrument : { symbol: show(args?.instrument) };
+    const symbol = show(instrument.market_id) || show(instrument.symbol) || show(args?.market_id);
+    const event = show(instrument.asset_class) === 'event' || symbol.startsWith('KX');
+    const right = event ? ` ${(show(instrument.right) || 'yes').toUpperCase()} on` : '';
+    const price = cents(args?.limit_price, event);
+    const side = show(args?.side);
+    return `proposing ${side ? `to ${side}` : 'an order for'} ${quantityText(args?.quantity)}${right} ${marketTitle(symbol) || 'a market'}${price ? ` at ${price}` : show(args?.order_type) === 'market' ? ' at market' : ''}`;
+  },
+  record_forecast: args => {
+    const market = marketTitle(show(args?.market)) || 'a market';
+    const price = numeric(show(args?.market_price)) ? `, market at ${centsText(show(args.market_price))}` : '';
+    return `putting ${probabilityText(show(args?.probability))} on ${market}${price}`;
+  },
+  memo: args => { const title = argument(args, 'title'); return title ? `writing a memo: ${said(title)}` : 'writing a memo'; },
+  memory_write: args => (show(args?.kind) === 'lesson' ? 'writing down a lesson' : 'taking a note'),
+  playbook_read: () => 'rereading its playbook',
+  playbook_write: () => 'rewriting its playbook',
+  deploy_strategy: args => { const name = argument(args, 'name'); return name ? `deploying its ${humanize(name)} strategy` : 'deploying a strategy'; },
+  undeploy_strategy: args => { const name = argument(args, 'name'); return name ? `switching off its ${humanize(name)} strategy` : 'switching off a strategy'; },
+  cancel_order: () => 'cancelling an order',
+};
+export function actionWords(payload) {
+  const words = ACTIONS[show(payload?.tool)];
+  if (!words) return '';
+  try { return words(payload.arguments && typeof payload.arguments === 'object' ? payload.arguments : {}); } catch { return ''; }
+}
 // The desk's newest session, folded from its own stream: its thoughts and tool calls in
 // order, when it opened, whether it has closed, and the memo it left.
 export function sessionThoughts(events, deskId = null) {
@@ -2225,14 +1937,66 @@ export function sessionThoughts(events, deskId = null) {
   const ended = byTime.filter(event => event.kind === 'desk.session_ended' && inSession(event)).at(-1) || null;
   const items = byTime.filter(event => (event.kind === 'desk.thought' || event.kind === 'desk.tool_call') && inSession(event)).map(event => ({
     id: event.id, at: event.at, kind: event.kind === 'desk.thought' ? 'thought' : 'call',
-    text: event.kind === 'desk.thought' ? show(event.payload?.text) : join(show(event.payload?.tool), summarizeArguments(event.payload?.arguments)),
-  }));
+    text: event.kind === 'desk.thought' ? thoughtText(event.payload?.text) : actionWords(event.payload),
+    ...(event.kind === 'desk.tool_call' ? { tool: show(event.payload?.tool) } : {}),
+  })).filter(item => item.text);
   const memo = byTime.filter(event => event.kind === 'desk.memo' && inSession(event)).at(-1) || null;
   return {
     sessionId, trigger: show(start?.payload?.trigger), startedAt: start?.at || null, endedAt: ended?.at || null,
     reason: show(ended?.payload?.reason), memo: show(memo?.payload?.title) || show(memo?.payload?.text),
     running: Boolean(start) && !ended, items,
   };
+}
+// Every session the desk's stream still holds, newest first: why it sat down, what it thought and
+// did, and how it closed. A trimmed start still has its trigger, in the session id.
+const sessionTrigger = id => { const parts = show(id).split(':'); return parts.length > 2 ? parts.slice(2).join(':') : ''; };
+export function deskSessions(events, deskId = null) {
+  const list = (Array.isArray(events) ? events : []).filter(event => event && typeof event === 'object'
+    && (deskId === null || event.stream === `desk:${deskId}`))
+    .sort((left, right) => (Date.parse(left.at) - Date.parse(right.at)) || ((left.seq || 0) - (right.seq || 0)));
+  const sessions = new Map();
+  const seen = new Set();
+  for (const event of list) {
+    const key = show(event.payload?.session_id);
+    if (!key || seen.has(event.id)) continue;
+    seen.add(event.id);
+    if (!sessions.has(key)) sessions.set(key, { sessionId: key, trigger: sessionTrigger(key), startedAt: null, endedAt: null, reason: '', memo: '', summary: '', items: [], first: event.at });
+    const row = sessions.get(key);
+    const payload = event.payload;
+    if (event.kind === 'desk.session_started') { row.startedAt = event.at; row.trigger = show(payload.trigger) || row.trigger; }
+    else if (event.kind === 'desk.session_ended') { row.endedAt = event.at; row.reason = show(payload.reason); }
+    else if (event.kind === 'desk.memo') row.memo = show(payload.title) || truncate(thoughtText(payload.text), 90).text;
+    else if (event.kind === 'desk.thought') { const text = thoughtText(payload.text); if (text) row.items.push({ id: event.id, at: event.at, kind: 'thought', text }); }
+    else if (event.kind === 'desk.tool_call') {
+      if (show(payload.tool) === 'end_session') { row.summary = thoughtText(payload.arguments?.summary); continue; }
+      const text = actionWords(payload);
+      if (text) row.items.push({ id: event.id, at: event.at, kind: 'call', tool: show(payload.tool), text });
+    }
+  }
+  return [...sessions.values()].filter(row => row.items.length || row.startedAt)
+    .map(({ first, ...row }) => ({ ...row, at: row.startedAt || first, running: Boolean(row.startedAt) && !row.endedAt }))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+}
+// The newest few thoughts of a session and what the desk did between them. The same action twice
+// in a row reads once with a count; a run of one tool (six forecasts, four quotes) reads as its
+// first call and how many more followed.
+export function recentItems(items, { thoughts = 6, max = 14 } = {}) {
+  const list = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const last = list.at(-1);
+    if (last && item.kind === 'call' && last.kind === 'call') {
+      if (last.text === item.text && !last.more) { list[list.length - 1] = { ...last, count: (last.count || 1) + 1 }; continue; }
+      if (item.tool && last.tool === item.tool) { list[list.length - 1] = { ...last, more: (last.more || 0) + (last.count || 1), count: 1 }; continue; }
+    }
+    list.push(item);
+  }
+  let count = 0;
+  let from = 0;
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    if (list[index].kind === 'thought') count += 1;
+    if (count === thoughts) { from = index; break; }
+  }
+  return list.slice(from).slice(-max);
 }
 // The one line over the stream: thinking now, or when it stopped and what it decided.
 const END_REASONS = {
@@ -2262,35 +2026,46 @@ export function idleLine(session, now = Date.now(), liveSession = null) {
   const outcome = session.memo ? truncate(session.memo, 90).text : endReason(session.reason);
   return join(session.endedAt ? `ended ${agoText(session.endedAt, now)}` : 'ended', outcome);
 }
+// One line of a session: the time, then a thought (clamped, opens in place) or what it did.
+function thoughtRow(item, typed = false) {
+  const node = element('div', null, item.kind === 'call' ? 'thought thought-call' : 'thought');
+  node.append(timeNode(item.at, 'hm'));
+  const text = element(item.kind === 'thought' ? 'button' : 'span', typed ? '' : item.text, 'thought-text');
+  if (item.kind === 'thought') {
+    text.type = 'button';
+    text.setAttribute('aria-expanded', 'false');
+    text.addEventListener('click', () => {
+      const open = text.getAttribute('aria-expanded') !== 'true';
+      text.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+  node.append(text);
+  if (item.count > 1) node.append(element('span', `×${item.count}`, 'feed-count'));
+  else if (item.more > 0) node.append(element('span', `+${item.more} more`, 'feed-count'));
+  return { node, text };
+}
 // The stream itself. `load` draws a session (the last thought typed only while it runs);
 // `push` types whatever arrives live, in order, tool calls as one short line each.
-export function thoughtStream(container, { instant = false, schedule = typingSchedule, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+export function thoughtStream(container, { instant = false, schedule = typingSchedule, setTimer = setTimeout, clearTimer = clearTimeout, keep = 18 } = {}) {
   const seen = new Set();
   const queue = [];
   let timer = null;
   let busy = false;
-  const settle = () => { try { if ('scrollTop' in container && 'scrollHeight' in container) container.scrollTop = container.scrollHeight; } catch { /* not scrollable */ } };
-  const entry = item => {
-    const node = element('div', null, item.kind === 'call' ? 'thought thought-call' : 'thought');
-    node.append(timeNode(item.at, 'clock'));
-    const text = element('span', '', 'thought-text');
-    node.append(text);
-    return { node, text };
-  };
+  const trim = () => { try { while (container.children.length > keep) container.children[0].remove(); } catch { /* nothing to trim */ } };
   function next() {
     if (busy || !queue.length) return;
     const { item, animate } = queue.shift();
-    const { node, text } = entry(item);
-    const full = item.kind === 'call' ? `→ ${item.text}` : item.text;
+    const { node, text } = thoughtRow(item, true);
+    const full = item.text;
     container.append(node);
-    if (!animate || instant || item.kind === 'call') { text.textContent = full; settle(); next(); return; }
+    trim();
+    if (!animate || instant || item.kind === 'call') { text.textContent = full; next(); return; }
     const plan = schedule(full);
     let shown = 0;
     busy = true;
     const step = () => {
       shown = Math.min(full.length, shown + plan.chunk);
       text.textContent = full.slice(0, shown);
-      settle();
       if (shown < full.length) timer = setTimer(step, plan.frameMs);
       else { timer = null; busy = false; next(); }
     };
@@ -2332,445 +2107,784 @@ export function codeRuns(events) {
       savedAs: show(event.payload?.saved_as),
     }));
 }
-// A desk's holdings with its own words beside each: the thesis it filed with the order, and
-// what the risk engine said, read from the desk's stream rather than fetched on demand.
-export function holdingRows(desk, events) {
-  return positionRows({ desks: desk ? [desk] : [] }).map(row => {
-    const found = row.intentId ? positionRationale(events, row.intentId) : null;
-    return { ...row, rationale: found?.rationale && found.rationale !== row.thesis ? found.rationale : '', engine: found?.text || '' };
-  });
+// One sentence per founding partner, from the manifests the owner wrote. A bred desk inherits
+// its founder's; a family the floor founded is described by the universe it chose.
+const FOUNDER_MANDATES = {
+  mullins: 'Prices Fed decisions, economic releases and other public events on Kalshi from base rates, and bets only the edge it can argue for.',
+  hilibrand: 'Trades the major coins on Coinbase around the clock on written setups, each with an invalidation and a time stop.',
+  haghani: 'Prices Kalshi’s daily temperature markets from the National Weather Service forecast and trades only the buckets the market has mispriced.',
+  scholes: 'Prices a distribution, not a direction: turns realized volatility into a probability for each BTC, ETH and index bucket Kalshi lists.',
+};
+export function deskIdentity(desk, events = [], id = show(desk?.id)) {
+  const list = (Array.isArray(events) ? events : []).filter(event => event && typeof event === 'object');
+  const root = familyRoot(id);
+  const family = show(desk?.family);
+  const newest = (kind, test) => list.filter(event => event.kind === kind && test(event.payload || {}))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0] || null;
+  const founding = newest('evolution.founded', payload => show(payload.desk_id) === root || (Boolean(family) && show(payload.family) === family));
+  const move = newest('evolution.promoted', payload => show(payload.desk_id) === id);
+  const round = newest('committee.allocation', payload => payload.allocations && typeof payload.allocations === 'object' && Object.hasOwn(payload.allocations, id));
+  const live = isLive(desk);
+  const sleeve = live && round ? looseAmount(show(round.payload.allocations[id])) : '';
+  const generation = generationOf(desk);
+  const parent = show(desk?.parent_id);
+  const mutation = desk?.mutation && typeof desk.mutation === 'object' ? desk.mutation : null;
+  const word = FAMILY_WORDS[family] || humanize(family);
+  return {
+    id, name: desk ? raceName(desk) : floorName(id), live, family,
+    lineage: join(family ? `${word} family` : '', generation > 1 ? `generation ${roman(generation)}` : 'founder'),
+    parent: parent ? { id: parent, name: floorName(parent) } : null,
+    founded: Boolean(founding) || (desk ? floorFounded(desk) : false), rationale: show(founding?.payload?.rationale),
+    mandate: FOUNDER_MANDATES[root] || PARTNERS[root]?.mandate || show(founding?.payload?.universe),
+    demoted: move && isDemotion(move.payload) && !live ? { at: move.at, reason: reasonText(move.payload.reason) } : null,
+    promoted: move && !isDemotion(move.payload) && live ? { at: move.at } : null,
+    born: mutation ? join(profileName(mutation.model_profile), mutation.reasoning_effort ? `effort ${show(mutation.reasoning_effort)}` : '') : '',
+    trait: show(mutation?.persona_trait), inSession: Boolean(desk?.live_session),
+    // A real-money partner's sleeve, and Meriwether's latest word on it.
+    sleeve: numeric(sleeve) ? { usd: money(sleeve, 2), empty: scaled(sleeve) === 0n, reason: reasonText(round.payload.reasons?.[id]) } : null,
+  };
 }
-// The header badges: generation, parent, and what changed at birth.
-export function lineageBadges(desk) {
-  if (!desk) return [];
-  const badges = [];
-  const generation = Number(desk.generation) || 1;
-  badges.push({ text: generation === 1 ? 'founder' : `generation ${generation}`, changed: false });
-  if (desk.parent_id) badges.push({ text: `from ${partnerName(show(desk.parent_id))}`, changed: false, href: deskHref(show(desk.parent_id)) });
-  return [...badges, ...mutationBadges(desk.mutation)];
+// Five numbers: what the book is worth, what it has made, its return, how often it trades, and
+// the share of compute the committee gives it.
+export function deskNumbers(desk) {
+  const pnl = desk ? deskPnl(desk) : null;
+  const live = isLive(desk);
+  const factor = numeric(show(desk?.budget_factor)) ? Number(desk.budget_factor) : null;
+  return [
+    { key: 'equity', label: 'Equity', value: numeric(looseAmount(desk?.equity)) ? money(looseAmount(desk.equity), 2) : '—', note: desk && !live ? 'practice' : '' },
+    { key: 'pnl', label: 'Lifetime P&L', value: pnl === null ? '—' : signedMoney(pnl.toFixed(2), 2), tone: pnl === null ? '' : signOf(pnl.toFixed(2)) },
+    { key: 'return', label: 'Return', value: numeric(desk?.return_pct) ? percent(desk.return_pct) : '—', tone: numeric(desk?.return_pct) ? signOf(desk.return_pct) : '' },
+    { key: 'trades', label: 'Trades', value: Number.isSafeInteger(desk?.orders) ? String(desk.orders) : '—' },
+    { key: 'compute', label: 'Compute', value: factor === null ? '—' : `${factor}×`, title: 'The share of the base model budget the committee gives this partner.' },
+  ];
 }
-
-function deskHoldingsPanel(desk, events) {
-  const block = section('Holdings');
-  const rows = holdingRows(desk, events);
-  if (!rows.length) {
-    block.append(element('p', join('Flat', desk && numeric(desk.cash) ? `${money(desk.cash, 0)} cash` : ''), 'empty-state'));
-    return block;
-  }
-  const list = element('div', null, 'holdings');
-  for (const row of rows) {
-    const item = element('article', null, 'holding');
-    item.id = row.intentId ? `holding-${storyAnchor(row.intentId)}` : '';
-    const head = element('div', null, 'holding-head');
-    head.append(element('b', join(row.side, row.instrument)), element('span', row.venue, 'holding-venue'));
-    head.append(element('span', signedMoney(row.pnl, 2), `holding-pnl ${row.tone}`));
-    item.append(head);
-    item.append(element('p', join(row.quantity, `in ${priceText(row.entry)}`, `now ${priceText(row.mark)}`, money(row.value, 2)), 'holding-numbers'));
-    if (row.thesis) item.append(element('p', row.thesis, 'holding-thesis'));
-    if (row.rationale) item.append(element('p', row.rationale, 'holding-rationale'));
-    if (row.engine) item.append(element('p', row.engine, 'note'));
-    const chips = element('div', null, 'exit-chips');
-    for (const chip of row.chips) chips.append(element('span', chip.text, `exit-chip exit-${chip.kind}`));
-    if (row.intentId) chips.append(link('story ↓', `#${storyAnchor(row.intentId)}`, 'exit-chip exit-link'));
-    item.append(chips);
-    list.append(item);
-  }
-  block.append(list);
-  return block;
+// The record in one line: how many closed, how many won, what they made together.
+export function deskRecordLine(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return '';
+  const won = list.filter(row => Number(row.pnl) > 0).length;
+  const total = list.reduce((sum, row) => sum + (Number(row.pnl) || 0), 0);
+  const real = list.filter(row => row.live).length;
+  const word = real === list.length ? 'real-money trade' : real === 0 ? 'practice trade' : 'trade';
+  return join(plural(list.length, word), `${won} won`, signedMoney(total.toFixed(2), 2), real && real < list.length ? `${real} with real money` : '');
 }
 function cadenceText(seconds) {
   const n = Number(seconds);
   if (!Number.isFinite(n) || n <= 0) return '';
-  if (n % 3600 === 0) return `every ${n / 3600}h`;
-  if (n % 60 === 0) return `every ${n / 60} min`;
-  return `every ${n}s`;
+  if (n % 3600 === 0) return `${n / 3600}h`;
+  if (n % 60 === 0) return `${n / 60} min`;
+  return `${n}s`;
 }
-// Working orders: what a desk is bidding and offering right now, and which strategy put it there.
-export function workingRows(checkpoint) {
-  const desks = Array.isArray(checkpoint?.desks) ? checkpoint.desks : [];
-  const rows = [];
-  for (const desk of orderDesks(desks)) {
-    for (const order of Array.isArray(desk?.working) ? desk.working : []) {
-      if (!order || typeof order !== 'object') continue;
-      const leg = order.instrument?.right ? String(order.instrument.right).toUpperCase() : '';
-      rows.push({
-        desk: show(desk.id), name: partnerName(show(desk.id)), live: isLive(desk),
-        instrument: instrumentLabel(order.instrument) || '—', venue: venueLabel(order.instrument?.venue),
-        side: join(show(order.side), leg), quantity: quantity(order.quantity), price: order.limit_price === null ? 'market' : show(order.limit_price),
-        purpose: show(order.purpose), strategy: order.strategy ? show(order.strategy) : 'session', submittedAt: show(order.submitted_at),
-        story: order.intent_id ? storyHref(show(desk.id), show(order.intent_id)) : '',
-      });
-    }
-  }
-  return rows.sort((left, right) => (Number(right.live) - Number(left.live)) || String(right.submittedAt).localeCompare(String(left.submittedAt)));
+// Strategies: code the desk deployed to trade for it between sessions, one row each.
+export function strategyRows(desk) {
+  return (Array.isArray(desk?.strategies) ? desk.strategies : []).filter(row => row && typeof row === 'object').map(row => {
+    const settled = Number(row.settled) || 0;
+    const pnl = numeric(show(row.settled_pnl_usd)) ? show(row.settled_pnl_usd) : '';
+    const params = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {};
+    return {
+      name: humanize(show(row.name)), every: cadenceText(row.cadence_seconds) || '—', runs: Number(row.runs) || 0,
+      approved: `${Number(row.approved) || 0} of ${Number(row.intents) || 0}`, fills: Number(row.fills) || 0,
+      settled: settled ? `${Number(row.wins) || 0} of ${settled} won` : '—', pnlText: settled && pnl ? signedMoney(pnl, 2) : '—', tone: settled && pnl ? signOf(pnl) : '',
+      note: show(row.note), errors: Number(row.errors) || 0, lastNotes: show(row.last_notes),
+      settings: Object.entries(params).map(([key, value]) => `${humanize(key)} ${Array.isArray(value) ? value.map(show).join(', ') : show(value)}`).join(' · '),
+    };
+  });
 }
-export function workingPanel(desk) {
-  const rows = workingRows({ desks: desk ? [desk] : [] });
+// What the desk wrote down to remember, newest first: its lessons, as `memory_write` calls.
+export function deskLessons(events, limit = 3) {
+  return (Array.isArray(events) ? events : [])
+    .filter(event => event?.kind === 'desk.tool_call' && show(event.payload?.tool) === 'memory_write'
+      && show(event.payload?.arguments?.kind) === 'lesson' && show(event.payload?.arguments?.text))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, limit)
+    .map(event => ({ id: show(event.id), at: show(event.at), text: thoughtText(event.payload.arguments.text).replace(/^\d{4}-\d{2}-\d{2}(?:[ T]~?\d{2}:\d{2}Z?)?:?\s*/, '') }));
+}
+// A memo or post-mortem split into the paragraph a visitor reads and the rest behind a click.
+export function leadParagraph(value) {
+  const paragraphs = thoughtText(value).split(/\n\s*\n/).map(part => part.trim()).filter(Boolean);
+  const index = paragraphs.findIndex(part => part.split(/\s+/).length > 6);
+  const at = index === -1 ? 0 : index;
+  return { lead: paragraphs[at] || '', rest: paragraphs.filter((_, n) => n !== at).join('\n\n') };
+}
+
+function deskHeaderInto(box, identity) {
+  const nodes = [element('h1', identity.name)];
+  const tags = element('p', null, 'desk-tags');
+  tags.append(modeTag(identity.live));
+  if (identity.demoted) tags.append(tagNode('demoted', 'demoted'));
+  if (identity.founded) tags.append(tagNode('founded by the floor', 'founded'));
+  const lineage = element('span', null, 'desk-lineage');
+  lineage.append(element('span', identity.lineage));
+  if (identity.parent) lineage.append(element('span', ' · bred from '), link(identity.parent.name, deskHref(identity.parent.id)));
+  tags.append(lineage);
+  nodes.push(tags);
+  if (identity.mandate) nodes.push(element('p', identity.mandate, 'lede desk-mandate'));
+  const born = join(identity.born && `born on ${identity.born}`, identity.trait && `“${identity.trait}”`);
+  if (born) nodes.push(element('p', born, 'desk-born'));
+  if (identity.sleeve) nodes.push(element('p', `Sleeve ${identity.sleeve.usd}${identity.sleeve.reason ? `: ${identity.sleeve.reason}` : ''}.`, identity.sleeve.empty ? 'desk-note' : 'desk-born'));
+  if (identity.demoted) nodes.push(element('p', `Moved back to a shadow book ${agoText(identity.demoted.at)}${identity.demoted.reason ? `: ${identity.demoted.reason}` : ''}.`, 'desk-note'));
+  if (identity.rationale) nodes.push(details('why the floor founded it', element('p', identity.rationale), 'more-panel desk-why'));
+  box.replaceChildren(...nodes);
+}
+function deskHoldingsPanel(desk, state) {
+  const { rows, dust } = deskPositionRows(desk);
   if (!rows.length) return null;
-  const block = section('Working orders', 'resting on the book now');
-  const list = element('div', null, 'working');
-  for (const row of rows) {
-    const item = element('article', null, 'working-order');
-    const head = element('div', null, 'working-head');
-    head.append(element('b', join(row.side, row.instrument)), element('span', row.venue, 'holding-venue'));
-    if (row.submittedAt) head.append(timeNode(row.submittedAt, 'clock'));
-    item.append(head);
-    item.append(element('p', join(row.quantity, row.price === 'market' ? 'at market' : `at ${priceText(row.price)}`, row.purpose === 'exit' ? 'exit' : '', `by ${row.strategy}`), 'working-numbers'));
-    if (row.story) item.append(link('story ↓', row.story, 'exit-chip exit-link'));
-    list.append(item);
+  const block = section('Holdings', isLive(desk) ? 'real money' : 'practice');
+  const table = element('table', null, 'rows rows-book rows-desk');
+  table.append(headRow([['Market', 'col-market'], ['Side', 'col-side'], ['Value', 'col-num'], ['P&L', 'col-num'], ['Why', 'col-why']]));
+  const body = element('tbody');
+  for (const row of rows.slice(0, state.moreHoldings ? rows.length : TRADE_ROWS)) {
+    const line = element('tr');
+    line.append(element('td', row.market, 'col-market'), element('td', row.side, 'col-side'), element('td', row.valueText, 'col-num col-value'),
+      element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()), whyCell(row, state, `holding:${row.symbol}:${row.side}`));
+    body.append(line);
   }
-  block.append(list);
+  table.append(body);
+  block.append(table);
+  if (rows.length > TRADE_ROWS) block.append(moreChip(state.moreHoldings, rows.length - TRADE_ROWS, () => { state.moreHoldings = !state.moreHoldings; state.drawDetail(); }));
+  if (dust) block.append(element('p', `${plural(dust, 'position')} under 50¢ not shown.`, 'quiet-line'));
   return block;
 }
-// Strategies: code the desk deployed to trade for it between sessions, with each one's record.
-export function strategiesPanel(desk) {
-  const rows = Array.isArray(desk?.strategies) ? desk.strategies : [];
+function deskRecordPanel(state) {
+  const rows = closedRows(state.outcomes, { desks: state.desk ? [state.desk] : [] }, { limit: MAX_EVENT_LIMIT });
   if (!rows.length) return null;
-  const block = section('Strategies', 'code that trades for the desk between sessions');
-  const list = element('div', null, 'strategies');
-  for (const row of rows) {
-    const item = element('article', null, 'strategy');
-    const head = element('div', null, 'strategy-head');
-    head.append(element('b', show(row.name)));
-    if (row.house) head.append(element('span', 'house starter', 'strategy-badge'));
-    head.append(element('span', cadenceText(row.cadence_seconds), 'strategy-cadence'));
-    if (row.last_run_at) head.append(timeNode(row.last_run_at, 'clock'));
-    item.append(head);
-    const pnl = numeric(row.settled_pnl_usd) ? Number(row.settled_pnl_usd) : 0;
-    const record = join(
-      `${show(row.runs)} runs`,
-      `${show(row.approved)} of ${show(row.intents)} orders approved`,
-      `${show(row.fills)} fills`,
-      row.settled > 0 ? `${show(row.wins)} of ${show(row.settled)} settled won, ${signedMoney(row.settled_pnl_usd, 2)}` : 'nothing settled yet',
-      row.errors > 0 ? `${show(row.errors)} errors` : '',
-    );
-    item.append(element('p', record, `strategy-record ${row.settled > 0 ? (pnl >= 0 ? 'up' : 'down') : ''}`));
-    // Why these settings: a promotion from a sibling, a lab experiment, or the house. Then the settings.
-    if (row.note) item.append(element('p', show(row.note), 'strategy-note'));
-    if (row.params && typeof row.params === 'object' && Object.keys(row.params).length) {
-      item.append(element('p', Object.entries(row.params).map(([key, value]) => `${key} ${Array.isArray(value) ? value.join(',') : show(value)}`).join(' · '), 'strategy-params'));
-    }
-    if (row.last_notes) item.append(element('p', row.last_notes, 'strategy-notes'));
-    list.append(item);
+  const block = section('Record', deskRecordLine(rows));
+  const table = element('table', null, 'rows rows-trades rows-desk');
+  table.append(headRow([['Market', 'col-market'], ['Result', 'col-result'], ['P&L', 'col-num'], ['Held', 'col-held'], ['Why', 'col-why']]));
+  const body = element('tbody');
+  for (const row of rows.slice(0, state.more ? MAX_EVENT_LIMIT : TRADE_ROWS)) {
+    const line = element('tr');
+    const result = element('td', row.outcome, `col-result result-${row.outcome}`);
+    if (row.settled) result.setAttribute('title', row.settled);
+    line.append(element('td', row.market, 'col-market'), result, element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()),
+      element('td', row.heldText || '—', 'col-held'), whyCell(row, state, `trade:${row.id}`));
+    body.append(line);
   }
-  block.append(list);
+  table.append(body);
+  block.append(table);
+  if (rows.length > TRADE_ROWS) block.append(moreChip(state.more, rows.length - TRADE_ROWS, () => { state.more = !state.more; state.drawDetail(); }));
   return block;
 }
-function toolboxPanel(events) {
+// Code that trades for the desk between sessions, and the code it ran while thinking.
+function deskStrategiesPanel(desk, events) {
+  const rows = strategyRows(desk);
   const runs = codeRuns(events);
-  if (!runs.length) return null;
-  const block = section('Toolbox', 'code the desk wrote and ran');
-  const list = element('div', null, 'runs');
-  for (const run of runs.slice(0, 12)) {
-    const item = element('div', null, run.exit === 0 ? 'run' : 'run run-failed');
-    const head = element('div', null, 'run-head');
-    head.append(element('b', run.purpose), element('span', join(run.exit === 0 ? 'ran' : `exit ${run.exit}`, run.seconds ? `${run.seconds}s` : '', run.savedAs ? `saved as ${run.savedAs}` : '', run.hash && `#${run.hash}`), 'run-meta'));
-    head.append(timeNode(run.at, 'clock'));
-    item.append(head);
-    if (run.output) item.append(details('output', element('pre', run.output, 'run-output')));
-    list.append(item);
+  if (!rows.length && !runs.length) return null;
+  const block = section(rows.length ? 'Strategies' : 'Toolbox', rows.length ? 'code that trades between sessions' : '');
+  if (rows.length) block.append(...strategyTable(rows));
+  if (runs.length) {
+    const list = element('ul', null, 'runs');
+    for (const run of runs.slice(0, 20)) {
+      const item = element('li', null, run.exit === 0 ? 'run' : 'run run-failed');
+      item.append(whenNode(run.at), element('span', run.purpose, 'run-purpose'), element('span', join(run.exit === 0 ? '' : `exit ${run.exit}`, run.seconds ? `${Number(run.seconds).toFixed(1)}s` : ''), 'run-meta'));
+      list.append(item);
+    }
+    block.append(details(`code it ran · ${plural(runs.length, 'run')}`, list, 'more-panel'));
   }
-  // Code runs are the desk's workshop, not its shop window: one line, open on demand.
-  block.append(details(`${runs.length} run${runs.length === 1 ? '' : 's'}, newest first`, list));
   return block;
 }
-function playbookPanel(events) {
-  const rewrite = latestPlaybook(events);
-  const body = element('div');
-  if (rewrite) {
-    const meta = element('p', null, 'playbook-meta');
-    meta.append(element('span', rewrite.version ? `v${rewrite.version} · ` : ''));
-    meta.append(timeNode(rewrite.at));
-    body.append(meta);
-    if (rewrite.reason) body.append(element('p', rewrite.reason, 'playbook-reason'));
-    if (rewrite.diff) body.append(diffBlock(rewrite.diff));
-  } else body.append(element('p', 'Not rewritten yet.', 'empty-state'));
-  return details(rewrite ? `Playbook · rewritten ${agoText(rewrite.at)}` : 'Playbook', body);
+function strategyTable(rows) {
+  const nodes = [];
+  const table = element('table', null, 'rows rows-strategies');
+  table.append(headRow([['Strategy', 'col-strategy'], ['Every', 'col-num'], ['Runs', 'col-num'], ['Approved', 'col-num'], ['Fills', 'col-num'], ['Settled', 'col-num'], ['P&L', 'col-num']]));
+  const body = element('tbody');
+  for (const row of rows) {
+    const line = element('tr');
+    const name = element('td', null, 'col-strategy');
+    name.append(element('span', row.name, 'strategy-name'));
+    if (row.note) name.append(tagNode(row.note, 'note'));
+    if (row.errors) name.append(tagNode(plural(row.errors, 'error'), 'error'));
+    line.append(name, element('td', row.every, 'col-num col-every'), element('td', String(row.runs), 'col-num col-runs'), element('td', row.approved, 'col-num col-approved'),
+      element('td', String(row.fills), 'col-num col-fills'), element('td', row.settled, 'col-num col-settled'), element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()));
+    body.append(line);
+  }
+  table.append(body);
+  nodes.push(table);
+  const settings = rows.filter(row => row.settings || row.lastNotes);
+  if (settings.length) {
+    const list = element('div', null, 'strategy-settings');
+    for (const row of settings) {
+      const item = element('p');
+      item.append(element('b', row.name), element('span', join(row.settings, row.lastNotes && `last run: ${truncate(row.lastNotes, 160).text}`)));
+      list.append(item);
+    }
+    nodes.push(details('settings and last runs', list, 'more-panel'));
+  }
+  return nodes;
 }
-function deskHeader(header, desk, partner, marks) {
-  header.replaceChildren(element('h1', partnerName(partner.id)));
-  header.append(element('p', partnerRole(partner) || (desk ? desk.family : partner.id), 'partner-role'));
-  if (!desk) { header.append(element('p', 'No checkpoint row yet.', 'note')); return; }
-  const live = isLive(desk);
-  const mode = element('p', null, 'desk-mode');
-  mode.append(modeBadge(desk), element('span', live ? 'Trading real money.' : 'Shadow: scored on real prices, never sent.'));
-  const running = liveNow(desk);
-  if (running) mode.append(running);
-  header.append(mode);
-  const badges = lineageBadges(desk);
-  const row = element('div', null, 'mutation mutation-row');
-  for (const badge of badges) row.append(badge.href ? link(badge.text, badge.href, badge.changed ? 'mutation-badge mutation-changed' : 'mutation-badge') : element('span', badge.text, badge.changed ? 'mutation-badge mutation-changed' : 'mutation-badge'));
-  header.append(row);
-  const shadow = live ? '' : ' (shadow)';
-  const numbers = facts([
-    [`Equity${shadow}`, money(desk.equity, 0)], ['Today', signedMoney(desk.daily_pnl, 2)], ['Return', percent(desk.return_pct)],
-    ['Drawdown', percent(desk.max_drawdown_pct).replace('+', '−')], ['Days', String(desk.days_live)], ['Sail cost', money(desk.cost_usd, 2)],
-    ['Gate', desk.gate ? `${desk.gate.name} · ${desk.gate.passed ? 'passed' : 'not met'}` : 'none yet'],
-  ]);
-  header.append(numbers);
-  const spark = element('p', null, 'desk-spark');
-  spark.append(sparkFigure(marks));
-  header.append(spark);
-  if (partner.mandate) header.append(details('Mandate', element('p', partner.mandate, 'mandate')));
+function deskLearnedPanel(state) {
+  const lessons = deskLessons(state.events);
+  const rewrite = latestPlaybook(state.events);
+  const postmortem = state.events.filter(event => event.kind === 'desk.postmortem' && show(event.payload?.text))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0] || null;
+  if (!lessons.length && !rewrite && !postmortem) return null;
+  const block = section('What it learned');
+  if (postmortem) {
+    const parts = leadParagraph(postmortem.payload.text);
+    const item = element('div', null, 'learned');
+    const head = element('p', null, 'learned-head');
+    head.append(element('span', 'post-mortem', 'learned-kind'), whenNode(postmortem.at));
+    item.append(head, element('p', parts.lead, 'learned-text'));
+    if (parts.rest) item.append(details('the whole post-mortem', element('p', parts.rest, 'learned-rest'), 'more-panel'));
+    block.append(item);
+  }
+  if (rewrite) {
+    const item = element('div', null, 'learned');
+    const head = element('p', null, 'learned-head');
+    head.append(element('span', rewrite.version ? `playbook v${rewrite.version}` : 'playbook', 'learned-kind'), whenNode(rewrite.at));
+    item.append(head, element('p', rewrite.reason || 'Rewrote its playbook.', 'learned-text'));
+    if (rewrite.diff) item.append(details('what changed', diffBlock(rewrite.diff), 'more-panel'));
+    block.append(item);
+  }
+  if (lessons.length) {
+    const list = element('ul', null, 'lessons');
+    for (const lesson of lessons) {
+      const item = element('li', null, 'lesson');
+      const text = element('button', lesson.text, 'lesson-text');
+      text.type = 'button';
+      text.setAttribute('aria-expanded', 'false');
+      text.addEventListener('click', () => text.setAttribute('aria-expanded', text.getAttribute('aria-expanded') === 'true' ? 'false' : 'true'));
+      item.append(whenNode(lesson.at), text);
+      list.append(item);
+    }
+    block.append(list);
+  }
+  return block;
+}
+function calibrationPanel(desk, calibration) {
+  const summary = desk?.calibration && typeof desk.calibration === 'object' ? desk.calibration : calibration;
+  const scored = summary && Number.isSafeInteger(summary.n) && summary.n > 0;
+  const bins = reliabilitySeries(calibration?.reliability).points.length;
+  if (!scored && !bins) return null;
+  const block = section('Calibration', 'said vs happened');
+  if (scored) block.append(element('p', join(plural(summary.n, 'forecast') + ' scored', numeric(summary.brier) ? `Brier ${summary.brier} (0 is perfect, 0.25 a coin flip)` : ''), 'record-line'));
+  if (bins) block.append(reliabilityFigure(calibration));
+  return block;
 }
 
 async function startDesk(root) {
-  const header = root.querySelector('#desk-header');
-  const detail = root.querySelector('#desk-detail');
-  const tape = root.querySelector('#desk-tape');
-  const status = root.querySelector('#desk-status');
-  const think = root.querySelector('#desk-think');
-  const thinkState = root.querySelector('#think-state');
+  const find = name => root.querySelector(`#${name}`);
+  const box = { header: find('desk-header'), numbers: find('desk-numbers'), state: find('desk-state'), now: find('desk-now'), detail: find('desk-detail') };
+  const ready = node => node && node.setAttribute('aria-busy', 'false');
   const id = new URLSearchParams(window.location.search).get('id');
   if (!deskId(id)) {
-    header.replaceChildren(element('h1', 'No such desk'), element('p', 'Open one from the floor.', 'note'));
-    detail.replaceChildren();
-    if (tape) tape.replaceChildren();
+    box.header?.replaceChildren(element('h1', 'No such desk'), element('p', 'Open one from the floor.', 'note'));
+    for (const node of [box.numbers, box.now, box.detail]) { node?.replaceChildren(); ready(node); }
     return null;
   }
-  statusLine(status, 'loading', null);
-  let desk = null;
-  try { desk = await loadDesk(id); } catch { /* The manifest facts stay blank until the next checkpoint. */ }
-  const partner = partnerOf(desk || id);
-  setTitle(`${partner.surname} · LTCM`);
-  const [deskEvents, marks, fills, decisions, orders, labEvents] = await Promise.all([
-    loadEvents({ stream: `desk:${id}`, limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ stream: `ledger:${id}`, kind: 'ledger.mark', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ kind: 'broker.fill', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ kind: 'risk.decision', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-    loadEvents({ kind: 'broker.order', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
+  const state = { id, desk: null, events: [], outcomes: [], evolution: [], lab: [], mode: 'loading', open: new Set(), more: false, moreHoldings: false, sessionId: '' };
+  try { state.desk = await loadDesk(id); } catch { /* The desk's own record fills in at the next refresh. */ }
+  setTitle(`${state.desk ? raceName(state.desk) : floorName(id)} · LTCM`);
+  const own = (kind, limit) => loadEvents({ stream: `desk:${id}`, kind, limit }).catch(() => ({ events: [] }));
+  const [thoughts, calls, starts, ends, memos, outcomes, playbooks, postmortems, runs, evolution, lab, allocation] = await Promise.all([
+    own('desk.thought', 80), own('desk.tool_call', 160), own('desk.session_started', 30), own('desk.session_ended', 30), own('desk.memo', 30),
+    own('desk.outcome', MAX_EVENT_LIMIT), own('desk.playbook_updated', 10), own('desk.postmortem', 5), own('desk.code_run', 40),
+    loadEvents({ stream: 'evolution', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
     loadEvents({ stream: 'lab', kind: 'lab.calibration', limit: 100 }).catch(() => ({ events: [] })),
+    loadEvents({ kind: 'committee.allocation', limit: 1 }).catch(() => ({ events: [] })),
   ]);
-  deskHeader(header, desk, partner, marks.events);
-  // The hero: the newest session, typed. A page opened mid-session catches up instantly and
-  // types only what arrives from here on.
-  const stream = think ? thoughtStream(think, { instant: typeof requestAnimationFrame === 'undefined' }) : null;
-  const session = sessionThoughts(deskEvents.events, id);
-  if (stream) { stream.load(session); think.setAttribute('aria-busy', 'false'); }
-  if (thinkState) thinkState.textContent = idleLine(session, Date.now(), desk?.live_session);
-  const storyEvents = [...deskEvents.events, ...decisions.events, ...orders.events, ...fills.events];
-  const panels = [
-    deskHoldingsPanel(desk, storyEvents),
-    storiesSection(storyEvents, id),
-  ];
-  const eventDesk = Array.isArray(desk?.venues) && desk.venues.includes('kalshi') || (desk?.calibration && typeof desk.calibration === 'object');
-  if (eventDesk || latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })) panels.push(calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })));
-  const working = workingPanel(desk);
-  if (working) panels.splice(1, 0, working);  // right under the holdings: the book as it stands
-  const strategies = strategiesPanel(desk);
-  if (strategies) panels.push(strategies);
-  const toolbox = toolboxPanel(deskEvents.events);
-  if (toolbox) panels.push(toolbox);
-  panels.push(playbookPanel(deskEvents.events));
-  detail.replaceChildren(...panels);
-  detail.setAttribute('aria-busy', 'false');
-  const state = {
-    events: deskEvents.events, expanded: new Set(), active: new Set(),
-    redraw: () => { if (tape) renderTape(tape, state.events, state); },
+  state.events = [thoughts, calls, starts, ends, memos, playbooks, postmortems, runs].flatMap(batch => batch.events);
+  state.outcomes = outcomes.events;
+  state.evolution = [...evolution.events, ...allocation.events];
+  state.lab = lab.events;
+
+  const drawHeader = () => { if (box.header) deskHeaderInto(box.header, deskIdentity(state.desk, state.evolution, id)); };
+  const drawNumbers = () => { if (box.numbers) { box.numbers.replaceChildren(...deskNumbers(state.desk).map(numberCell)); ready(box.numbers); } };
+  const stage = element('div', null, 'thoughts');
+  const summary = element('p', '', 'now-summary');
+  // The sessions as the page reads them: an ended session has ended whatever the last checkpoint
+  // said, and otherwise the checkpoint's live session is the one running.
+  const liveSession = () => {
+    const session = state.desk?.live_session && typeof state.desk.live_session === 'object' ? state.desk.live_session : null;
+    const ended = session && deskSessions(state.events, id).some(row => row.sessionId === show(session.session_id) && row.endedAt);
+    return ended ? null : session;
   };
-  state.redraw();
+  const sessions = () => {
+    const liveId = show(liveSession()?.session_id);
+    return deskSessions(state.events, id).map((session, index) => ({ ...session, running: session.running && (liveId ? session.sessionId === liveId : index === 0) }));
+  };
+  const drawState = () => {
+    if (!box.state) return;
+    const [current] = sessions();
+    const thinking = Boolean(current?.running || liveSession());
+    const next = !thinking && state.desk?.next_session_at ? untilText(state.desk.next_session_at) : '';
+    summary.textContent = current && !current.running ? current.summary : '';
+    stage.className = thinking ? 'thoughts' : 'thoughts thoughts-idle';
+    const text = join(idleLine(current || null, Date.now(), liveSession()), next && next !== 'now' ? `next session ${next}` : '');
+    box.state.className = `live-status ${thinking ? 'live-live' : 'live-idle'}`;
+    box.state.replaceChildren(pulse(), element('span', text));
+  };
+  const earlier = element('div', null, 'sessions-box');
+  const stream = thoughtStream(stage, { instant: typeof requestAnimationFrame === 'undefined' });
+  const drawEarlier = list => {
+    if (!list.length) { earlier.replaceChildren(); return; }
+    const items = element('div', null, 'sessions');
+    for (const session of list.slice(0, 12)) {
+      const item = element('div', null, 'session');
+      const head = element('button', null, 'session-head');
+      head.type = 'button';
+      head.setAttribute('aria-expanded', 'false');
+      head.append(whenNode(session.at), element('span', triggerText(session.trigger), 'session-why'),
+        element('span', truncate(session.memo || session.summary || session.items.at(-1)?.text || endReason(session.reason), 140).text, 'session-text'));
+      const body = element('div', null, 'session-body');
+      body.hidden = true;
+      head.addEventListener('click', () => {
+        const open = head.getAttribute('aria-expanded') !== 'true';
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && !body.children.length) body.append(...session.items.map(entry => thoughtRow(entry).node), ...(session.summary ? [element('p', session.summary, 'now-summary')] : []));
+        body.hidden = !open;
+      });
+      item.append(head, body);
+      items.append(item);
+    }
+    earlier.replaceChildren(details(`earlier sessions · ${list.length}`, items, 'more-panel'));
+  };
+  const drawNow = () => {
+    const list = sessions();
+    const [current] = list;
+    state.sessionId = current?.sessionId || '';
+    stream.load(current ? { ...current, items: recentItems(current.items) } : null);
+    drawEarlier(list.slice(1));
+    drawState();
+  };
+  if (box.now) {
+    box.now.replaceChildren(stage, summary, earlier);
+    drawNow();
+    ready(box.now);
+  }
+  state.drawDetail = () => {
+    if (!box.detail) return;
+    const calibration = latestCalibration(state.lab, { scope: 'desk', desk_id: id });
+    box.detail.replaceChildren(...[
+      deskHoldingsPanel(state.desk, state), deskRecordPanel(state), deskStrategiesPanel(state.desk, state.events), deskLearnedPanel(state), calibrationPanel(state.desk, calibration),
+    ].filter(Boolean));
+    ready(box.detail);
+  };
+  drawHeader();
+  drawNumbers();
+  state.drawDetail();
+  setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+    try { state.desk = await loadDesk(id); } catch { return; }
+    drawHeader(); drawNumbers(); drawState(); state.drawDetail();
+  }, 60000);
   const feed = startFeed({
-    streams: [`desk:${id}`, `ledger:${id}`],
-    onStatus: mode => statusLine(status, mode, desk?.updated_at || null),
+    streams: [`desk:${id}`],
+    onStatus: mode => { state.mode = mode; drawState(); },
     onEvents: events => {
-      state.events = [...events, ...state.events].slice(0, TAPE_LIMIT * 2);
-      state.redraw();
       const arrived = events.filter(event => event.stream === `desk:${id}`);
       if (!arrived.length) return;
-      if (arrived.some(event => event.kind === 'desk.session_started')) {
-        const opened = sessionThoughts(state.events, id);
-        if (stream) stream.load(opened);
-        if (thinkState) thinkState.textContent = idleLine(opened);
-        return;
+      const closed = arrived.filter(event => event.kind === 'desk.outcome');
+      state.events = [...state.events, ...arrived.filter(event => event.kind !== 'desk.outcome')].slice(-1500);
+      if (closed.length) state.outcomes = [...closed, ...state.outcomes].slice(0, MAX_EVENT_LIMIT);
+      const [current] = sessions();
+      if ((current?.sessionId || '') !== state.sessionId) drawNow();
+      else {
+        stream.push(arrived, id);
+        drawState();
       }
-      if (stream) stream.push(arrived, id);
-      if (thinkState && arrived.some(event => event.kind === 'desk.session_ended' || event.kind === 'desk.memo')) thinkState.textContent = idleLine(sessionThoughts(state.events, id));
+      if (closed.length || arrived.some(event => ['desk.playbook_updated', 'desk.postmortem', 'desk.code_run'].includes(event.kind)
+        || (event.kind === 'desk.tool_call' && event.payload?.tool === 'memory_write'))) state.drawDetail();
     },
   });
+  const loaded = [...state.events, ...state.outcomes];
   const original = feed.stop;
-  feed.stop = () => { if (stream) stream.stop(); original(); };
-  feed.remember(state.events);
-  feed.prime(state.events[0]?.seq || 0);
+  feed.stop = () => { stream.stop(); original(); };
+  feed.remember(loaded);
+  feed.prime(loaded.reduce((most, event) => Math.max(most, Number(event.seq) || 0), 0));
   return feed;
 }
 
 // ============================================================================ the loop page
-// Each family's house genome: what the lab adopted, and what its children were born with.
-export function genomeSummary(evolutionEvents, labEvents) {
-  const families = new Map();
-  const family = name => {
-    if (!families.has(name)) families.set(name, { family: name, children: 0, models: new Set(), efforts: new Set(), adopted: [], rejected: 0, running: 0 });
-    return families.get(name);
-  };
-  for (const event of (Array.isArray(evolutionEvents) ? evolutionEvents : []).filter(event => event?.kind === 'evolution.spawned')) {
-    const row = family(show(event.payload?.family) || 'unknown');
-    row.children += 1;
-    const mutation = event.payload?.mutation && typeof event.payload.mutation === 'object' ? event.payload.mutation : {};
-    if (mutation.model_profile) row.models.add(profileName(show(mutation.model_profile)));
-    if (mutation.reasoning_effort) row.efforts.add(show(mutation.reasoning_effort));
-  }
-  const experiments = new Map();
-  for (const event of (Array.isArray(labEvents) ? labEvents : []).filter(event => event?.kind === 'lab.experiment')) {
-    const id = show(event.payload?.experiment_id);
-    if (id) experiments.set(id, event.payload);
-    if (event.payload?.status === 'running') family(show(event.payload?.family) || 'unknown').running += 1;
-  }
-  for (const event of (Array.isArray(labEvents) ? labEvents : []).filter(event => event?.kind === 'lab.verdict')) {
-    const experiment = experiments.get(show(event.payload?.experiment_id));
-    const row = family(show(experiment?.family) || 'unknown');
-    if (event.payload?.status === 'adopted') row.adopted.push({ at: event.at, change: changeSummary(experiment?.change) || 'change adopted', hypothesis: show(experiment?.hypothesis) });
-    else if (event.payload?.status === 'rejected') row.rejected += 1;
-  }
-  return [...families.values()].map(row => ({ ...row, models: [...row.models].sort(), efforts: [...row.efforts].sort() }))
-    .filter(row => row.family !== 'unknown' || row.adopted.length)
-    .sort((left, right) => left.family.localeCompare(right.family));
+// How the floor improves itself and who is winning: the loop's numbers and its nightly clock,
+// results by generation, the race for each real-money sleeve, what changed, the live sleeves, and
+// Meriwether's memo when he has written one.
+
+// The nightly jobs, America/New_York, as the runtime's config schedules them.
+export const LOOP_JOBS = [
+  { key: 'committee', at: '18:00' }, { key: 'evolution', at: '19:00' }, { key: 'lab', at: '20:00' }, { key: 'founding', at: '21:30' },
+];
+const jobMinutes = job => { const [hour, minute] = job.at.split(':').map(Number); return hour * 60 + minute; };
+export function loopSchedule(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(now));
+  const part = type => Number(parts.find(item => item.type === type)?.value);
+  const current = (part('hour') % 24) * 60 + part('minute');
+  const upcoming = LOOP_JOBS.find(job => jobMinutes(job) > current) || LOOP_JOBS[0];
+  return LOOP_JOBS.map(job => {
+    const [hour, minute] = job.at.split(':').map(Number);
+    const wait = ((jobMinutes(job) - current) % 1440 + 1440) % 1440 || 1440;
+    return {
+      key: job.key, time: `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`, next: job === upcoming,
+      until: job === upcoming ? (wait < 60 ? `in ${wait} min` : `in ${Math.floor(wait / 60)}h${wait % 60 ? ` ${wait % 60}m` : ''}`) : '',
+    };
+  });
 }
-// The newest allocation with Meriwether's reason per desk, when the record carries one.
-export function allocationReasons(events) {
-  const latest = (Array.isArray(events) ? events : []).filter(event => event?.kind === 'committee.allocation'
-    && event.payload?.allocations && typeof event.payload.allocations === 'object')
+// The loop in eight numbers.
+export function loopStatus(events, checkpoint) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const counts = loopCounts(events, checkpoint);
+  const running = (Array.isArray(checkpoint?.lab?.experiments) ? checkpoint.lab.experiments : []).filter(item => item?.status === 'running').length;
+  const live = desks.filter(isLive).length;
+  return [
+    { key: 'families', label: 'Families', value: String(new Set(desks.map(desk => show(desk.family) || show(desk.id))).size) },
+    { key: 'partners', label: 'Partners', value: String(desks.length), note: `${live} real money` },
+    { key: 'bred', label: 'Bred', value: String(counts.bred) },
+    { key: 'promoted', label: 'Promoted', value: String(counts.promoted) },
+    { key: 'demoted', label: 'Demoted', value: String(counts.demoted) },
+    { key: 'retired', label: 'Retired', value: String(counts.retired) },
+    { key: 'founded', label: 'Founded', value: String(counts.founded) },
+    { key: 'experiments', label: 'Experiments', value: String(counts.experiments), note: running ? `${running} running` : '' },
+  ];
+}
+// What changed, newest first, in plain sentences: desks bred, founded, promoted, moved back and
+// retired; the lab's experiments and verdicts; a real-money sleeve resized; a playbook rewritten.
+export function loopChanges(events, checkpoint) {
+  const list = (Array.isArray(events) ? events : []).filter(event => event && typeof event === 'object' && typeof event.kind === 'string');
+  const live = new Map(orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object').map(desk => [show(desk.id), isLive(desk)]));
+  const experiments = new Map([
+    ...(Array.isArray(checkpoint?.lab?.experiments) ? checkpoint.lab.experiments : []).map(item => [show(item?.experiment_id), item]),
+    ...list.filter(event => event.kind === 'lab.experiment').map(event => [show(event.payload?.experiment_id), event.payload]),
+  ]);
+  const items = [];
+  const add = (event, kind, desk, text, detail = '') => items.push({ id: show(event.id), at: show(event.at), kind, desk, name: desk ? floorName(desk) : '', text, detail: truncate(detail, 220).text });
+  for (const event of list) {
+    const p = event.payload && typeof event.payload === 'object' ? event.payload : {};
+    const desk = show(p.desk_id);
+    if (event.kind === 'evolution.spawned') {
+      const mutation = p.mutation && typeof p.mutation === 'object' ? p.mutation : {};
+      add(event, 'bred', desk, `Bred ${floorName(desk)}${p.parent_id ? ` from ${floorName(show(p.parent_id))}` : ''}`,
+        typeof p.mutation === 'string' ? p.mutation : join(profileName(mutation.model_profile), mutation.reasoning_effort ? `effort ${show(mutation.reasoning_effort)}` : '', show(mutation.persona_trait)));
+    } else if (event.kind === 'evolution.founded') {
+      add(event, 'founded', desk, `Founded ${show(p.name) || floorName(desk)}, a new ${humanize(show(p.family)) || ''} family`.replace('  ', ' '), show(p.universe));
+    } else if (event.kind === 'evolution.promoted') {
+      if (isDemotion(p)) add(event, 'demoted', desk, `Moved ${floorName(desk)} back to a shadow book`, reasonText(p.reason));
+      else add(event, 'promoted', desk, `Promoted ${floorName(desk)} to real money`, reasonText(p.reason));
+    } else if (event.kind === 'evolution.retired') {
+      add(event, 'retired', desk, `Retired ${floorName(desk)}`, reasonText(p.reason));
+    } else if (event.kind === 'lab.experiment') {
+      const variant = show(p.variant_desk_id);
+      add(event, 'lab', variant, `The lab ${show(p.status) === 'running' || !show(p.status) ? 'started testing' : show(p.status)} ${variant ? floorName(variant) : `the ${humanize(show(p.family))} family`}`,
+        join(show(p.hypothesis), changeSummary(p.change)));
+    } else if (event.kind === 'lab.verdict') {
+      const experiment = experiments.get(show(p.experiment_id));
+      const variant = show(experiment?.variant_desk_id);
+      add(event, 'lab', variant, `The lab ${show(p.status) || 'judged'} ${experiment?.hypothesis ? `“${truncate(experiment.hypothesis, 80).text}”` : 'an experiment'}`, show(p.reason));
+    } else if (event.kind === 'desk.playbook_updated') {
+      const reason = show(p.reason);
+      const who = streamDeskOf(event.stream);
+      if (!who || /^bred from /.test(reason)) continue;  // a child's first playbook is its birth, already a line
+      add(event, 'playbook', who, `${floorName(who)} rewrote its playbook`, reason);
+    }
+  }
+  // A real-money sleeve resized: compare each allocation with the one before it.
+  const rounds = list.filter(event => event.kind === 'committee.allocation' && event.payload?.allocations && typeof event.payload.allocations === 'object')
+    .sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
+  for (let index = 1; index < rounds.length; index += 1) {
+    const [before, after] = [rounds[index - 1].payload, rounds[index].payload];
+    const shadow = after.shadow && typeof after.shadow === 'object' ? after.shadow : null;
+    for (const [desk, value] of Object.entries(after.allocations)) {
+      const isReal = shadow ? shadow[desk] !== true : live.get(desk) === true;
+      const now = looseAmount(show(value));
+      const was = looseAmount(show(before.allocations[desk]));
+      if (!isReal || !numeric(now) || !numeric(was) || scaled(now) === scaled(was)) continue;
+      add(rounds[index], 'capital', desk, `Meriwether moved ${floorName(desk)} ${money(was, 0)} → ${money(now, 0)}`, reasonText(after.reasons?.[desk]));
+    }
+  }
+  const seen = new Set();
+  return items.filter(item => item.id && !seen.has(`${item.id}|${item.desk}`) && seen.add(`${item.id}|${item.desk}`))
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+}
+// The real-money sleeves as they stand, with Meriwether's latest reason for each.
+export function liveSleeves(checkpoint, events = []) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const allocations = checkpoint?.committee?.allocations && typeof checkpoint.committee.allocations === 'object' ? checkpoint.committee.allocations : {};
+  const latest = (Array.isArray(events) ? events : []).filter(event => event?.kind === 'committee.allocation' && event.payload?.reasons && typeof event.payload.reasons === 'object')
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0];
-  if (!latest) return { at: null, rows: [] };
-  const reasons = latest.payload.reasons && typeof latest.payload.reasons === 'object' ? latest.payload.reasons : {};
-  const rows = Object.entries(latest.payload.allocations).map(([id, usd]) => ({ desk: id, name: partnerName(id), usd: show(usd), reason: show(reasons[id]) }))
-    .sort((left, right) => (scaled(right.usd) > scaled(left.usd) ? 1 : -1));
-  return { at: latest.at, rows };
+  const reasons = latest ? latest.payload.reasons : {};
+  const rows = desks.filter(isLive).map(desk => {
+    const id = show(desk.id);
+    const usd = looseAmount(show(allocations[id] ?? desk.capital_usd));
+    const pnl = deskPnl(desk);
+    return {
+      id, name: raceName(desk), usd: numeric(usd) ? Number(usd) : 0, usdText: numeric(usd) ? money(usd, 2) : '—',
+      pnlText: pnl === null ? '—' : signedMoney(pnl.toFixed(2), 2), tone: pnl === null ? '' : signOf(pnl.toFixed(2)), reason: reasonText(reasons[id]),
+    };
+  }).sort((left, right) => right.usd - left.usd);
+  const total = rows.reduce((sum, row) => sum + row.usd, 0);
+  return { rows, total, totalText: money(total.toFixed(2), 2), shadow: desks.length - rows.length };
 }
-function genomePanel(rows) {
-  if (!rows.length) return element('p', 'Nothing bred yet.', 'empty-state');
-  const list = element('div', null, 'genomes');
-  for (const row of rows) {
-    const card = element('article', null, 'genome');
-    const head = element('div', null, 'genome-head');
-    head.append(element('b', `${row.family} family`), element('span', join(`${row.children} ${row.children === 1 ? 'child' : 'children'}`, row.running ? `${row.running} running` : '', row.rejected ? `${row.rejected} rejected` : ''), 'genome-meta'));
-    card.append(head);
-    if (row.models.length || row.efforts.length) card.append(element('p', join(row.models.length ? `models ${row.models.join(', ')}` : '', row.efforts.length ? `effort ${row.efforts.join(', ')}` : ''), 'genome-born'));
-    if (row.adopted.length) {
-      const adopted = element('ul', null, 'genome-adopted');
-      for (const change of row.adopted) {
-        const item = element('li', change.change);
-        item.append(element('span', join(change.hypothesis, agoText(change.at)), 'genome-why'));
-        adopted.append(item);
-      }
-      card.append(adopted);
-    } else card.append(element('p', 'No change adopted yet.', 'note'));
-    list.append(card);
+
+function loopScheduleInto(box) {
+  const nodes = [element('span', 'Nightly', 'loop-next-label')];
+  for (const job of loopSchedule()) {
+    const item = element('span', null, job.next ? 'loop-job loop-job-next' : 'loop-job');
+    if (job.next) item.append(pulse('pulse pulse-inline'));
+    item.append(element('b', job.key), element('span', ` ${job.time}`));
+    if (job.until) item.append(element('i', ` ${job.until}`));
+    nodes.push(item);
   }
-  return list;
+  nodes.push(element('span', 'ET', 'loop-next-zone'));
+  box.replaceChildren(...nodes);
+}
+// Results by generation: the floor's grid, larger, with each cell's P&L and decisions a hover or a
+// tap away. A tap selects; a second tap on the same cell opens the desk.
+function betterPanel(checkpoint, state) {
+  const grid = generationGrid(checkpoint);
+  if (!grid.rows.length) return [element('p', 'The families appear with the first checkpoint.', 'empty-state')];
+  const cells = grid.rows.flatMap(row => row.cells.filter(Boolean));
+  const best = cells.filter(cell => !cell.live && cell.value !== null).sort((left, right) => right.value - left.value)[0] || cells[0];
+  const readout = element('p', null, 'ladder-readout');
+  readout.setAttribute('aria-live', 'polite');
+  const read = (cell, lead = '') => {
+    if (!cell) return;
+    const words = element('span', join(`${lead}${cell.name}`, cell.live ? 'real money' : 'practice', cell.text, cell.pnlText, Number.isSafeInteger(cell.decisions) ? plural(cell.decisions, 'decision') : ''));
+    readout.replaceChildren(words, link('open ↗', deskHref(cell.id), 'ladder-open'));
+  };
+  const table = element('table', null, 'ladder ladder-loop');
+  const head = element('thead');
+  const headLine = element('tr');
+  headLine.append(element('th', 'Family', 'ladder-family'));
+  for (const generation of grid.generations) headLine.append(element('th', roman(generation), 'ladder-gen'));
+  head.append(headLine);
+  const body = element('tbody');
+  for (const row of grid.rows) {
+    const line = element('tr');
+    const family = element('th', null, 'ladder-family');
+    family.setAttribute('scope', 'row');
+    family.append(element('b', row.name), element('span', row.word, 'ladder-word'));
+    line.append(family);
+    for (const cell of row.cells) {
+      const box = element('td', null, `ladder-cell ${heatClass(cell ? cell.value : null)}${cell?.live ? ' ladder-live' : ''}${cell?.leader ? ' ladder-leader' : ''}`);
+      if (cell) {
+        const anchor = link('', deskHref(cell.id), 'ladder-link');
+        anchor.setAttribute('aria-label', join(cell.name, cell.live ? 'real money' : 'practice', cell.text, cell.pnlText));
+        if (cell.live) anchor.append(pulse('pulse pulse-inline'));
+        anchor.append(element('span', cell.text, 'ladder-value'));
+        if (cell.leader) anchor.append(element('span', '★', 'ladder-star'));
+        anchor.append(element('span', cell.pnlText, `ladder-pnl ${cell.pnlTone}`.trim()));
+        anchor.addEventListener('pointerdown', down => { state.pointer = down.pointerType || 'mouse'; });
+        anchor.addEventListener('pointerenter', enter => { if (enter.pointerType !== 'touch') read(cell); });
+        anchor.addEventListener('focus', () => read(cell));
+        anchor.addEventListener('click', click => {
+          if (state.pointer === 'touch' && state.selected !== cell.id) { click.preventDefault(); state.selected = cell.id; read(cell); }
+        });
+        box.append(anchor);
+      }
+      line.append(box);
+    }
+    body.append(line);
+  }
+  const foot = element('tr', null, 'ladder-all');
+  const label = element('th', null, 'ladder-family');
+  label.setAttribute('scope', 'row');
+  label.append(element('b', 'All'), element('span', 'per generation', 'ladder-word'));
+  foot.append(label);
+  for (const cell of grid.all) {
+    const box = element('td', null, `ladder-cell ${heatClass(cell.value)}`);
+    box.append(element('span', cell.text, 'ladder-value'));
+    foot.append(box);
+  }
+  body.append(foot);
+  table.append(head, body);
+  read(best, best && !best.live ? 'best child: ' : '');
+  const nodes = [];
+  if (grid.reading) nodes.push(element('p', grid.reading, 'learning-reading'));
+  nodes.push(table, readout);
+  const calibration = checkpoint?.lab?.calibration;
+  nodes.push(element('p', join('● real money · ★ best in its family · return on capital',
+    calibration && Number.isSafeInteger(calibration.n) && calibration.n > 0 && numeric(show(calibration.brier)) ? `${calibration.n} forecasts scored, Brier ${Number(calibration.brier).toFixed(3)} (0 is perfect, 0.25 a coin flip)` : ''), 'ladder-legend'));
+  return nodes;
+}
+function gateMeter(gate) {
+  const meter = element('span', null, 'gate-meter');
+  meter.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < gate.total; index += 1) meter.append(element('i', null, index < gate.met ? 'gate-on' : ''));
+  return meter;
+}
+function loopRacePanel(checkpoint, events) {
+  const rows = raceRows(checkpoint, events);
+  if (!rows.length) return [element('p', 'The families appear with the first checkpoint.', 'empty-state')];
+  const nodes = [];
+  const candidates = rows.map(row => row.closest).filter(Boolean)
+    .sort((left, right) => (right.gate.met - left.gate.met) || ((right.score ?? -Infinity) - (left.score ?? -Infinity)));
+  if (candidates.length) nodes.push(element('p', `Closest to promotion: ${gateLine(candidates[0])}.`, 'learning-reading'));
+  for (const row of rows) {
+    const line = element('div', null, 'race-row');
+    const family = element('div', null, 'race-family');
+    family.append(element('b', row.name), element('span', row.word, 'race-word'));
+    if (row.founded) family.append(tagNode('founded by the floor', 'founded'));
+    const chips = element('div', null, 'race-chips');
+    const members = [...row.members].sort((left, right) => (Number(right.live) - Number(left.live)) || (left.generation - right.generation));
+    for (const member of members) {
+      const chip = link('', deskHref(member.id), `race-chip${member.live ? ' race-live' : ''}${member.leader ? ' race-leader' : ''}`);
+      if (member.live) chip.append(pulse('pulse pulse-inline'));
+      chip.append(element('b', member.name), element('span', member.scoreText, member.tone || 'race-flat'));
+      if (member.leader) chip.append(element('i', '★', 'race-star'));
+      if (member.demoted) chip.append(tagNode('demoted', 'demoted'));
+      if (member.inSession) chip.append(element('i', 'thinking', 'race-thinking'));
+      if (!member.live && member.gate) chip.append(gateMeter(member.gate));
+      chip.setAttribute('title', join(member.live ? 'real money' : 'practice, scored on real prices', gateLine(member), ...member.badges.map(badge => badge.text)));
+      chips.append(chip);
+    }
+    line.append(family, chips);
+    nodes.push(line);
+  }
+  nodes.push(element('p', '● real money · ★ best return in the family · bars: gate checks met', 'ladder-legend'));
+  const evidence = rows.flatMap(row => row.members).filter(member => member.gate)
+    .sort((left, right) => (Number(left.live) - Number(right.live)) || (right.gate.met - left.gate.met));
+  if (evidence.length) {
+    const list = element('ul', null, 'gate-list');
+    for (const member of evidence) {
+      const item = element('li');
+      item.append(link(member.name, deskHref(member.id), 'agent-name'), element('span', `gate ${member.gate.name} · ${member.gate.met}/${member.gate.total}`, 'gate-score'),
+        element('span', member.gate.passed ? 'passed' : member.gate.missing.join(', '), 'gate-missing'));
+      list.append(item);
+    }
+    const as = orderDesks(checkpoint?.desks).map(desk => show(desk?.gate?.evidence?.as_of)).find(Boolean);
+    nodes.push(details(`gate evidence${as ? ` · as of ${date(as, 'time')}` : ''}`, list, 'more-panel'));
+  }
+  if (rows.some(row => row.members.some(member => member.badges.length))) {
+    const list = element('div', null, 'race-diffs');
+    for (const member of rows.flatMap(row => row.members).filter(item => item.badges.length)) {
+      const item = element('div', null, 'race-diff');
+      item.append(element('b', member.name), badgeRow(member.badges));
+      list.append(item);
+    }
+    nodes.push(details('how the children differ', list, 'more-panel'));
+  }
+  return nodes;
+}
+const CHANGE_LIMIT = 15;
+const CHANGE_WORDS = { bred: 'bred', founded: 'founded', promoted: 'promoted', demoted: 'demoted', retired: 'retired', lab: 'lab', capital: 'capital', playbook: 'playbook' };
+function changesInto(list, state) {
+  const items = loopChanges(state.events, state.checkpoint);
+  const shown = items.slice(0, state.more ? items.length : CHANGE_LIMIT);
+  const nodes = shown.map(item => {
+    const line = element('li', null, `change change-${item.kind}`);
+    const text = element('p', null, 'change-text');
+    text.append(item.desk ? link(item.text, deskHref(item.desk), 'change-what') : element('span', item.text, 'change-what'));
+    if (item.detail) text.append(element('span', item.detail, 'change-why'));
+    line.append(whenNode(item.at), element('span', CHANGE_WORDS[item.kind] || item.kind, `feed-kind change-kind kind-${item.kind}`), text);
+    return line;
+  });
+  list.replaceChildren(...(nodes.length ? nodes : [element('li', 'Nothing has changed since the log was trimmed. The next committee, evolution and lab runs write here.', 'empty-state')]));
+  if (items.length > CHANGE_LIMIT) {
+    const item = element('li', null, 'change-more');
+    item.append(moreChip(state.more, items.length - CHANGE_LIMIT, () => { state.more = !state.more; changesInto(list, state); }));
+    list.append(item);
+  }
+}
+function capitalPanel(checkpoint, events) {
+  const sleeves = liveSleeves(checkpoint, events);
+  const nodes = [];
+  if (sleeves.rows.length) {
+    const table = element('table', null, 'rows rows-capital');
+    table.append(headRow([['Partner', 'col-agent'], ['Sleeve', 'col-num'], ['P&L', 'col-num'], ['Why', 'col-why']]));
+    const body = element('tbody');
+    for (const row of sleeves.rows) {
+      const line = element('tr', null, 'row-real');
+      line.append(agentCell(row.id, row.name, null, [pulse('pulse pulse-inline')]), element('td', row.usdText, 'col-num col-sleeve'),
+        element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()), element('td', row.reason || '—', 'col-why col-reason'));
+      body.append(line);
+    }
+    table.append(body);
+    nodes.push(table);
+  } else nodes.push(element('p', 'No partner trades real money right now.', 'empty-state'));
+  nodes.push(element('p', join(sleeves.rows.length ? `${sleeves.totalText} of real money in ${plural(sleeves.rows.length, 'sleeve')}` : '',
+    sleeves.shadow ? `${plural(sleeves.shadow, 'shadow partner')} ${sleeves.shadow === 1 ? 'scores' : 'score'} against notional books` : ''), 'quiet-line'));
+  return nodes;
+}
+function memoPanel(event) {
+  const block = section('Meriwether’s memo', whenNode(event.at));
+  const parts = leadParagraph(event.payload?.text);
+  block.append(element('p', parts.lead, 'memo-lead'));
+  if (parts.rest) block.append(details('read the memo', element('p', parts.rest, 'memo-rest'), 'more-panel'));
+  return block;
+}
+function familyCalibrationPanel(rows) {
+  const block = section('Calibration', 'by family');
+  const list = element('ul', null, 'gate-list');
+  for (const row of rows) {
+    const item = element('li');
+    item.append(element('b', `${humanize(row.family)} family`), element('span', `${plural(Number(row.n) || 0, 'forecast')}`, 'gate-score'), element('span', `Brier ${show(row.brier)}`, 'gate-missing'));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
 }
 
 async function startCommittee(root) {
-  const status = root.querySelector('#committee-status');
-  const allocations = root.querySelector('#committee-allocations');
-  const gates = root.querySelector('#committee-gates');
-  const memos = root.querySelector('#committee-memos');
-  const history = root.querySelector('#committee-evolution');
-  const labBox = root.querySelector('#committee-lab');
-  const calibrationBox = root.querySelector('#committee-calibration');
-  const curveBox = root.querySelector('#loop-curve');
-  const raceBox = root.querySelector('#loop-race');
-  const genomeBox = root.querySelector('#loop-genome');
-  statusLine(status, 'loading', null);
-  let checkpoint = null;
-  try { checkpoint = await loadCheckpoint(); } catch { /* The numbers wait for the first checkpoint. */ }
-  if (checkpoint) statusLine(status, 'loading', checkpoint.published_at);
-  const [committeeEvents, evolution, labEvents] = await Promise.all([
-    loadEvents({ stream: 'committee', limit: 100 }).catch(() => ({ events: [] })),
-    loadEvents({ stream: 'evolution', limit: 100 }).catch(() => ({ events: [] })),
-    loadEvents({ stream: 'lab', limit: MAX_EVENT_LIMIT }).catch(() => ({ events: [] })),
-  ]);
-  if (curveBox) {
-    curveBox.replaceChildren(curveFigure(checkpoint?.lab));
-    curveBox.setAttribute('aria-busy', 'false');
-  }
-  if (raceBox) {
-    // Each family's live desk and its shadow children, who leads, how the children differ.
-    raceBox.replaceChildren(...(checkpoint ? racePanel(checkpoint) : [element('p', 'The race appears with the first checkpoint.', 'empty-state')]));
-    raceBox.setAttribute('aria-busy', 'false');
-  }
-  if (labBox) {
-    // The checkpoint's experiments carry their verdicts; the lab stream carries the record.
-    const verdicts = labEvents.events.filter(event => event.kind === 'lab.verdict').sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-    labBox.replaceChildren(experimentsPanel(checkpoint?.lab, { empty: 'None yet. The lab proposes after its first nightly review.' }));
-    if (verdicts.length) {
-      labBox.append(table(['Time', 'Experiment', 'Verdict', 'Why'], verdicts.slice(0, 30).map(event => [
-        date(event.at), show(event.payload?.experiment_id) || '—', show(event.payload?.status) || '—', truncate(show(event.payload?.reason), 120).text,
-      ])));
-    }
-    labBox.setAttribute('aria-busy', 'false');
-  }
-  if (genomeBox) {
-    genomeBox.replaceChildren(genomePanel(genomeSummary(evolution.events, labEvents.events)));
-    genomeBox.setAttribute('aria-busy', 'false');
-  }
-  if (calibrationBox) {
-    const families = familyCalibrations(labEvents.events);
-    calibrationBox.replaceChildren(families.length
-      ? table(['Family', 'Forecasts', 'Brier', 'As of'], families.map(row => [`${row.family} family`, String(row.n), show(row.brier), date(row.as_of, 'day')]))
-      : element('p', 'Appears once a family’s forecasts resolve.', 'empty-state'));
-    calibrationBox.setAttribute('aria-busy', 'false');
-  }
-  const memoEvents = committeeEvents.events.filter(event => event.kind === 'committee.memo')
-    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-  const memoList = element('div');
-  for (const [index, event] of memoEvents.slice(0, 12).entries()) {
-    const memo = element('div', null, index === 0 ? 'memo memo-latest' : 'memo');
-    memo.append(element('h3', show(event.payload?.period) || 'Memo'));
-    memo.append(timeNode(event.at));
-    memo.append(element('p', show(event.payload?.text)));
-    memoList.append(memo);
-  }
-  memos.replaceChildren(memoEvents.length ? memoList : element('p', 'None yet.', 'empty-state'));
-  memos.setAttribute('aria-busy', 'false');
-  const series = allocationSeries(committeeEvents.events);
-  const reasons = allocationReasons(committeeEvents.events);
-  const current = checkpoint ? Object.entries(checkpoint.committee.allocations) : [];
-  const allocationBlock = element('div');
-  if (current.length) {
-    const list = element('div', null, 'allocation-current');
-    const why = new Map(reasons.rows.map(row => [row.desk, row.reason]));
-    for (const [id, usd] of current.sort((left, right) => (scaled(right[1]) > scaled(left[1]) ? 1 : -1))) {
-      const row = element('div', null, 'allocation-row');
-      const name = element('span');
-      name.append(link(partnerName(id), deskHref(id)));
-      if (why.get(id)) name.append(element('small', why.get(id), 'allocation-why'));
-      row.append(name, element('span', money(usd, 0)));
-      list.append(row);
-    }
-    allocationBlock.append(list);
-  }
-  if (series.rows.length) {
-    allocationBlock.append(table(
-      ['Time', ...series.desks.map(partnerName)],
-      series.rows.map(row => [date(row.at), ...series.desks.map(id => money(show(row.amounts[id]), 0))]),
-    ));
-  }
-  if (!current.length && !series.rows.length) allocationBlock.append(element('p', 'Nothing allocated yet.', 'empty-state'));
-  if (checkpoint) allocationBlock.append(element('p', join(`Floor capital ${money(checkpoint.floor.capital_usd, 0)}`, checkpoint.committee.last_memo_at ? `memo ${agoText(checkpoint.committee.last_memo_at)}` : ''), 'note'));
-  allocations.replaceChildren(allocationBlock);
-  allocations.setAttribute('aria-busy', 'false');
-  const gateEvents = committeeEvents.events.filter(event => event.kind === 'committee.gate');
-  gates.replaceChildren(gateEvents.length
-    ? table(['Time', 'Partner', 'Gate', 'Result'], gateEvents.slice(0, 40).map(event => [
-      date(event.at), partnerName(show(event.payload?.desk_id)) || '—', show(event.payload?.gate) || '—', event.payload?.passed ? 'passed' : 'not met',
-    ]))
-    : element('p', 'No gate decided yet.', 'empty-state'));
-  const evolutionEvents = evolution.events.filter(event => event.kind.startsWith('evolution.'));
-  const state = {
-    events: evolutionEvents, expanded: new Set(), active: new Set(),
-    redraw: () => renderTape(history, state.events, state),
+  const find = name => root.querySelector(`#${name}`);
+  const box = {
+    numbers: find('loop-numbers'), next: find('loop-next'), better: find('loop-better'), race: find('loop-race'),
+    status: find('loop-status'), changes: find('loop-changes'), capital: find('loop-capital'), more: find('loop-more'),
   };
-  state.redraw();
+  const state = { checkpoint: null, events: [], mode: 'loading', more: false, selected: null, pointer: 'mouse' };
+  const ready = node => node && node.setAttribute('aria-busy', 'false');
+  const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
+  const drawStatus = () => {
+    if (!box.status) return;
+    box.status.className = `live-status live-${state.mode}`;
+    box.status.replaceChildren(pulse(), element('span', state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'live · polling' : 'connecting'));
+  };
+  const drawChecked = () => {
+    if (!state.checkpoint) return;
+    drawn(box.numbers, loopStatus(state.events, state.checkpoint).map(numberCell));
+    drawn(box.better, betterPanel(state.checkpoint, state));
+    drawn(box.race, loopRacePanel(state.checkpoint, state.events));
+    drawn(box.capital, capitalPanel(state.checkpoint, state.events));
+  };
+  const drawChanges = () => { if (box.changes) { changesInto(box.changes, state); ready(box.changes); } };
+  const drawMore = () => {
+    if (!box.more) return;
+    const memo = state.events.filter(event => event.kind === 'committee.memo' && show(event.payload?.text))
+      .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))[0];
+    const families = familyCalibrations(state.events);
+    drawn(box.more, [memo ? memoPanel(memo) : null, families.length ? familyCalibrationPanel(families) : null].filter(Boolean));
+  };
+  const keep = events => {
+    const byId = new Map([...state.events, ...events].map(event => [event.id, event]));
+    state.events = [...byId.values()];
+  };
+  if (box.next) loopScheduleInto(box.next);
+  async function refresh() {
+    try {
+      state.checkpoint = await loadCheckpoint();
+      drawChecked();
+    } catch {
+      if (state.checkpoint) return;
+      const notice = element('p', 'The floor checkpoint is unavailable. ', 'unavailable');
+      notice.append(link('Read the runtime on GitHub.', REPOSITORY));
+      drawn(box.numbers, [notice]);
+      for (const node of [box.better, box.race, box.capital]) drawn(node, []);
+    }
+  }
+  await refresh();
+  const batches = await Promise.all([
+    { stream: 'evolution', limit: MAX_EVENT_LIMIT }, { stream: 'lab', limit: MAX_EVENT_LIMIT }, { kind: 'committee.allocation', limit: 60 },
+    { kind: 'committee.memo', limit: 5 }, { kind: 'desk.playbook_updated', limit: 60 },
+  ].map(query => loadEvents(query).catch(() => ({ events: [] }))));
+  keep(batches.flatMap(batch => batch.events));
+  drawChecked();
+  drawChanges();
+  drawMore();
+  drawStatus();
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 60000);
+  setInterval(() => { if (box.next && document.visibilityState === 'visible') loopScheduleInto(box.next); }, 30000);
   const feed = startFeed({
-    streams: ['committee', 'evolution'],
-    onStatus: mode => statusLine(status, mode, checkpoint?.published_at || null),
+    streams: ['committee', 'evolution', 'lab'],
+    onStatus: mode => { state.mode = mode; drawStatus(); },
     onEvents: events => {
-      state.events = [...events.filter(event => event.kind.startsWith('evolution.')), ...state.events].slice(0, TAPE_LIMIT);
-      state.redraw();
+      const wanted = events.filter(event => ['evolution', 'lab'].includes(event.stream) || ['committee.allocation', 'committee.memo'].includes(event.kind));
+      if (!wanted.length) return;
+      keep(wanted);
+      drawChanges();
+      drawMore();
+      if (state.checkpoint) drawn(box.numbers, loopStatus(state.events, state.checkpoint).map(numberCell));
     },
   });
   feed.remember(state.events);
-  feed.prime(state.events[0]?.seq || 0);
+  feed.prime(state.events.reduce((most, event) => Math.max(most, Number(event.seq) || 0), 0));
   return feed;
 }
 
