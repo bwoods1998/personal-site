@@ -2407,6 +2407,7 @@ async function startCommittee(root) {
   const labBox = root.querySelector('#committee-lab');
   const calibrationBox = root.querySelector('#committee-calibration');
   const curveBox = root.querySelector('#loop-curve');
+  const raceBox = root.querySelector('#loop-race');
   const genomeBox = root.querySelector('#loop-genome');
   statusLine(status, 'loading', null);
   let checkpoint = null;
@@ -2420,6 +2421,11 @@ async function startCommittee(root) {
   if (curveBox) {
     curveBox.replaceChildren(curveFigure(checkpoint?.lab));
     curveBox.setAttribute('aria-busy', 'false');
+  }
+  if (raceBox) {
+    // Each family's live desk and its shadow children, who leads, how the children differ.
+    raceBox.replaceChildren(...(checkpoint ? racePanel(checkpoint) : [element('p', 'The race appears with the first checkpoint.', 'empty-state')]));
+    raceBox.setAttribute('aria-busy', 'false');
   }
   if (labBox) {
     // The checkpoint's experiments carry their verdicts; the lab stream carries the record.

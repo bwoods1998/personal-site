@@ -529,6 +529,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
   assert.match(committeeHtml, /<h1 id="committee-title">The loop<\/h1>/);
   assert.ok(committeeHtml.indexOf('id="loop-curve"') < committeeHtml.indexOf('id="committee-lab"'), 'the improvement curve leads the loop page');
+  assert.ok(committeeHtml.indexOf('id="loop-curve"') < committeeHtml.indexOf('id="loop-race"') && committeeHtml.indexOf('id="loop-race"') < committeeHtml.indexOf('id="committee-lab"'), 'the race follows the curve on the loop page');
   assert.ok(committeeHtml.indexOf('id="committee-calibration"') < committeeHtml.indexOf('id="committee-memos"'), 'the memo sits behind a chevron at the end');
   assert.match(committeeHtml, /<details class="panel">\s*<summary>Meriwether’s memo<\/summary>/);
   const deskHtml = await readFile(new URL('../capital/desk/index.html', import.meta.url), 'utf8');
@@ -541,7 +542,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   assert.ok(staticWords(committeeHtml) < 100, `loop page static words: ${staticWords(committeeHtml)}`);
 
   const home = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(home, /Long Term Capital Management[\s\S]{0,400}Six AI portfolio managers trading real money in public\./);
+  assert.match(home, /Long Term Capital Management[\s\S]{0,400}AI partners trading real money in public, rewriting themselves from the results\./);
   assert.match(home, /href="\/capital\/"/);
   assert.doesNotMatch(home, /href="\/portfolio\/"|Portfolio Agent|Woods Capital/, 'the retired project leaves the home page');
 });
