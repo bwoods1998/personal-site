@@ -1930,6 +1930,42 @@ function deskHoldingsPanel(desk, events) {
   block.append(list);
   return block;
 }
+function cadenceText(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n % 3600 === 0) return `every ${n / 3600}h`;
+  if (n % 60 === 0) return `every ${n / 60} min`;
+  return `every ${n}s`;
+}
+// Strategies: code the desk deployed to trade for it between sessions, with each one's record.
+export function strategiesPanel(desk) {
+  const rows = Array.isArray(desk?.strategies) ? desk.strategies : [];
+  if (!rows.length) return null;
+  const block = section('Strategies', 'code that trades for the desk between sessions');
+  const list = element('div', null, 'strategies');
+  for (const row of rows) {
+    const item = element('article', null, 'strategy');
+    const head = element('div', null, 'strategy-head');
+    head.append(element('b', show(row.name)));
+    if (row.house) head.append(element('span', 'house starter', 'strategy-badge'));
+    head.append(element('span', cadenceText(row.cadence_seconds), 'strategy-cadence'));
+    if (row.last_run_at) head.append(timeNode(row.last_run_at, 'clock'));
+    item.append(head);
+    const pnl = numeric(row.settled_pnl_usd) ? Number(row.settled_pnl_usd) : 0;
+    const record = join(
+      `${show(row.runs)} runs`,
+      `${show(row.approved)} of ${show(row.intents)} orders approved`,
+      `${show(row.fills)} fills`,
+      row.settled > 0 ? `${show(row.wins)} of ${show(row.settled)} settled won, ${signedMoney(row.settled_pnl_usd, 2)}` : 'nothing settled yet',
+      row.errors > 0 ? `${show(row.errors)} errors` : '',
+    );
+    item.append(element('p', record, `strategy-record ${row.settled > 0 ? (pnl >= 0 ? 'up' : 'down') : ''}`));
+    if (row.last_notes) item.append(element('p', row.last_notes, 'strategy-notes'));
+    list.append(item);
+  }
+  block.append(list);
+  return block;
+}
 function toolboxPanel(events) {
   const runs = codeRuns(events);
   if (!runs.length) return null;
@@ -2028,6 +2064,8 @@ async function startDesk(root) {
   ];
   const eventDesk = Array.isArray(desk?.venues) && desk.venues.includes('kalshi') || (desk?.calibration && typeof desk.calibration === 'object');
   if (eventDesk || latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })) panels.push(calibrationCard(desk, latestCalibration(labEvents.events, { scope: 'desk', desk_id: id })));
+  const strategies = strategiesPanel(desk);
+  if (strategies) panels.push(strategies);
   const toolbox = toolboxPanel(deskEvents.events);
   if (toolbox) panels.push(toolbox);
   panels.push(playbookPanel(deskEvents.events));

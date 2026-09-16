@@ -798,6 +798,24 @@ test('a shadow desk is published, validated and rendered as hypothetical', async
   assert.equal(validDesk(desk('merton', { mode: 'shadow' }), '2026-09-15T14:05:00.000Z'), true);
   assert.equal(validDesk(desk('merton', { mode: 'paper' }), '2026-09-15T14:05:00.000Z'), true);
   assert.equal(validDesk(desk('merton', { mode: 'margin' }), '2026-09-15T14:05:00.000Z'), false);
+  // Strategies: code the desk deployed to trade for it, with each one's record. Optional.
+  const strategy = {
+    name: 'hourly_ranges', house: true, cadence_seconds: 300, runs: 12, intents: 5, approved: 4, errors: 0,
+    fills: 3, settled: 2, wins: 1, settled_pnl_usd: '-1.25', last_run_at: '2026-09-15T14:00:00.000Z', last_notes: '3 buckets with edge',
+  };
+  assert.equal(validDesk(desk('merton', { strategies: [strategy] }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { strategies: [] }), '2026-09-15T14:05:00.000Z'), true);
+  assert.equal(validDesk(desk('merton', { strategies: [{ ...strategy, last_run_at: null, last_notes: '' }] }), '2026-09-15T14:05:00.000Z'), true);
+  for (const [label, bad] of Object.entries({
+    'a name that is not a module name': { ...strategy, name: 'Hourly Ranges' },
+    'a note with markup': { ...strategy, last_notes: '<b>edge</b>' },
+    'a run from the future': { ...strategy, last_run_at: '2026-09-15T15:05:00.000Z' },
+    'a negative count': { ...strategy, fills: -1 },
+    'an extra field': { ...strategy, params: {} },
+    'a missing field': Object.fromEntries(Object.entries(strategy).filter(([k]) => k !== 'wins')),
+  })) assert.equal(validDesk(desk('merton', { strategies: [bad] }), '2026-09-15T14:05:00.000Z'), false, label);
+  assert.equal(validDesk(desk('merton', { strategies: [strategy, strategy] }), '2026-09-15T14:05:00.000Z'), false, 'duplicate names');
+  assert.equal(validDesk(desk('merton', { strategies: Array.from({ length: 9 }, (_, i) => ({ ...strategy, name: `s${i}` })) }), '2026-09-15T14:05:00.000Z'), false, 'too many');
   assert.equal(deskMode('paper'), 'shadow');
   assert.equal(deskMode('live'), 'live');
   assert.equal(isLive({ mode: 'shadow' }), false);
