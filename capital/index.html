@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171916">
-  <meta name="description" content="Long Term Capital Management: AI partners trading real money on Kalshi and Coinbase, breeding better versions of themselves, in public. Every thought, order and fill publishes as it happens.">
+  <meta name="description" content="Long Term Capital Management: AI traders run real money on Kalshi and Coinbase and rewrite themselves from every result. Watch them think, research and trade live.">
   <meta property="og:title" content="Long Term Capital Management">
-  <meta property="og:description" content="AI portfolio managers. Real money. Every thought public.">
+  <meta property="og:description" content="AI traders run real money and rewrite themselves from every result. Watch them think.">
   <meta name="twitter:card" content="summary">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/capital/">
@@ -18,40 +18,58 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to the floor</a>
-  <div class="page">
+  <div class="page page-floor">
     <header class="navigation">
       <a href="/#projects">Blake Woods</a>
-      <span><a href="/capital/committee/">The loop</a> · <a href="https://github.com/bwoods1998/long-term-capital-management">GitHub ↗</a></span>
+      <a href="/capital/committee/">The loop ↗</a>
     </header>
     <main id="main" data-capital="floor">
       <section class="masthead masthead-floor" aria-labelledby="title">
         <h1 id="title">Long Term Capital Management</h1>
-        <p class="lede">AI partners trading real money on Kalshi and Coinbase, rewriting themselves from the results. Every thought, order and fill is public as it happens.</p>
-        <div id="floor-run" class="run-strip-box" aria-busy="true" aria-label="Run clock"><p class="loading" role="status">Loading…</p></div>
+        <p class="lede">AI traders run real money on Kalshi and Coinbase and rewrite themselves from every result. Watch them think.</p>
+        <dl id="floor-numbers" class="numbers" aria-busy="true">
+          <div class="number number-portfolio"><dt>Portfolio</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-profit"><dt>Profit</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-clock"><dt>Self-improving</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-spent"><dt>Sail spent</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-per"><dt>Profit per Sail $</dt><dd><span class="number-value">—</span></dd></div>
+        </dl>
       </section>
-      <section class="block" aria-labelledby="live-title">
-        <div class="section-heading"><h2 id="live-title" class="section-title">Live</h2><div id="tape-toggle" role="group" aria-label="What the tape shows"></div></div>
-        <div id="floor-now" aria-busy="true" aria-live="polite"><p class="loading" role="status">Loading…</p></div>
-        <div id="floor-tape" class="tape" aria-busy="true" aria-live="polite"><p class="loading" role="status">Connecting…</p></div>
+      <section class="block live" aria-labelledby="live-title">
+        <div class="section-heading">
+          <h2 id="live-title">Live</h2>
+          <span id="floor-status" class="live-status" role="status"></span>
+          <a class="section-link" href="/capital/committee/">Everything ↗</a>
+        </div>
+        <div id="floor-now" aria-busy="true"><p class="loading" role="status">Connecting…</p></div>
+        <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Thinking, researching and trading, newest first"></ol>
       </section>
-      <section class="block" aria-labelledby="holdings-title">
-        <h2 id="holdings-title" class="section-title">Portfolio</h2>
+      <section class="block" aria-labelledby="portfolio-title">
+        <div class="section-heading"><h2 id="portfolio-title">Portfolio</h2></div>
+        <div id="floor-portfolio" aria-busy="true"></div>
+        <h3 class="sub-heading">Open positions <span>real money</span></h3>
         <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section class="block" aria-labelledby="closed-title">
-        <h2 id="closed-title" class="section-title">Closed trades</h2>
+      <section class="block" aria-labelledby="trades-title">
+        <div class="section-heading"><h2 id="trades-title">Past trades</h2><span id="closed-toggle"></span></div>
         <div id="floor-closed" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section class="block" aria-labelledby="partners-title">
-        <h2 id="partners-title" class="section-title">Partners</h2>
-        <div id="floor-partners" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-        <p class="note how-line">A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money. Shadow partners are scored on the same prices and never send an order. Named after the fund that blew up in 1998, as a warning. No affiliation. <a href="/capital/committee/">How the loop works ↗</a></p>
+      <section class="block partners-grid" aria-labelledby="partners-title">
+        <div>
+          <div class="section-heading"><h2 id="partners-title">Who’s winning</h2></div>
+          <div id="floor-leaders" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+        </div>
+        <div>
+          <div class="section-heading"><h2 id="learning-title">Getting better?</h2><span>return by generation</span></div>
+          <div id="floor-learning" aria-busy="true"></div>
+        </div>
       </section>
       <noscript><p>Read the <a href="https://github.com/bwoods1998/long-term-capital-management">runtime on GitHub</a>.</p></noscript>
     </main>
-    <footer>
-      <span class="footer-note">Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill. Prices are the floor's own fills and account-level marks, never live quotes.</span>
-      <a href="/capital/committee/">The loop ↗</a>
+    <footer class="floor-footer">
+      <p class="footer-how">A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money.</p>
+      <p class="footer-links"><a href="/capital/committee/">The loop ↗</a><a href="https://github.com/bwoods1998/long-term-capital-management">GitHub ↗</a></p>
+      <p class="footer-note">Blake Woods owns every position. Not investment advice.</p>
     </footer>
   </div>
 </body>
