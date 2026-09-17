@@ -27,7 +27,7 @@ import {
   deskSessions, recentItems, actionWords, thoughtText, deskIdentity, deskNumbers, deskRecordLine, strategyRows, deskLessons, leadParagraph, deskPositionRows,
   loopSchedule, loopStatus, loopChanges, liveSleeves, gateProgress, gateLine, reasonText, isDemotion, floorFounded, whenText,
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers, economicsText,
-  RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, openPositionRows,
+  RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, PERFORMANCE_START_AT, openPositionRows,
   closedRecord, leaderboardRows, generationGrid, loopCounts, loopCountLine,
 } from '../capital/capital.js';
 
@@ -1170,7 +1170,8 @@ test('the checkpoint carries the account balances beside the ledger, or not at a
 });
 
 test('all-time performance keeps the full balance history including transfers and losses', async () => {
-  const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')];
+  const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')]
+    .map(event => ({ ...event, at: event.at.replace('2026-09-15', '2026-09-16') }));
   assert.equal(balanceSeries([marks[0]]), null, 'a line needs a second mark');
   const series = balanceSeries(marks);
   assert.equal(series.points.length, 3);
@@ -1287,10 +1288,10 @@ test('upgrading an existing floor recovers its retained balance marks into durab
 
 test('the floor chart loads archived marks older than the live tape', async () => {
   const root = stubPage('floor', FLOOR_IDS);
-  const old = { at: '2026-09-01T00:00:00.000Z', account_equity: '500' };
+  const old = { at: PERFORMANCE_START_AT, account_equity: '500' };
   await withBrowser('', path => {
     if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ floor: accountFloor() });
-    if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: floorMark().at, account_equity: '979.69' }] };
+    if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: '2026-09-17T00:00:00.000Z', account_equity: '979.69' }] };
     return { schema_version: 1, latest_seq: 300, events: path.includes('kind=floor.mark') ? [floorMark()] : [] };
   }, async () => {
     const feed = await startCapital(root);
@@ -1299,6 +1300,26 @@ test('the floor chart loads archived marks older than the live tape', async () =
     assert.match(words(portfolio.withClass('balance-caption')[0]), /All time.*\+\$479\.69 balance change/);
     assert.match(portfolio.find('svg')[0].getAttribute('aria-label'), /\$500\.00 to \$979\.69/);
   });
+});
+
+test('performance starts at the complete-account boundary and never hides subsequent losses', () => {
+  const point = (at, equity) => floorMark(0, equity, { at });
+  const history = [
+    point('2026-09-15T18:23:06.913Z', '979.61'),
+    point('2026-09-16T04:47:46.709Z', '497.22'),
+    point('2026-09-16T04:53:06.201Z', '504.54'),
+    point(PERFORMANCE_START_AT, '976.11'),
+    point('2026-09-16T05:05:01.805Z', '960.15'),
+    point('2026-09-17T00:00:00.000Z', '450'),
+  ];
+  const series = performanceSeries(history);
+  assert.equal(series.first.at, Date.parse(PERFORMANCE_START_AT));
+  assert.equal(series.first.equity, 976.11);
+  assert.equal(series.points.length, 3);
+  assert.equal(series.last.equity, 450, 'even a later 50% loss stays visible');
+  assert.equal(series.changeText, '−$526.11');
+  assert.equal(history.length, 6, 'the original records are untouched');
+  assert.equal(performanceSeries(history.slice(0, 3)), null);
 });
 
 // ------------------------------------------------------------------ contract v2: the leap

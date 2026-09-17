@@ -13,6 +13,9 @@ const TAPE_TEXT_LIMIT = 140;
 // Durable all-time balance history, separate from the bounded live activity tape.
 const FLOOR_MARK = { kind: 'floor.mark', field: 'account_equity' };
 const FLOOR_HISTORY_LIMIT = 2048;
+// First complete account mark after the Sept 16 Kalshi equity fix: earlier readings
+// reported positions without cash. Fixed provenance boundary, never a drawdown filter.
+export const PERFORMANCE_START_AT = '2026-09-16T04:58:42.508Z';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
 const REPOSITORY = 'https://github.com/bwoods1998/long-term-capital-management';
@@ -1099,6 +1102,12 @@ export function balanceSeries(events, { width = 1000, height = 120 } = {}) {
     change, changeText: signedMoney(change.toFixed(2), 2), tone: change > 0 ? 'positive' : change < 0 ? 'negative' : '',
   };
 }
+// Keep the audited chart start identical for archive loads, live updates and tape fallback.
+export function performanceSeries(events) {
+  const start = Date.parse(PERFORMANCE_START_AT);
+  return balanceSeries((Array.isArray(events) ? events : []).filter(event => Date.parse(event?.at) >= start));
+}
+
 // Real-money positions worth showing. Practice positions and dust are counted, not listed.
 export function openPositionRows(checkpoint, { minValue = 0.5 } = {}) {
   const rows = [];
@@ -1528,12 +1537,12 @@ function balanceChart(series) {
   const now = element('span', null, 'balance-now');
   now.append(element('b', series.changeText, series.tone || null), element('span', ` balance change · now ${money(series.last.equity.toFixed(2), 2)}`));
   caption.append(since, now);
-  figure.append(plot, caption, element('p', 'Portfolio value includes deposits and withdrawals. Balance change is not trading P&L.', 'floor-economics'));
+  figure.append(plot, caption, element('p', 'Starts with complete account balances; earlier incomplete readings are excluded. Portfolio value includes deposits and withdrawals, not just trading P&L.', 'floor-economics'));
   return figure;
 }
 function portfolioPanel(checkpoint, marks) {
   const venues = accountVenues(checkpoint?.floor);
-  const series = balanceSeries(marks);
+  const series = performanceSeries(marks);
   const line = element('p', null, 'venues');
   for (const row of venues) {
     const chip = element('span', null, row.stale ? 'venue venue-stale' : 'venue');

@@ -16,8 +16,11 @@ Public prices on these pages are the floor's own fills and account-level marks. 
 
 ### The pages
 
-The floor's **Performance · All time** chart uses every available recorded portfolio balance,
-starting September 15, 2026. It does not reset after a large move. This is portfolio value,
+The floor's **Performance · All time** chart starts at `2026-09-16T04:58:42.508Z`
+(September 15, 9:58 p.m. Pacific), the first complete-account mark after the Kalshi adapter
+was fixed to include cash alongside position value. Earlier incomplete readings stay archived
+but are not plotted. This is a fixed historical boundary: later large losses remain visible,
+and the chart does not reset after a large move. This is portfolio value,
 including deposits and withdrawals, not a cash-flow-adjusted return or trading P&L.
 `GET /api/capital/history` reads a durable balance archive independent of the 20,000-event live
 tape. It returns at most 2,048 recorded points, retaining the first and last for long runs.
