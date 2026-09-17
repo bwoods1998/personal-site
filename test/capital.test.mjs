@@ -1830,7 +1830,7 @@ test('the desk page reads who a partner is, its numbers, sessions, strategies an
   assert.deepEqual(deskNumbers(null).map(item => item.value), ['—', '—', '—', '—', '—']);
 
   assert.deepEqual(strategyRows(desk('hilibrand', { strategies: [{ name: 'spot_quotes', house: true, note: 'house starter', cadence_seconds: 300, runs: 110, intents: 176, approved: 40, errors: 2, fills: 14, settled: 5, wins: 1, settled_pnl_usd: '-0.04', last_run_at: null, last_notes: '2 kept', params: { symbols: ['BTC-USD', 'ETH-USD'] } }] })),
-    [{ name: 'spot quotes', every: '5 min', runs: 110, approved: '40 of 176', fills: 14, settled: '1 of 5 won', pnlText: '−$0.04', tone: 'negative', note: 'house starter', errors: 2, lastNotes: '2 kept', settings: 'symbols BTC-USD, ETH-USD' }]);
+    [{ name: 'spot quotes', every: '5 min', runs: 110, approved: '40 of 176', fills: 14, settled: '1 of 5 won', pnlText: '−$0.04', tone: 'negative', note: 'house starter', errors: 2, lastNotes: '2 kept', family: '', settings: 'symbols BTC-USD, ETH-USD' }]);
   assert.deepEqual(strategyRows(null), []);
 
   const lessons = deskLessons([

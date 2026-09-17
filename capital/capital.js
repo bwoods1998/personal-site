@@ -2233,6 +2233,18 @@ function cadenceText(seconds) {
   if (n % 60 === 0) return `${n / 60} min`;
   return `${n}s`;
 }
+// The family's pooled record of this code: every desk of the family, real money and shadow,
+// and whether that record passes the evidence gate that sizes the live desks.
+export function familyEvidenceText(family) {
+  if (!family || typeof family !== 'object') return '';
+  const settled = Number(family.settled) || 0;
+  if (!settled) return '';
+  const real = Number(family.real_settled) || 0;
+  const desks = Number(family.desks) || 0;
+  const pnl = numeric(show(family.settled_pnl_usd)) ? signedMoney(show(family.settled_pnl_usd), 2) : '';
+  const verdict = family.passes ? 'passes the evidence gate' : 'not yet proven';
+  return join(`family record ${settled} settled${real ? ` (${real} real)` : ''}${desks ? ` on ${plural(desks, 'desk')}` : ''}`, pnl, verdict);
+}
 // Strategies: code the desk deployed to trade for it between sessions, one row each.
 export function strategyRows(desk) {
   return (Array.isArray(desk?.strategies) ? desk.strategies : []).filter(row => row && typeof row === 'object').map(row => {
@@ -2244,6 +2256,7 @@ export function strategyRows(desk) {
       approved: `${Number(row.approved) || 0} of ${Number(row.intents) || 0}`, fills: Number(row.fills) || 0,
       settled: settled ? `${Number(row.wins) || 0} of ${settled} won` : '—', pnlText: settled && pnl ? signedMoney(pnl, 2) : '—', tone: settled && pnl ? signOf(pnl) : '',
       note: show(row.note), errors: Number(row.errors) || 0, lastNotes: show(row.last_notes),
+      family: familyEvidenceText(row.family),
       settings: Object.entries(params).map(([key, value]) => `${humanize(key)} ${Array.isArray(value) ? value.map(show).join(', ') : show(value)}`).join(' · '),
     };
   });
@@ -2351,6 +2364,7 @@ function strategyTable(rows) {
     const name = element('td', null, 'col-strategy');
     name.append(element('span', row.name, 'strategy-name'));
     if (row.note) name.append(tagNode(row.note, 'note'));
+    if (row.family) name.append(tagNode(row.family, 'family'));
     if (row.errors) name.append(tagNode(plural(row.errors, 'error'), 'error'));
     line.append(name, element('td', row.every, 'col-num col-every'), element('td', String(row.runs), 'col-num col-runs'), element('td', row.approved, 'col-num col-approved'),
       element('td', String(row.fills), 'col-num col-fills'), element('td', row.settled, 'col-num col-settled'), element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()));
