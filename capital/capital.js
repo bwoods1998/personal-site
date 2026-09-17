@@ -995,8 +995,9 @@ export function feedLine(event, liveIds = new Set()) {
   const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {};
   if (event.kind === 'lab.progress') {
     const text = plainThought(payload.message);
-    return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: 'foundry', name: 'Foundry',
-      practice: false, pnl: '', tone: '', kind: payload.stage === 'learn' ? 'learning' : 'testing', text } : null;
+    const execution = payload.component === 'execution';
+    return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: execution ? 'arena' : 'foundry', name: execution ? 'Execution' : 'Foundry',
+      practice: false, pnl: '', tone: '', kind: execution ? 'monitoring' : payload.stage === 'learn' ? 'learning' : 'testing', text } : null;
   }
   const desk = streamDeskOf(event.stream) || show(payload.desk_id);
   if (!deskId(desk) || desk === 'settlement') return null;
@@ -1473,7 +1474,7 @@ function feedItem(line, state, fresh) {
   item.append(timeNode(line.at, 'hm'));
   item.append(element('span', FEED_LABELS[line.kind], `feed-kind kind-${line.kind}`));
   const who = element('span', null, 'feed-who');
-  who.append(line.desk === 'foundry' ? element('span', line.name, 'feed-name') : link(line.name, deskHref(line.desk), 'feed-name'));
+  who.append(['foundry', 'arena'].includes(line.desk) ? element('span', line.name, 'feed-name') : link(line.name, deskHref(line.desk), 'feed-name'));
   if (line.practice) who.append(tagNode('practice', 'practice'));
   const open = state.expanded.has(line.id);
   const body = element(line.kind === 'thinking' ? 'button' : 'span', null, `feed-text${open ? ' feed-open' : ''}`);
@@ -1797,7 +1798,7 @@ async function startFloor(root) {
     { kind: 'desk.thought', limit: 60 }, { kind: 'desk.tool_call', limit: 100 }, { kind: 'broker.fill', limit: 60 },
     { kind: 'desk.session_ended', limit: 40 }, { kind: 'desk.outcome', limit: MAX_EVENT_LIMIT },
     { stream: 'ops', kind: 'floor.mark', limit: MAX_EVENT_LIMIT }, { stream: 'evolution', limit: MAX_EVENT_LIMIT }, { kind: 'lab.experiment', limit: MAX_EVENT_LIMIT },
-    { kind: 'lab.progress', limit: 30 },
+    { kind: 'lab.progress', limit: 60 },
   ];
   const [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments, progress] = await Promise.all(loads.map(query => loadEvents(query).catch(() => ({ events: [] }))));
   keepFeed([...thoughts.events, ...calls.events, ...fills.events, ...endings.events, ...outcomes.events.slice(0, 40), ...progress.events]);

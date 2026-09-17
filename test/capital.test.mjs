@@ -2114,6 +2114,8 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   const progress = feedLine(ev('lab.progress', 'lab', { stage: 'test', message: 'Testing 12 candidates on Sail' }), live);
   assert.deepEqual([progress.kind, progress.name, progress.text, progress.practice], ['testing', 'Foundry', 'Testing 12 candidates on Sail', false]);
   assert.equal(feedLine(ev('lab.progress', 'lab', { stage: 'learn', message: 'No candidates qualified' }), live).kind, 'learning');
+  const pulse = feedLine(ev('lab.progress', 'lab', { component: 'execution', stage: 'heartbeat', message: 'Coinbase: 0 real fills; 16 shadow strategies testing' }), live);
+  assert.deepEqual([pulse.kind, pulse.name, pulse.desk, pulse.practice], ['monitoring', 'Execution', 'arena', false]);
   assert.equal(validDesk(desk('merton', { equity: '-5', cash: '-10' }), '2026-09-15T14:05:00.000Z'), true, 'signed sleeve balances are honest');
   assert.ok(Object.keys(RESEARCH).every(tool => !['propose_order', 'cancel_order', 'memo', 'playbook_write'].includes(tool)));
 
