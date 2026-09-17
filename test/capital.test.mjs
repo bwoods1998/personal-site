@@ -26,7 +26,7 @@ import {
   ago, roman, raceName, triggerText, flatLine, raceRows,
   deskSessions, recentItems, actionWords, thoughtText, deskIdentity, deskNumbers, deskRecordLine, strategyRows, deskLessons, leadParagraph, deskPositionRows,
   loopSchedule, loopStatus, loopChanges, liveSleeves, gateProgress, gateLine, reasonText, isDemotion, floorFounded, whenText,
-  marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers,
+  marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers, economicsText,
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, openPositionRows,
   closedRecord, leaderboardRows, generationGrid, loopCounts, loopCountLine,
 } from '../capital/capital.js';
@@ -1953,6 +1953,8 @@ test('market tickers read as the thing they bet on, and anything unknown keeps i
 });
 
 test('the masthead reads five numbers, and the clock ticks in hours, minutes and seconds', () => {
+  assert.match(economicsText({ pnl_total_usd: '5.00', sail_spend_total_usd: '8.00' }), /Net after Sail: −\$3.00/);
+  assert.doesNotMatch(economicsText(null), /\$0/);
   const now = Date.parse('2026-09-16T18:00:00.000Z');
   const body = checkpoint({ floor: accountFloor({ account_equity: '943.83' }), run: run({ started_at: '2026-09-15T18:11:00.000Z', pnl_total_usd: '-75.80', sail_spend_total_usd: '18.86', sail_model_spend_today_usd: '13.15', pnl_per_sail_dollar: '-4.01' }) });
   assert.deepEqual(mastheadNumbers(body, now).map(item => [item.label, item.value, item.tone, item.note || '', item.tick || '']), [
@@ -2015,7 +2017,11 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   const settled = feedLine(ev('desk.outcome', 'desk:haghani', { market_id: 'KXHIGHAUS-26SEP16-B100.5', result: 'no', pnl: '4.12' }), live);
   assert.deepEqual([settled.text, settled.pnl, settled.tone], ['closed Austin high 100–101°F · Sep 16, settled NO', '+$4.12', 'positive']);
   for (const kind of ['desk.tool_result', 'ledger.mark', 'risk.decision', 'desk.code_run', 'ops.alert', 'ops.budget']) assert.equal(feedLine(ev(kind, 'desk:haghani', { text: 'x' }), live), null, kind);
-  assert.deepEqual(FEED_KINDS, ['desk.thought', 'desk.tool_call', 'broker.fill', 'desk.outcome']);
+  assert.deepEqual(FEED_KINDS, ['desk.thought', 'desk.tool_call', 'broker.fill', 'desk.outcome', 'lab.progress']);
+  const progress = feedLine(ev('lab.progress', 'lab', { stage: 'test', message: 'Testing 12 candidates on Sail' }), live);
+  assert.deepEqual([progress.kind, progress.name, progress.text, progress.practice], ['testing', 'Foundry', 'Testing 12 candidates on Sail', false]);
+  assert.equal(feedLine(ev('lab.progress', 'lab', { stage: 'learn', message: 'No candidates qualified' }), live).kind, 'learning');
+  assert.equal(validDesk(desk('merton', { equity: '-5', cash: '-10' }), '2026-09-15T14:05:00.000Z'), true, 'signed sleeve balances are honest');
   assert.ok(Object.keys(RESEARCH).every(tool => !['propose_order', 'cancel_order', 'memo', 'playbook_write'].includes(tool)));
 
   // Newest first; a desk repeating itself, numbers aside, folds into one line with a count.
@@ -2086,4 +2092,3 @@ test('real-money positions skip dust and count practice; the generations show wh
   assert.deepEqual(counts, { bred: 3, retired: 1, promoted: 1, demoted: 0, founded: 0, experiments: 2 }, 'the roster is a floor under the trimmed log, and nothing counts twice');
   assert.equal(loopCountLine(counts), 'bred 3 · retired 1 · promoted 1 · experiments 2');
 });
-

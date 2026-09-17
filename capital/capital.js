@@ -64,7 +64,7 @@ const FILTER_GROUPS = {
   risk: ['risk.decision', 'risk.review', 'risk.breaker', 'ops.alert', 'ops.budget'],
   committee: ['committee.allocation', 'committee.memo', 'committee.gate'],
   evolution: ['evolution.spawned', 'evolution.retired', 'evolution.promoted', 'evolution.founded', 'desk.playbook_updated', 'lab.hypothesis', 'lab.result',
-    'lab.calibration', 'lab.experiment', 'lab.verdict'],
+    'lab.calibration', 'lab.experiment', 'lab.verdict', 'lab.progress'],
 };
 const GROUP_OF_KIND = Object.fromEntries(Object.entries(FILTER_GROUPS).flatMap(([group, kinds]) => kinds.map(kind => [kind, group])));
 // A glyph per tone, so a line reads at a glance without another typeface or an image request.
@@ -268,6 +268,7 @@ const DETAILS = {
   'evolution.founded': p => join(`founded ${show(p.name) || floorName(show(p.desk_id))}, a new ${humanize(show(p.family)) || 'family'} family`, show(p.universe)),
   'lab.hypothesis': p => join(show(p.text), show(p.test_plan)),
   'lab.result': p => join(show(p.verdict), show(p.hypothesis_id)),
+  'lab.progress': p => show(p.message),
   'desk.watch': p => join(`${humanize(show(p.trigger))}: ${p.decision === 'wake' ? 'woke the desk' : p.decision === 'ignore' ? 'let it pass' : show(p.decision)}`, show(p.detail), show(p.reason)),
   'desk.forecast': p => join(`puts ${probabilityText(p.probability)} on ${show(p.market)}${p.side ? ` ${show(p.side)}` : ''}`, numeric(p.market_price) ? `market ${probabilityText(p.market_price)}` : '', show(p.reasoning)),
   'desk.exit_plan': p => join(`exit plan for ${instrumentLabel(p.instrument)}`, p.target_price ? `target ${priceText(show(p.target_price))}` : '', p.stop_price ? `stop ${priceText(show(p.stop_price))}` : '',
@@ -917,6 +918,12 @@ export function mastheadNumbers(checkpoint, now = Date.now()) {
   ];
 }
 
+export function economicsText(run) {
+  if (!run || !numeric(run.pnl_total_usd) || !numeric(run.sail_spend_total_usd)) return 'Trading P&L excludes compute. Research backtests are simulated.';
+  const net = (Number(run.pnl_total_usd) - Number(run.sail_spend_total_usd)).toFixed(2);
+  return `Net after Sail: ${signedMoney(net, 2)}. Trading P&L above includes open positions and excludes compute; backtests are simulated.`;
+}
+
 // ---- live: thinking, researching, trading
 // A tool call is shown when it is research, in the words a person would use for it. Orders, memos
 // and playbook writes are left out: the trade itself shows, and the rest is bookkeeping.
@@ -952,7 +959,7 @@ export const RESEARCH = {
     return symbol ? `reading ${count}${interval}${marketTitle(symbol)} price bars` : 'reading price history';
   },
 };
-export const FEED_KINDS = ['desk.thought', 'desk.tool_call', 'broker.fill', 'desk.outcome'];
+export const FEED_KINDS = ['desk.thought', 'desk.tool_call', 'broker.fill', 'desk.outcome', 'lab.progress'];
 function fillWords(payload) {
   const instrument = payload.instrument && typeof payload.instrument === 'object' ? payload.instrument : { symbol: show(payload.instrument) };
   const symbol = show(instrument.market_id) || show(instrument.symbol);
@@ -976,6 +983,11 @@ export const plainThought = value => show(value).replace(/\*\*|__|`+/g, '').repl
 export function feedLine(event, liveIds = new Set()) {
   if (!event || !FEED_KINDS.includes(event.kind)) return null;
   const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {};
+  if (event.kind === 'lab.progress') {
+    const text = plainThought(payload.message);
+    return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: 'foundry', name: 'Foundry',
+      practice: false, pnl: '', tone: '', kind: payload.stage === 'learn' ? 'learning' : 'testing', text } : null;
+  }
   const desk = streamDeskOf(event.stream) || show(payload.desk_id);
   if (!deskId(desk) || desk === 'settlement') return null;
   const practice = payload.shadow === true || event.stream === 'broker:shadow' || !(liveIds instanceof Set && liveIds.has(desk));
@@ -1363,7 +1375,7 @@ export function gateLine(member) {
 const FEED_LINES = 12;
 const TRADE_ROWS = 8;
 const HERO_TEXT_LIMIT = 420;
-const FEED_LABELS = { thinking: 'thinking', researching: 'researching', trading: 'trading' };
+const FEED_LABELS = { thinking: 'thinking', researching: 'researching', trading: 'trading', testing: 'testing', learning: 'learning' };
 const tagNode = (text, kind) => element('span', text, `tag tag-${kind}`);
 const modeTag = live => tagNode(live ? 'real money' : 'practice', live ? 'real' : 'practice');
 function pulse(className = 'pulse') {
@@ -1454,7 +1466,7 @@ function feedItem(line, state, fresh) {
   item.append(timeNode(line.at, 'hm'));
   item.append(element('span', FEED_LABELS[line.kind], `feed-kind kind-${line.kind}`));
   const who = element('span', null, 'feed-who');
-  who.append(link(line.name, deskHref(line.desk), 'feed-name'));
+  who.append(line.desk === 'foundry' ? element('span', line.name, 'feed-name') : link(line.name, deskHref(line.desk), 'feed-name'));
   if (line.practice) who.append(tagNode('practice', 'practice'));
   const open = state.expanded.has(line.id);
   const body = element(line.kind === 'thinking' ? 'button' : 'span', null, `feed-text${open ? ' feed-open' : ''}`);
@@ -1755,6 +1767,8 @@ async function startFloor(root) {
       state.desks = new Map(desks.map(desk => [show(desk.id), desk]));
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
       drawn(box.numbers, numbersPanel(state.checkpoint, state));
+      const economics = find('floor-economics');
+      if (economics) economics.textContent = economicsText(state.checkpoint.run);
       drawPortfolio();
       drawn(box.positions, positionsPanel(state.checkpoint, state));
       drawn(box.leaders, leadersPanel(state.checkpoint));
@@ -1775,9 +1789,10 @@ async function startFloor(root) {
     { kind: 'desk.thought', limit: 60 }, { kind: 'desk.tool_call', limit: 100 }, { kind: 'broker.fill', limit: 60 },
     { kind: 'desk.session_ended', limit: 40 }, { kind: 'desk.outcome', limit: MAX_EVENT_LIMIT },
     { stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT }, { stream: 'evolution', limit: MAX_EVENT_LIMIT }, { kind: 'lab.experiment', limit: MAX_EVENT_LIMIT },
+    { kind: 'lab.progress', limit: 30 },
   ];
-  const [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments] = await Promise.all(loads.map(query => loadEvents(query).catch(() => ({ events: [] }))));
-  keepFeed([...thoughts.events, ...calls.events, ...fills.events, ...endings.events, ...outcomes.events.slice(0, 40)]);
+  const [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments, progress] = await Promise.all(loads.map(query => loadEvents(query).catch(() => ({ events: [] }))));
+  keepFeed([...thoughts.events, ...calls.events, ...fills.events, ...endings.events, ...outcomes.events.slice(0, 40), ...progress.events]);
   state.outcomes = outcomes.events;
   state.marks = marks.events;
   state.loop = [...evolution.events, ...experiments.events];
@@ -1793,7 +1808,7 @@ async function startFloor(root) {
     state.clock.main.textContent = parts.main;
     state.clock.tick.textContent = parts.tick;
   }, 1000);
-  const loaded = [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments].flatMap(batch => batch.events);
+  const loaded = [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments, progress].flatMap(batch => batch.events);
   const feed = startFeed({
     streams: ['all'],
     onStatus: mode => { state.mode = mode; drawStatus(); },
@@ -2182,7 +2197,7 @@ export function strategyRows(desk) {
     const pnl = numeric(show(row.settled_pnl_usd)) ? show(row.settled_pnl_usd) : '';
     const params = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? row.params : {};
     return {
-      name: humanize(show(row.name)), every: cadenceText(row.cadence_seconds) || '—', runs: Number(row.runs) || 0,
+      name: humanize(show(row.name)), every: row.enabled === false ? 'Paused' : cadenceText(row.cadence_seconds) || '—', runs: Number(row.runs) || 0,
       approved: `${Number(row.approved) || 0} of ${Number(row.intents) || 0}`, fills: Number(row.fills) || 0,
       settled: settled ? `${Number(row.wins) || 0} of ${settled} won` : '—', pnlText: settled && pnl ? signedMoney(pnl, 2) : '—', tone: settled && pnl ? signOf(pnl) : '',
       note: show(row.note), errors: Number(row.errors) || 0, lastNotes: show(row.last_notes),

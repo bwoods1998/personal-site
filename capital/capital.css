@@ -158,6 +158,7 @@ footer { border-top: 1px solid var(--line); padding: 18px 0 36px; font-size: 10p
 .number-value { font-size: clamp(24px, 2.9vw, 32px); letter-spacing: -1px; line-height: 1.15; white-space: nowrap; }
 .number-tick { font: 12px/1 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .number-note { font: 12px/1.4 'Courier New', Courier, monospace; }
+.floor-economics { margin: 10px 0 0; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
 .numbers .unavailable { grid-column: 1 / -1; padding: 14px 0; }
 .pulse { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: badge-pulse 2.4s ease-in-out infinite; }
 .pulse-inline { width: 6px; height: 6px; margin-right: 2px; }
@@ -215,6 +216,8 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .feed-open .feed-words { white-space: normal; overflow-wrap: anywhere; }
 .line-researching .feed-words { color: var(--muted); }
 .line-trading .feed-words { color: var(--ink); }
+.kind-testing { color: #75669a; }
+.kind-learning { color: #4c7e64; }
 .feed-pnl { flex: none; font: 12px/1.5 'Courier New', Courier, monospace; font-weight: 400; }
 .feed-count { flex: none; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font: 10px/1.5 'Courier New', Courier, monospace; color: var(--muted); }
 .line-new { animation: line-in 1.6s ease-out; }
