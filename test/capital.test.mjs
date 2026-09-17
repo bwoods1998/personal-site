@@ -5,7 +5,7 @@ import { mkdtemp, cp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { Capital, MAX_EVENTS_KEPT, allowedOrigin } from '../lib/capital.mjs';
+import { Capital, MAX_EVENTS_KEPT, MAX_HISTORY_POINTS, allowedOrigin } from '../lib/capital.mjs';
 import { retiredRoute, RETIRED_TARGET } from '../lib/retired.mjs';
 import { createServer } from '../server.mjs';
 import {
@@ -1169,7 +1169,7 @@ test('the checkpoint carries the account balances beside the ledger, or not at a
   }
 });
 
-test('the portfolio leads with the accounts and the balance line, cut after money moved in or out', async () => {
+test('all-time performance keeps the full balance history including transfers and losses', async () => {
   const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')];
   assert.equal(balanceSeries([marks[0]]), null, 'a line needs a second mark');
   const series = balanceSeries(marks);
@@ -1179,17 +1179,20 @@ test('the portfolio leads with the accounts and the balance line, cut after mone
   assert.equal(series.flowCut, false);
   assert.match(series.path, /^M0\.0,/);
   assert.ok(series.area.endsWith('Z'));
-  // A deposit is not a gain: a step of more than 15% of the balance starts the line again.
+  // Show actual balances without guessing that a large move was a deposit or hiding a loss.
   const deposit = [floorMark(0, '497.21'), floorMark(1, '976.11'), floorMark(2, '960.15')];
   const afterDeposit = balanceSeries(deposit);
-  assert.equal(afterDeposit.flowCut, true);
-  assert.equal(afterDeposit.first.equity, 976.11);
-  assert.equal(afterDeposit.changeText, '−$15.96');
+  assert.equal(afterDeposit.flowCut, false);
+  assert.equal(afterDeposit.first.equity, 497.21);
+  assert.equal(afterDeposit.changeText, '+$462.94');
+  const loss = balanceSeries([floorMark(0, '1000'), floorMark(1, '700'), floorMark(2, '710')]);
+  assert.equal(loss.first.equity, 1000, 'a loss must not reset the performance chart');
+  assert.equal(loss.changeText, '−$290.00');
   // So is money leaving one venue, even when the total moves less.
   const venueMoved = (index, total, kalshi, coinbase) => floorMark(index, total, { payload: { account_equity: total, account_cash: '1', as_of: floorMark(index).at,
     venues: [venueRow('kalshi', { equity: kalshi, cash: kalshi, as_of: floorMark(index).at }), venueRow('coinbase', { equity: coinbase, cash: coinbase, as_of: floorMark(index).at })] } });
   const transfer = balanceSeries([venueMoved(0, '1000', '500', '500'), venueMoved(1, '900', '500', '400'), venueMoved(2, '905', '505', '400')]);
-  assert.equal(transfer.points.length, 2, 'a venue losing a fifth in one mark is a transfer');
+  assert.equal(transfer.points.length, 3, 'venue balance changes never discard earlier history');
   assert.equal(balanceSeries([]), null);
 
   const line = tapeLine(floorMark());
@@ -1210,7 +1213,8 @@ test('the portfolio leads with the accounts and the balance line, cut after mone
     assert.equal(portfolio.getAttribute('aria-busy'), 'false');
     assert.match(portfolio.withClass('venues')[0].textContent, /^Kalshi \$492\.29 Coinbase \$487\.40/, 'each account');
     assert.equal(portfolio.find('svg').length, 1, 'the balance line');
-    assert.match(words(portfolio.withClass('balance-caption')[0]), /since .*\+\$29\.69 · now \$979\.69/);
+    assert.match(words(portfolio.withClass('balance-caption')[0]), /All time · since .*\+\$29\.69 balance change · now \$979\.69/);
+    assert.match(words(portfolio), /includes deposits and withdrawals/);
     assert.match(root.querySelector('#floor-positions').textContent, /No real-money position open\. \$980 in cash across Kalshi and Coinbase\./);
     assert.match(root.querySelector('#floor-numbers').textContent, /Portfolio \$979\.69/);
   });
@@ -1226,6 +1230,74 @@ test('the portfolio leads with the accounts and the balance line, cut after mone
     const [chip] = accounts.withClass('venue-stale');
     assert.match(chip.getAttribute('title'), /Kalshi did not answer the last balance request/);
     assert.equal(stale.querySelector('#floor-portfolio').find('svg').length, 0, 'no marks, no line');
+  });
+});
+
+test('balance history survives tape retention and authenticated backfills do not replay live activity', async () => {
+  const { capital, listen } = floor();
+  const socket = listen(['all']);
+  assert.equal((await post(capital, '/api/capital/history', batch(floorMark()), { auth: 'wrong' })).status, 401);
+  assert.equal((await post(capital, '/api/capital/history', batch(event()))).status, 400);
+  assert.equal((await post(capital, '/api/capital/events', batch(floorMark(1)))).status, 200);
+  const cursor = capital.latest;
+  const messages = socket.received.length;
+  assert.equal((await post(capital, '/api/capital/history', batch(floorMark(0)))).status, 200);
+  assert.equal(capital.latest, cursor);
+  assert.equal(socket.received.length, messages);
+  const replay = await post(capital, '/api/capital/history', batch(floorMark(0)));
+  assert.deepEqual(await replay.json(), { stored: 0, replayed: 1 });
+  const conflict = { ...floorMark(0), digest: 'b'.repeat(64) };
+  assert.equal((await post(capital, '/api/capital/history', batch(floorMark(2), conflict))).status, 409);
+  capital.sql.exec('DELETE FROM events');
+  const history = await (await get(capital, '/api/capital/history')).json();
+  assert.equal(history.total, 2, 'conflicting batch rolls back and tape retention leaves history intact');
+  assert.equal(history.sampled, false);
+  assert.deepEqual(history.points.map(point => point.at), [floorMark(0).at, floorMark(1).at]);
+  const response = await get(capital, '/api/capital/history');
+  assert.equal((await get(capital, '/api/capital/history', { 'If-None-Match': response.headers.get('etag') })).status, 304);
+  assert.equal((await get(capital, '/api/capital/history?limit=1')).status, 400);
+});
+
+test('long-running chart history is bounded while retaining its first and last recorded values', async () => {
+  const { capital } = floor();
+  const total = MAX_HISTORY_POINTS * 3 + 17;
+  for (let index = 0; index < total; index++) {
+    const at = new Date(NOW + index * 300000).toISOString();
+    capital.sql.exec('INSERT INTO floor_history (id, at, payload, digest) VALUES (?, ?, ?, ?)',
+      `history-${index}`, at, JSON.stringify({ account_equity: String(1000 + index) }), 'a'.repeat(64));
+  }
+  const history = await (await get(capital, '/api/capital/history')).json();
+  assert.equal(history.total, total);
+  assert.equal(history.sampled, true);
+  assert.ok(history.points.length <= MAX_HISTORY_POINTS);
+  assert.equal(history.points[0].account_equity, '1000');
+  assert.equal(history.points.at(-1).account_equity, String(1000 + total - 1));
+});
+
+test('upgrading an existing floor recovers its retained balance marks into durable history', async () => {
+  const { capital } = floor();
+  await post(capital, '/api/capital/events', batch(floorMark(0), floorMark(1)));
+  capital.sql.exec('DELETE FROM floor_history'); // Simulate a tape written before the archive existed.
+  const upgraded = new Capital(capital.ctx, capital.env, () => NOW);
+  const history = await (await get(upgraded, '/api/capital/history')).json();
+  assert.equal(history.total, 2);
+  const restarted = new Capital(capital.ctx, capital.env, () => NOW);
+  assert.equal((await (await get(restarted, '/api/capital/history')).json()).total, 2, 'migration is idempotent');
+});
+
+test('the floor chart loads archived marks older than the live tape', async () => {
+  const root = stubPage('floor', FLOOR_IDS);
+  const old = { at: '2026-09-01T00:00:00.000Z', account_equity: '500' };
+  await withBrowser('', path => {
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ floor: accountFloor() });
+    if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: floorMark().at, account_equity: '979.69' }] };
+    return { schema_version: 1, latest_seq: 300, events: path.includes('kind=floor.mark') ? [floorMark()] : [] };
+  }, async () => {
+    const feed = await startCapital(root);
+    feed.stop();
+    const portfolio = root.querySelector('#floor-portfolio');
+    assert.match(words(portfolio.withClass('balance-caption')[0]), /All time.*\+\$479\.69 balance change/);
+    assert.match(portfolio.find('svg')[0].getAttribute('aria-label'), /\$500\.00 to \$979\.69/);
   });
 });
 

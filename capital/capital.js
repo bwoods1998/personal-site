@@ -10,9 +10,9 @@ const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_CHECKPOINT_BYTES = 512 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
 const TAPE_TEXT_LIMIT = 140;
-// The floor's own balance marks: kind, payload field, and how many of them the page holds.
+// Durable all-time balance history, separate from the bounded live activity tape.
 const FLOOR_MARK = { kind: 'floor.mark', field: 'account_equity' };
-const FLOOR_MARK_LIMIT = 200;
+const FLOOR_HISTORY_LIMIT = 2048;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
 const REPOSITORY = 'https://github.com/bwoods1998/long-term-capital-management';
@@ -440,6 +440,13 @@ async function loadCheckpoint() {
   const data = await fetchJson(`${API}/checkpoint`, MAX_CHECKPOINT_BYTES);
   if (!validCheckpoint(data)) throw new Error('Invalid checkpoint.');
   return data;
+}
+async function loadHistory() {
+  const data = await fetchJson(`${API}/history`);
+  if (data?.schema_version !== 1 || !Array.isArray(data.points) || data.points.length > FLOOR_HISTORY_LIMIT
+      || !data.points.every(point => typeof point.at === 'string' && Number.isFinite(Date.parse(point.at))
+        && typeof point.account_equity === 'string' && numeric(point.account_equity) && Number(point.account_equity) >= 0)) throw new Error('Invalid balance history.');
+  return data.points.map(point => ({ id: `history:${point.at}`, kind: FLOOR_MARK.kind, at: point.at, payload: { account_equity: point.account_equity } }));
 }
 async function loadDesk(id) {
   const data = await fetchJson(`${API}/desks/${encodeURIComponent(id)}`, MAX_CHECKPOINT_BYTES);
@@ -1065,25 +1072,16 @@ export function heroThought(events, currentDesk = null, { holdMs = 45000 } = {})
 }
 
 // ---- the portfolio
-// The balance history from the floor's own marks. A step of more than `flowShare` of the balance,
-// or of one venue's balance, between two marks is money moving in or out rather than trading, so
-// the line starts after the last one.
-export function balanceSeries(events, { flowShare = 0.15, width = 1000, height = 120 } = {}) {
+// All recorded portfolio values, never reset on a guessed deposit or a large trading loss.
+// Balance changes include external cash flows; they are not investment returns.
+export function balanceSeries(events, { width = 1000, height = 120 } = {}) {
   const marks = (Array.isArray(events) ? events : []).filter(event => event?.kind === FLOOR_MARK.kind)
     .map(event => ({
       at: Date.parse(event.at), equity: Number(event.payload?.account_equity),
-      venues: new Map((Array.isArray(event.payload?.venues) ? event.payload.venues : []).map(row => [show(row?.venue), Number(row?.equity)])),
     }))
     .filter(point => Number.isFinite(point.at) && Number.isFinite(point.equity))
     .sort((left, right) => left.at - right.at);
-  const jump = (before, after) => Number.isFinite(before) && Number.isFinite(after) && before > 0 && Math.abs(after - before) / before > flowShare;
-  let start = 0;
-  for (let index = 1; index < marks.length; index += 1) {
-    const [before, after] = [marks[index - 1], marks[index]];
-    if (jump(before.equity, after.equity) || [...after.venues].some(([venue, equity]) => jump(before.venues.get(venue), equity))) start = index;
-  }
-  const all = marks.map(({ at, equity }) => ({ at, equity }));
-  const points = all.slice(start);
+  const points = [...new Map(marks.map(({ at, equity }) => [at, { at, equity }])).values()];
   if (points.length < 2) return null;
   const values = points.map(point => point.equity);
   let min = Math.min(...values);
@@ -1097,7 +1095,7 @@ export function balanceSeries(events, { flowShare = 0.15, width = 1000, height =
   const change = points.at(-1).equity - points[0].equity;
   return {
     width, height, points: plotted, min, max, first: plotted[0], last: plotted.at(-1), path,
-    area: `${path} L${width},${height} L0,${height} Z`, flowCut: start > 0,
+    area: `${path} L${width},${height} L0,${height} Z`, flowCut: false,
     change, changeText: signedMoney(change.toFixed(2), 2), tone: change > 0 ? 'positive' : change < 0 ? 'negative' : '',
   };
 }
@@ -1525,12 +1523,12 @@ function balanceChart(series) {
   });
   plot.addEventListener('pointerleave', () => { readout.hidden = true; cross.setAttribute('opacity', '0'); });
   const caption = element('figcaption', null, 'balance-caption');
-  const since = element('span', 'since ');
+  const since = element('span', 'All time · since ');
   since.append(timeNode(new Date(series.first.at).toISOString()));
   const now = element('span', null, 'balance-now');
-  now.append(element('b', series.changeText, series.tone || null), element('span', ` · now ${money(series.last.equity.toFixed(2), 2)}`));
+  now.append(element('b', series.changeText, series.tone || null), element('span', ` balance change · now ${money(series.last.equity.toFixed(2), 2)}`));
   caption.append(since, now);
-  figure.append(plot, caption);
+  figure.append(plot, caption, element('p', 'Portfolio value includes deposits and withdrawals. Balance change is not trading P&L.', 'floor-economics'));
   return figure;
 }
 function portfolioPanel(checkpoint, marks) {
@@ -1763,6 +1761,7 @@ async function startFloor(root) {
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
+      try { state.marks = await loadHistory(); } catch { /* Keep the last verified history during an outage. */ }
       const desks = orderDesks(state.checkpoint.desks).filter(desk => desk && typeof desk === 'object');
       state.desks = new Map(desks.map(desk => [show(desk.id), desk]));
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
@@ -1788,13 +1787,13 @@ async function startFloor(root) {
   const loads = [
     { kind: 'desk.thought', limit: 60 }, { kind: 'desk.tool_call', limit: 100 }, { kind: 'broker.fill', limit: 60 },
     { kind: 'desk.session_ended', limit: 40 }, { kind: 'desk.outcome', limit: MAX_EVENT_LIMIT },
-    { stream: 'ops', kind: 'floor.mark', limit: FLOOR_MARK_LIMIT }, { stream: 'evolution', limit: MAX_EVENT_LIMIT }, { kind: 'lab.experiment', limit: MAX_EVENT_LIMIT },
+    { stream: 'ops', kind: 'floor.mark', limit: MAX_EVENT_LIMIT }, { stream: 'evolution', limit: MAX_EVENT_LIMIT }, { kind: 'lab.experiment', limit: MAX_EVENT_LIMIT },
     { kind: 'lab.progress', limit: 30 },
   ];
   const [thoughts, calls, fills, endings, outcomes, marks, evolution, experiments, progress] = await Promise.all(loads.map(query => loadEvents(query).catch(() => ({ events: [] }))));
   keepFeed([...thoughts.events, ...calls.events, ...fills.events, ...endings.events, ...outcomes.events.slice(0, 40), ...progress.events]);
   state.outcomes = outcomes.events;
-  state.marks = marks.events;
+  if (!state.marks.length) state.marks = marks.events;
   state.loop = [...evolution.events, ...experiments.events];
   drawLive();
   drawPortfolio();
@@ -1819,7 +1818,7 @@ async function startFloor(root) {
       const loop = events.filter(event => event.kind.startsWith('evolution.') || event.kind === 'lab.experiment');
       if (live.length) { keepFeed(live); drawLive(); }
       if (closed.length) { state.outcomes = [...closed, ...state.outcomes].slice(0, MAX_EVENT_LIMIT); state.drawClosed(); }
-      if (balance.length) { state.marks = [...state.marks, ...balance].slice(-FLOOR_MARK_LIMIT); drawPortfolio(); }
+      if (balance.length) { state.marks = [...state.marks, ...balance]; drawPortfolio(); }
       if (loop.length) { state.loop = [...loop, ...state.loop]; drawLearning(); }
     },
   });
