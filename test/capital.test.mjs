@@ -27,7 +27,7 @@ import {
   deskSessions, recentItems, actionWords, thoughtText, deskIdentity, deskNumbers, deskRecordLine, strategyRows, deskLessons, leadParagraph, deskPositionRows,
   loopSchedule, loopStatus, loopChanges, liveSleeves, gateProgress, gateLine, reasonText, isDemotion, floorFounded, whenText,
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers, economicsText,
-  RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, PERFORMANCE_START_AT, openPositionRows,
+  RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
   closedRecord, leaderboardRows, generationGrid, loopCounts, loopCountLine,
 } from '../capital/capital.js';
 
@@ -490,7 +490,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   // The brief's order: the numbers, live thinking and trades, the portfolio, past trades, who is winning.
   const order = floorIds.map(id => floorHtml.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, live, portfolio, past trades, partners');
-  for (const label of ['Portfolio', 'Profit', 'Self-improving', 'Sail spent', 'Profit per Sail \\$']) assert.match(floorHtml, new RegExp(`<dt>${label}</dt>`), label);
+  for (const label of ['Portfolio', 'Tracked profit', 'Self-improving', 'Sail spent', 'Tracked profit per Sail \\$']) assert.match(floorHtml, new RegExp(`<dt>${label}</dt>`), label);
   assert.match(floorHtml, /href="\/capital\/committee\/">Everything ↗/, 'the full record is one link away');
   // The word budget: at most 60 static words above the live feed.
   const aboveFeed = floorHtml.slice(floorHtml.indexOf('<body'), floorHtml.indexOf('id="floor-feed"')).replace(/<[^>]+>/g, ' ').replace(/[—…↗$]/g, ' ');
@@ -650,11 +650,11 @@ test('the floor page mounts the five numbers, the partner thinking now, and a li
     assert.equal(numbers.getAttribute('aria-busy'), 'false');
     assert.equal(numbers.withClass('number').length, 5);
     assert.match(numbers.textContent, /Portfolio \$979\.69/);
-    assert.match(numbers.textContent, /Profit \+\$63\.40 \+6\.92%/, 'profit, and its share of what was put in');
+    assert.match(numbers.textContent, /Tracked profit —/, 'legacy desk P&L is not owner-account profit');
     assert.match(numbers.textContent, /Self-improving (?:\d+d \d+h|\d+h \d\dm \d\ds)/);
     assert.match(numbers.textContent, /Sail spent \$41\.97/);
-    assert.match(numbers.textContent, /Profit per Sail \$ \+\$1\.51/);
-    assert.equal(numbers.withClass('number-profit')[0].find('dd')[0].className, 'positive');
+    assert.match(numbers.textContent, /Tracked profit per Sail \$ —/);
+    assert.equal(numbers.withClass('number-profit')[0].find('dd')[0].className, '');
 
     const now = root.querySelector('#floor-now');
     assert.equal(now.getAttribute('aria-busy'), 'false');
@@ -688,7 +688,7 @@ test('the floor page mounts the five numbers, the partner thinking now, and a li
   await withBrowser('', path => (path.startsWith('/api/capital/checkpoint') ? checkpoint() : { schema_version: 1, latest_seq: 1, events: [] }), async () => {
     const feed = await startCapital(quiet);
     feed.stop();
-    assert.match(words(quiet.querySelector('#floor-numbers')), /Portfolio — Profit — Self-improving — Sail spent — Profit per Sail \$ —/);
+    assert.match(words(quiet.querySelector('#floor-numbers')), /Portfolio — Tracked profit — Self-improving — Sail spent — Tracked profit per Sail \$ —/);
     assert.match(quiet.querySelector('#floor-now').textContent, /No partner is in session\./);
     assert.match(quiet.querySelector('#floor-feed').textContent, /Quiet for now\./);
     assert.match(quiet.querySelector('#floor-positions').textContent, /No real-money position open\./);
@@ -1088,6 +1088,8 @@ const accountFloor = (overrides = {}) => ({
   ...checkpoint().floor, account_equity: '979.69', account_cash: '504.89',
   venues: [venueRow(), venueRow('coinbase', COINBASE)], ...overrides,
 });
+const funding = (overrides = {}) => ({ start_at: PERFORMANCE_START_AT, start_equity: '976.11177639',
+  net_flows: '0', verified_at: '2026-09-17T00:00:00.000Z', ...overrides });
 function floorMark(index = 0, equity = '979.69', overrides = {}) {
   const at = `2026-09-15T13:0${index}:00.000Z`;
   return {
@@ -1207,15 +1209,15 @@ test('all-time performance keeps the full balance history including transfers an
     return { schema_version: 1, latest_seq: 302, events: [] };
   };
   const root = stubPage('floor', FLOOR_IDS);
-  await withBrowser('', routes(checkpoint({ desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
+  await withBrowser('', routes(checkpoint({ published_at: '2026-09-17T00:00:00.000Z', desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
     const feed = await startCapital(root);
     feed.stop();
     const portfolio = root.querySelector('#floor-portfolio');
     assert.equal(portfolio.getAttribute('aria-busy'), 'false');
     assert.match(portfolio.withClass('venues')[0].textContent, /^Kalshi \$492\.29 Coinbase \$487\.40/, 'each account');
     assert.equal(portfolio.find('svg').length, 1, 'the balance line');
-    assert.match(words(portfolio.withClass('balance-caption')[0]), /All time · since .*\+\$29\.69 balance change · now \$979\.69/);
-    assert.match(words(portfolio), /includes deposits and withdrawals/);
+    assert.match(words(portfolio.withClass('balance-caption')[0]), /All tracked history · since .*\+\$29\.69 balance change · now \$979\.69/);
+    assert.match(words(portfolio), /Profit unavailable until both balances and funding history are verified/);
     assert.match(root.querySelector('#floor-positions').textContent, /No real-money position open\. \$980 in cash across Kalshi and Coinbase\./);
     assert.match(root.querySelector('#floor-numbers').textContent, /Portfolio \$979\.69/);
   });
@@ -1290,14 +1292,14 @@ test('the floor chart loads archived marks older than the live tape', async () =
   const root = stubPage('floor', FLOOR_IDS);
   const old = { at: PERFORMANCE_START_AT, account_equity: '500' };
   await withBrowser('', path => {
-    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ floor: accountFloor() });
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ published_at: '2026-09-17T00:00:00.000Z', floor: accountFloor() });
     if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: '2026-09-17T00:00:00.000Z', account_equity: '979.69' }] };
     return { schema_version: 1, latest_seq: 300, events: path.includes('kind=floor.mark') ? [floorMark()] : [] };
   }, async () => {
     const feed = await startCapital(root);
     feed.stop();
     const portfolio = root.querySelector('#floor-portfolio');
-    assert.match(words(portfolio.withClass('balance-caption')[0]), /All time.*\+\$479\.69 balance change/);
+    assert.match(words(portfolio.withClass('balance-caption')[0]), /All tracked history.*\+\$479\.69 balance change/);
     assert.match(portfolio.find('svg')[0].getAttribute('aria-label'), /\$500\.00 to \$979\.69/);
   });
 });
@@ -1320,6 +1322,48 @@ test('performance starts at the complete-account boundary and never hides subseq
   assert.equal(series.changeText, '−$526.11');
   assert.equal(history.length, 6, 'the original records are untouched');
   assert.equal(performanceSeries(history.slice(0, 3)), null);
+});
+
+test('owner profit, portfolio and chart share the same endpoint and funding basis', () => {
+  const body = checkpoint({ published_at: '2026-09-17T00:00:00.000Z',
+    floor: accountFloor({ account_equity: '918.54', performance: funding() }),
+    run: run({ pnl_total_usd: '-98.93' }) });
+  assert.equal(validCheckpoint(body), true);
+  const marks = [floorMark(0, '976.11177639', { at: PERFORMANCE_START_AT }),
+    floorMark(1, '917.69', { at: '2026-09-16T23:59:00.000Z' }),
+    floorMark(2, '999', { at: '2026-09-17T00:01:00.000Z' })];
+  const report = portfolioPerformance(body, marks);
+  assert.equal(report.series.last.equity, 918.54, 'newer tape waits for the matching account checkpoint');
+  assert.equal(report.profit, report.series.change);
+  assert.equal(mastheadNumbers(body, 0, marks)[0].value, '$918.54');
+  assert.equal(mastheadNumbers(body, 0, marks)[1].value, report.series.changeText);
+  assert.equal(report.series.changeText, '−$57.57', 'desk ledger -98.93 never becomes headline profit');
+  assert.equal(portfolioPerformance(body, marks.slice(1)).series.first.equity, 976.11177639,
+    'archive sampling or temporary archive failure never rebases the opening mark');
+  for (const flow of ['100', '-100']) {
+    const moved = { ...body, floor: { ...body.floor, performance: funding({ net_flows: flow }) } };
+    assert.equal(portfolioPerformance(moved, marks).profit, report.series.change - Number(flow));
+    assert.equal(mastheadNumbers(moved, 0, marks)[1].note, '', 'cash flows do not produce a misleading simple percentage return');
+  }
+  for (const performance of [undefined, funding({ net_flows: null, verified_at: null }),
+    funding({ verified_at: '2026-09-16T23:00:00.000Z' })]) {
+    assert.equal(portfolioPerformance({ ...body, floor: { ...body.floor, performance } }, marks).profit, null);
+  }
+  const stale = { ...body, floor: { ...body.floor, venues: body.floor.venues.map(row => ({ ...row, stale: true })) } };
+  assert.equal(portfolioPerformance(stale, marks).profit, null);
+  assert.equal(balanceSeries([floorMark(0, null), floorMark(1, '10')]), null, 'null is never a zero-dollar mark');
+});
+
+test('performance metadata is strictly typed, bounded by the checkpoint, and public aggregates only', () => {
+  const body = checkpoint({ published_at: '2026-09-17T00:00:00.000Z', floor: accountFloor({ performance: funding() }) });
+  for (const performance of [funding({ net_flows: null, verified_at: null }), funding({ net_flows: '-123.45' })]) {
+    assert.equal(validCheckpoint({ ...body, floor: { ...body.floor, performance } }), true);
+  }
+  for (const performance of [funding({ net_flows: 0 }), funding({ start_equity: '0' }),
+    funding({ verified_at: null }), funding({ verified_at: '2026-09-18T00:00:00.000Z' }),
+    funding({ private_transactions: [] }), funding({ net_flows: 'NaN' })]) {
+    assert.equal(validCheckpoint({ ...body, floor: { ...body.floor, performance } }), false);
+  }
 });
 
 // ------------------------------------------------------------------ contract v2: the leap
@@ -2046,20 +2090,20 @@ test('market tickers read as the thing they bet on, and anything unknown keeps i
 });
 
 test('the masthead reads five numbers, and the clock ticks in hours, minutes and seconds', () => {
-  assert.match(economicsText({ pnl_total_usd: '5.00', sail_spend_total_usd: '8.00' }), /Net after Sail: −\$3.00/);
   assert.doesNotMatch(economicsText(null), /\$0/);
   const now = Date.parse('2026-09-16T18:00:00.000Z');
-  const body = checkpoint({ floor: accountFloor({ account_equity: '943.83' }), run: run({ started_at: '2026-09-15T18:11:00.000Z', pnl_total_usd: '-75.80', sail_spend_total_usd: '18.86', sail_model_spend_today_usd: '13.15', pnl_per_sail_dollar: '-4.01' }) });
+  const body = checkpoint({ published_at: '2026-09-16T18:00:00.000Z', floor: accountFloor({ account_equity: '943.83', performance: funding({ verified_at: '2026-09-16T18:00:00.000Z' }) }), run: run({ started_at: '2026-09-15T18:11:00.000Z', pnl_total_usd: '-75.80', sail_spend_total_usd: '18.86', sail_model_spend_today_usd: '13.15', pnl_per_sail_dollar: '-4.01' }) });
+  assert.match(economicsText(body), /Tracked profit less all Sail spending: −\$51.14/);
   assert.deepEqual(mastheadNumbers(body, now).map(item => [item.label, item.value, item.tone, item.note || '', item.tick || '']), [
     ['Portfolio', '$943.83', '', '', ''],
-    ['Profit', '−$75.80', 'negative', '−7.43%', ''],
+    ['Tracked profit', '−$32.28', 'negative', '−3.31%', ''],
     ['Self-improving', '23h 49m', '', '', '00s'],
     ['Sail spent', '$18.86', '', '', ''],
-    ['Profit per Sail $', '−$4.01', 'negative', '', ''],
+    ['Tracked profit per Sail $', '−$1.71', 'negative', '', ''],
   ]);
   assert.equal(mastheadNumbers(body, now)[2].startedAt, Date.parse('2026-09-15T18:11:00.000Z'));
   const deposits = { ...body, floor: { ...body.floor, net_deposits: '1000' } };
-  assert.equal(mastheadNumbers(deposits, now)[1].note, '−7.58%', 'the runtime’s own net deposits win when it publishes them');
+  assert.equal(mastheadNumbers(deposits, now)[1].note, '−3.31%', 'internal desk funding never changes the account baseline');
   assert.deepEqual(mastheadNumbers(checkpoint(), now).map(item => item.value), ['—', '—', '—', '—', '—'], 'no run, no guesses');
   assert.equal(mastheadNumbers(checkpoint({ run: run({ pnl_per_sail_dollar: null }) }), now)[4].value, '—');
   assert.deepEqual(selfImprovingParts(42 * 60 + 5), { main: '42m', tick: '05s' });

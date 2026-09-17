@@ -907,31 +907,33 @@ export function selfImprovingParts(seconds) {
   if (hours) return { main: `${hours}h ${String(minutes).padStart(2, '0')}m`, tick };
   return { main: `${minutes}m`, tick };
 }
-export function mastheadNumbers(checkpoint, now = Date.now()) {
+export function mastheadNumbers(checkpoint, now = Date.now(), marks = []) {
   const floor = checkpoint?.floor && typeof checkpoint.floor === 'object' ? checkpoint.floor : {};
   const run = checkpoint?.run && typeof checkpoint.run === 'object' ? checkpoint.run : null;
   const clock = runClock(run, now);
-  const total = accountEquity(floor) ?? (numeric(floor.live_equity) ? floor.live_equity : null);
-  const pnl = run && numeric(run.pnl_total_usd) ? run.pnl_total_usd : null;
-  // Profit as a share of the money put in: the runtime's net deposits when it publishes them,
-  // otherwise what the accounts hold less what was made.
-  const deposits = numeric(floor.net_deposits) ? Number(floor.net_deposits) : total !== null && pnl !== null ? Number(total) - Number(pnl) : null;
-  const share = pnl !== null && deposits !== null && deposits > 0 ? percent((Number(pnl) / deposits * 100).toFixed(4)) : '';
+  const performance = portfolioPerformance(checkpoint, marks);
+  const total = performance.series ? performance.series.last.equity.toFixed(8) : accountEquity(floor) ?? (numeric(floor.live_equity) ? floor.live_equity : null);
+  const pnl = performance.profit;
+  const share = pnl !== null && performance.netFlows === 0 ? percent((pnl / performance.series.first.equity * 100).toFixed(4)) : '';
+  const spent = run && numeric(run.sail_spend_total_usd) ? Number(run.sail_spend_total_usd) : null;
+  const per = pnl !== null && spent > 0 ? pnl / spent : null;
   const started = Date.parse(run?.started_at);
   const elapsed = Number.isFinite(started) ? selfImprovingParts(Math.max(0, (now - started) / 1000)) : { main: '—', tick: '' };
   return [
     { key: 'portfolio', label: 'Portfolio', value: total === null ? '—' : money(total, 2), tone: '' },
-    { key: 'profit', label: 'Profit', value: pnl === null ? '—' : signedMoney(pnl, 2), tone: pnl === null ? '' : signOf(pnl), note: pnl === null ? '' : share },
+    { key: 'profit', label: 'Tracked profit', value: pnl === null ? '—' : signedMoney(pnl.toFixed(2), 2), tone: pnl === null ? '' : signOf(pnl.toFixed(2)), note: share },
     { key: 'clock', label: 'Self-improving', value: elapsed.main, tick: elapsed.tick, tone: '', startedAt: Number.isFinite(started) ? started : null },
     { key: 'spent', label: 'Sail spent', value: clock ? clock.spendTotal : '—', tone: '' },
-    { key: 'per', label: 'Profit per Sail $', value: clock && clock.perDollar !== 'not yet' ? clock.perDollar : '—', tone: clock?.perDollarTone || '' },
+    { key: 'per', label: 'Tracked profit per Sail $', value: per === null ? '—' : signedMoney(per.toFixed(2), 2), tone: per === null ? '' : signOf(per.toFixed(2)) },
   ];
 }
 
-export function economicsText(run) {
-  if (!run || !numeric(run.pnl_total_usd) || !numeric(run.sail_spend_total_usd)) return 'Trading P&L excludes compute. Research backtests are simulated.';
-  const net = (Number(run.pnl_total_usd) - Number(run.sail_spend_total_usd)).toFixed(2);
-  return `Net after Sail: ${signedMoney(net, 2)}. Trading P&L above includes open positions and excludes compute; backtests are simulated.`;
+export function economicsText(checkpoint, marks = []) {
+  const performance = portfolioPerformance(checkpoint, marks);
+  const spend = checkpoint?.run?.sail_spend_total_usd;
+  const net = performance.profit !== null && numeric(spend)
+    ? `Tracked profit less all Sail spending: ${signedMoney((performance.profit - Number(spend)).toFixed(2), 2)}. ` : '';
+  return `${net}Profit uses the chart’s starting balance and endpoint, less net deposits since that start. Includes open-position gains/losses and exchange fees; excludes earlier performance and Sail costs. Research backtests are simulated.`;
 }
 
 // ---- live: thinking, researching, trading
@@ -1079,7 +1081,7 @@ export function heroThought(events, currentDesk = null, { holdMs = 45000 } = {})
 // All recorded portfolio values, never reset on a guessed deposit or a large trading loss.
 // Balance changes include external cash flows; they are not investment returns.
 export function balanceSeries(events, { width = 1000, height = 120 } = {}) {
-  const marks = (Array.isArray(events) ? events : []).filter(event => event?.kind === FLOOR_MARK.kind)
+  const marks = (Array.isArray(events) ? events : []).filter(event => event?.kind === FLOOR_MARK.kind && numeric(event.payload?.account_equity))
     .map(event => ({
       at: Date.parse(event.at), equity: Number(event.payload?.account_equity),
     }))
@@ -1104,9 +1106,34 @@ export function balanceSeries(events, { width = 1000, height = 120 } = {}) {
   };
 }
 // Keep the audited chart start identical for archive loads, live updates and tape fallback.
-export function performanceSeries(events) {
+export function performanceSeries(events, checkpoint = null) {
   const start = Date.parse(PERFORMANCE_START_AT);
-  return balanceSeries((Array.isArray(events) ? events : []).filter(event => Date.parse(event?.at) >= start));
+  const end = checkpoint ? Date.parse(checkpoint.published_at) : Infinity;
+  const marks = (Array.isArray(events) ? events : []).filter(event => Date.parse(event?.at) >= start && Date.parse(event?.at) <= end);
+  const basis = checkpoint?.floor?.performance;
+  // This is the original observed mark, preserved by the runtime even if archive sampling
+  // omits it. It is not an inferred deposit or a reset after a loss.
+  if (basis?.start_at === PERFORMANCE_START_AT && numeric(basis.start_equity)) {
+    marks.push({ kind: FLOOR_MARK.kind, at: basis.start_at, payload: { account_equity: basis.start_equity } });
+  }
+  if (end >= start && completeAccounts(checkpoint?.floor) && numeric(checkpoint.floor.account_equity)) {
+    marks.push({ kind: FLOOR_MARK.kind, at: checkpoint.published_at, payload: { account_equity: checkpoint.floor.account_equity } });
+  }
+  return balanceSeries(marks);
+}
+function completeAccounts(floor) {
+  return Array.isArray(floor?.venues) && floor.venues.length === 2
+    && ['kalshi', 'coinbase'].every(venue => floor.venues.some(row => row.venue === venue && !row.stale));
+}
+export function portfolioPerformance(checkpoint, marks = []) {
+  const series = performanceSeries(marks, checkpoint);
+  const basis = checkpoint?.floor?.performance;
+  const fresh = basis?.verified_at && Math.abs(Date.parse(checkpoint.published_at) - Date.parse(basis.verified_at)) <= 600000;
+  const valid = series && basis?.start_at === PERFORMANCE_START_AT && series.first.at === Date.parse(basis.start_at)
+    && series.first.equity === Number(basis.start_equity) && numeric(basis.net_flows) && fresh && completeAccounts(checkpoint.floor)
+    && series.last.at === Date.parse(checkpoint.published_at);
+  const netFlows = valid ? Number(basis.net_flows) : null;
+  return { series, netFlows, verifiedAt: valid ? basis.verified_at : null, profit: valid ? series.change - netFlows : null };
 }
 
 // Real-money positions worth showing. Practice positions and dust are counted, not listed.
@@ -1415,7 +1442,7 @@ function typeInto(node, text) {
 }
 
 function numbersPanel(checkpoint, state) {
-  return mastheadNumbers(checkpoint).map(item => {
+  return mastheadNumbers(checkpoint, Date.now(), state.marks).map(item => {
     const row = element('div', null, `number number-${item.key}`);
     const value = element('dd', null, item.tone || null);
     const main = element('span', item.value, 'number-value');
@@ -1500,7 +1527,7 @@ function drawFeedInto(list, state) {
   list.replaceChildren(...(items.length ? items : [element('li', 'Quiet for now. Lines appear here as the partners think, research and trade.', 'empty-state')]));
 }
 
-function balanceChart(series) {
+function balanceChart(series, performance) {
   const figure = element('figure', null, `balance balance-${series.tone || 'flat'}`);
   const { width, height } = series;
   const svg = svgElement('svg', {
@@ -1533,17 +1560,21 @@ function balanceChart(series) {
   });
   plot.addEventListener('pointerleave', () => { readout.hidden = true; cross.setAttribute('opacity', '0'); });
   const caption = element('figcaption', null, 'balance-caption');
-  const since = element('span', 'All time · since ');
+  const since = element('span', 'All tracked history · since ');
   since.append(timeNode(new Date(series.first.at).toISOString()));
   const now = element('span', null, 'balance-now');
   now.append(element('b', series.changeText, series.tone || null), element('span', ` balance change · now ${money(series.last.equity.toFixed(2), 2)}`));
   caption.append(since, now);
-  figure.append(plot, caption, element('p', 'Starts with complete account balances; earlier incomplete readings are excluded. Portfolio value includes deposits and withdrawals, not just trading P&L.', 'floor-economics'));
+  const reconciliation = performance.profit === null ? 'Profit unavailable until both balances and funding history are verified.'
+    : `${series.changeText} balance change − ${signedMoney(performance.netFlows.toFixed(2), 2)} net deposits = ${signedMoney(performance.profit.toFixed(2), 2)} tracked profit.`;
+  const verified = performance.verifiedAt ? ` Funding checked ${date(performance.verifiedAt)}.` : '';
+  figure.append(plot, caption, element('p', `${reconciliation}${verified} Starts at the first complete account reading, not the original deposits; earlier performance is excluded.`, 'floor-economics'));
   return figure;
 }
 function portfolioPanel(checkpoint, marks) {
   const venues = accountVenues(checkpoint?.floor);
-  const series = performanceSeries(marks);
+  const performance = portfolioPerformance(checkpoint, marks);
+  const series = performance.series;
   const line = element('p', null, 'venues');
   for (const row of venues) {
     const chip = element('span', null, row.stale ? 'venue venue-stale' : 'venue');
@@ -1552,7 +1583,7 @@ function portfolioPanel(checkpoint, marks) {
     line.append(chip);
   }
   const nodes = venues.length || series ? [line] : [];
-  if (series) nodes.push(balanceChart(series));
+  if (series) nodes.push(balanceChart(series, performance));
   return nodes;
 }
 function whyCell(parts, state, id) {
@@ -1762,7 +1793,13 @@ async function startFloor(root) {
     drawn(box.closed, closedPanel(state));
     if (box.toggle) box.toggle.replaceChildren(practiceToggle(state));
   };
-  const drawPortfolio = () => { if (state.checkpoint) drawn(box.portfolio, portfolioPanel(state.checkpoint, state.marks)); };
+  const drawPortfolio = () => {
+    if (!state.checkpoint) return;
+    drawn(box.portfolio, portfolioPanel(state.checkpoint, state.marks));
+    drawn(box.numbers, numbersPanel(state.checkpoint, state));
+    const economics = find('floor-economics');
+    if (economics) economics.textContent = economicsText(state.checkpoint, state.marks);
+  };
   const drawLearning = () => { if (state.checkpoint) drawn(box.learning, learningPanel(state.checkpoint, loopCounts(state.loop, state.checkpoint))); };
   const keepFeed = events => {
     const byId = new Map([...state.feed, ...events].map(event => [event.id, event]));
@@ -1775,9 +1812,6 @@ async function startFloor(root) {
       const desks = orderDesks(state.checkpoint.desks).filter(desk => desk && typeof desk === 'object');
       state.desks = new Map(desks.map(desk => [show(desk.id), desk]));
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
-      drawn(box.numbers, numbersPanel(state.checkpoint, state));
-      const economics = find('floor-economics');
-      if (economics) economics.textContent = economicsText(state.checkpoint.run);
       drawPortfolio();
       drawn(box.positions, positionsPanel(state.checkpoint, state));
       drawn(box.leaders, leadersPanel(state.checkpoint));
