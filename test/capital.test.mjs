@@ -28,7 +28,7 @@ import {
   loopSchedule, loopStatus, loopChanges, liveSleeves, gateProgress, gateLine, reasonText, isDemotion, floorFounded, whenText,
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers, economicsText,
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
-  closedRecord, leaderboardRows, generationGrid, loopCounts, loopCountLine,
+  closedRecord, leaderboardRows, generationGrid, loopCounts, loopCountLine, arenaRows, arenaLine,
 } from '../capital/capital.js';
 
 const token = 'woods-capital-test-publication-token-01';
@@ -2239,4 +2239,27 @@ test('real-money positions skip dust and count practice; the generations show wh
   ], board);
   assert.deepEqual(counts, { bred: 3, retired: 1, promoted: 1, demoted: 0, founded: 0, experiments: 2 }, 'the roster is a floor under the trimmed log, and nothing counts twice');
   assert.equal(loopCountLine(counts), 'bred 3 · retired 1 · promoted 1 · experiments 2');
+});
+
+test('the arena lists every strategy on a live book with its record, counts the practice variants, and puts proven rows first', () => {
+  const house = { name: 'kalshi_favorites', house: true, cadence_seconds: 900, runs: 40, intents: 12, approved: 9, errors: 0, fills: 9, settled: 6, wins: 5, settled_pnl_usd: '3.10', last_run_at: null, last_notes: '',
+    family: { settled: 41, real_settled: 39, desks: 15, settled_pnl_usd: '47.97', passes: true, reason: 'lower bound +2.6%' } };
+  const foundry = { name: 'kalshi_favorites_f151_2', house: false, cadence_seconds: 900, runs: 3, intents: 2, approved: 2, errors: 0, fills: 1, settled: 0, wins: 0, settled_pnl_usd: '0.00', last_run_at: null, last_notes: '' };
+  const paused = { name: 'hourly_reversion', house: true, enabled: false, cadence_seconds: 600, runs: 200, intents: 0, approved: 0, errors: 0, fills: 30, settled: 20, wins: 8, settled_pnl_usd: '-12.00', last_run_at: null, last_notes: '' };
+  const checkpoint = { desks: [
+    desk('mullins', { mode: 'live', strategies: [foundry, house] }),
+    desk('hilibrand', { mode: 'live', strategies: [paused] }),
+    desk('mullins-2', { mode: 'shadow', strategies: [{ ...house, settled: 3 }, { ...paused }] }),
+  ] };
+  const arena = arenaRows(checkpoint);
+  assert.deepEqual(arena.rows.map(row => [row.name, row.desk, row.origin, row.enabled, row.proven, row.settledText, row.pnlText]), [
+    ['kalshi favorites', 'mullins', 'house', true, true, '5 of 6', '+$3.10'],
+    ['kalshi favorites f151 2', 'mullins', 'foundry', true, false, '—', '—'],
+    ['hourly reversion', 'hilibrand', 'house', false, false, '8 of 20', '−$12.00'],
+  ]);
+  assert.equal(arena.variants, 1, 'the shadow desk\'s paused row is not testing');
+  assert.equal(arena.books, 2);
+  assert.match(arena.rows[0].family, /family record 41 settled \(39 real\) on 15 desks/);
+  assert.equal(arenaLine(arena), '2 strategies on 2 real-money books · 1 variant testing in practice');
+  assert.deepEqual(arenaRows(null), { rows: [], variants: 0, books: 0 });
 });

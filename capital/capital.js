@@ -1681,6 +1681,28 @@ function practiceToggle(state) {
   button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawClosed(); });
   return button;
 }
+function arenaPanel(checkpoint) {
+  const arena = arenaRows(checkpoint);
+  if (!arena.rows.length) return [element('p', 'The strategies appear with the first checkpoint.', 'empty-state')];
+  const nodes = [element('p', arenaLine(arena), 'record-line')];
+  const table = element('table', null, 'rows rows-arena');
+  table.append(headRow([['Strategy', 'col-strategy'], ['Book', 'col-agent'], ['Every', 'col-num'], ['Fills', 'col-num'], ['Settled', 'col-num'], ['P&L', 'col-num']]));
+  const body = element('tbody');
+  for (const row of arena.rows) {
+    const line = element('tr', null, row.enabled ? '' : 'row-practice');
+    const name = element('td', null, 'col-strategy');
+    name.append(element('span', row.name, 'strategy-name'), tagNode(row.origin, row.origin === 'foundry' ? 'foundry' : 'note'));
+    if (row.proven) name.append(tagNode('proven', 'real'));
+    if (row.family) name.append(element('span', row.family, 'strategy-family'));
+    line.append(name, agentCell(row.desk, row.deskName, true), element('td', row.every, 'col-num col-every'), element('td', String(row.fills), 'col-num'),
+      element('td', row.settledText, 'col-num'), element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()));
+    body.append(line);
+  }
+  table.append(body);
+  nodes.push(table);
+  nodes.push(element('p', 'Every row trades real money at learning size until its own settled record, or the family’s pooled one, passes the evidence gate; then its size ramps. A Foundry row is code the research loop wrote and backtested; a losing record retires it.', 'quiet-line'));
+  return nodes;
+}
 function leadersPanel(checkpoint) {
   const rows = leaderboardRows(checkpoint);
   if (!rows.length) return [element('p', 'The partners appear with the first checkpoint.', 'empty-state')];
@@ -1767,7 +1789,7 @@ async function startFloor(root) {
   const box = {
     numbers: find('floor-numbers'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
     portfolio: find('floor-portfolio'), positions: find('floor-positions'), closed: find('floor-closed'),
-    toggle: find('closed-toggle'), leaders: find('floor-leaders'), learning: find('floor-learning'),
+    toggle: find('closed-toggle'), leaders: find('floor-leaders'), learning: find('floor-learning'), arena: find('floor-arena'),
   };
   const state = {
     checkpoint: null, liveIds: new Set(), desks: new Map(), feed: [], outcomes: [], marks: [], loop: [], mode: 'loading',
@@ -1814,6 +1836,7 @@ async function startFloor(root) {
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
       drawPortfolio();
       drawn(box.positions, positionsPanel(state.checkpoint, state));
+      drawn(box.arena, arenaPanel(state.checkpoint));
       drawn(box.leaders, leadersPanel(state.checkpoint));
       drawLearning();
       state.drawClosed();
@@ -1824,7 +1847,7 @@ async function startFloor(root) {
       const notice = element('p', 'The floor checkpoint is unavailable. ', 'unavailable');
       notice.append(link('Read the runtime on GitHub.', REPOSITORY));
       drawn(box.numbers, [notice]);
-      for (const node of [box.portfolio, box.positions, box.closed, box.leaders, box.learning]) drawn(node, []);
+      for (const node of [box.portfolio, box.positions, box.closed, box.leaders, box.learning, box.arena]) drawn(node, []);
     }
   }
   await refresh();
@@ -2261,6 +2284,39 @@ export function strategyRows(desk) {
     };
   });
 }
+// The arena: every strategy trading real money on a live book, one row each, with its own
+// record and the family's pooled one; shadow desks' variants are counted, not listed. The floor
+// sizes each row on its record, so this table is where the money follows the evidence.
+export function arenaRows(checkpoint) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
+  const rows = [];
+  let variants = 0;
+  for (const desk of desks) {
+    const strategies = Array.isArray(desk.strategies) ? desk.strategies.filter(row => row && typeof row === 'object') : [];
+    if (!isLive(desk)) { variants += strategies.filter(row => row.enabled !== false).length; continue; }
+    for (const row of strategies) {
+      const settled = Number(row.settled) || 0;
+      const pnl = numeric(show(row.settled_pnl_usd)) ? show(row.settled_pnl_usd) : '';
+      const name = show(row.name);
+      const foundry = /_f\d+(?:_\d+)?$/.test(name);
+      rows.push({
+        desk: show(desk.id), deskName: raceName(desk), name: humanize(name), origin: foundry ? 'foundry' : row.house ? 'house' : 'desk',
+        enabled: row.enabled !== false, every: row.enabled === false ? 'paused' : cadenceText(row.cadence_seconds) || '—',
+        runs: Number(row.runs) || 0, fills: Number(row.fills) || 0, settled, wins: Number(row.wins) || 0,
+        settledText: settled ? `${Number(row.wins) || 0} of ${settled}` : '—',
+        pnl: settled && pnl ? Number(pnl) : null, pnlText: settled && pnl ? signedMoney(pnl, 2) : '—', tone: settled && pnl ? signOf(pnl) : '',
+        family: familyEvidenceText(row.family), proven: Boolean(row.family && typeof row.family === 'object' && row.family.passes), note: show(row.note),
+      });
+    }
+  }
+  rows.sort((left, right) => Number(right.enabled) - Number(left.enabled) || Number(right.proven) - Number(left.proven) || right.settled - left.settled || (right.pnl ?? -Infinity) - (left.pnl ?? -Infinity) || left.name.localeCompare(right.name));
+  return { rows, variants, books: desks.filter(isLive).length };
+}
+export const arenaLine = ({ rows, variants, books }) => {
+  const active = rows.filter(row => row.enabled).length;
+  return `${active} ${active === 1 ? 'strategy' : 'strategies'} on ${plural(books, 'real-money book')} · ${plural(variants, 'variant')} testing in practice`;
+};
+
 // What the desk wrote down to remember, newest first: its lessons, as `memory_write` calls.
 export function deskLessons(events, limit = 3) {
   return (Array.isArray(events) ? events : [])

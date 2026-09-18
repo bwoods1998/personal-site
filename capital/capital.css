@@ -590,3 +590,18 @@ details.more-panel .learned-rest { white-space: pre-wrap; }
   .run-meta { white-space: normal; }
 }
 /* end loop and desk */
+
+/* The arena: strategies on the live books */
+.rows-arena .col-strategy { min-width: 200px; }
+.rows-arena .strategy-name { font-weight: 500; }
+.rows-arena .strategy-family { display: block; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
+.rows-arena .col-strategy .tag { margin-left: 6px; }
+.tag-foundry { color: var(--accent); border-style: dotted; }
+.tag-note { border-style: solid; }
+@media (max-width: 720px) {
+  .rows-arena thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .rows-arena, .rows-arena tbody { display: block; }
+  .rows-arena tr { display: grid; grid-template-columns: auto auto auto auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .rows-arena td { display: block; padding: 0; border: 0; min-width: 0; }
+  .rows-arena .col-strategy { grid-column: 1 / 5; }
+}
