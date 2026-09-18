@@ -2261,5 +2261,8 @@ test('the arena lists every strategy on a live book with its record, counts the 
   assert.equal(arena.books, 2);
   assert.match(arena.rows[0].family, /family record 41 settled \(39 real\) on 15 desks/);
   assert.equal(arenaLine(arena), '2 strategies on 2 real-money books · 1 variant testing in practice');
-  assert.deepEqual(arenaRows(null), { rows: [], variants: 0, books: 0 });
+  assert.deepEqual(arenaRows(null), { rows: [], variants: 0, books: 0, explorerBooks: [] });
+  const explorers = arenaRows({ desks: [desk('mullins', { mode: 'live', strategies: [foundry, { ...house, enabled: false }] }), desk('hilibrand', { mode: 'live', strategies: [paused, { ...house, name: 'spot_quotes' }] })] });
+  assert.deepEqual(explorers.explorerBooks, ['mullins']);
+  assert.deepEqual(new Map(explorers.rows.map(row => [row.name, row.bookRole])), new Map([['kalshi favorites f151 2', 'explorers'], ['spot quotes', 'house'], ['kalshi favorites', 'explorers'], ['hourly reversion', 'house']]));
 });

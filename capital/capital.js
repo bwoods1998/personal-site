@@ -1694,13 +1694,15 @@ function arenaPanel(checkpoint) {
     name.append(element('span', row.name, 'strategy-name'), tagNode(row.origin, row.origin === 'foundry' ? 'foundry' : 'note'));
     if (row.proven) name.append(tagNode('proven', 'real'));
     if (row.family) name.append(element('span', row.family, 'strategy-family'));
-    line.append(name, agentCell(row.desk, row.deskName, true), element('td', row.every, 'col-num col-every'), element('td', String(row.fills), 'col-num'),
+    const book = agentCell(row.desk, row.deskName, true);
+    if (row.bookRole === 'explorers') book.append(tagNode('explorers book', 'foundry'));
+    line.append(name, book, element('td', row.every, 'col-num col-every'), element('td', String(row.fills), 'col-num'),
       element('td', row.settledText, 'col-num'), element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()));
     body.append(line);
   }
   table.append(body);
   nodes.push(table);
-  nodes.push(element('p', 'Every row trades real money at learning size until its own settled record, or the family’s pooled one, passes the evidence gate; then its size ramps. A Foundry row is code the research loop wrote and backtested; a losing record retires it.', 'quiet-line'));
+  nodes.push(element('p', 'Every row trades real money at learning size until its own settled record, or the family’s pooled one, passes the evidence gate; then its size ramps. A Foundry row is code the research loop wrote and backtested; a losing record retires it. An explorers book carries only Foundry rows, so the research loop’s bets never spend the proven code’s cash.', 'quiet-line'));
   return nodes;
 }
 function leadersPanel(checkpoint) {
@@ -2309,8 +2311,16 @@ export function arenaRows(checkpoint) {
       });
     }
   }
+  // A book whose every active row is Foundry code is an explorers book: the research loop's
+  // own real-money sleeve, kept apart from the house strategies' cash.
+  const explorerBooks = new Set();
+  for (const desk of desks.filter(isLive)) {
+    const active = rows.filter(row => row.desk === show(desk.id) && row.enabled);
+    if (active.length && active.every(row => row.origin === 'foundry')) explorerBooks.add(show(desk.id));
+  }
+  for (const row of rows) row.bookRole = explorerBooks.has(row.desk) ? 'explorers' : 'house';
   rows.sort((left, right) => Number(right.enabled) - Number(left.enabled) || Number(right.proven) - Number(left.proven) || right.settled - left.settled || (right.pnl ?? -Infinity) - (left.pnl ?? -Infinity) || left.name.localeCompare(right.name));
-  return { rows, variants, books: desks.filter(isLive).length };
+  return { rows, variants, books: desks.filter(isLive).length, explorerBooks: [...explorerBooks] };
 }
 export const arenaLine = ({ rows, variants, books }) => {
   const active = rows.filter(row => row.enabled).length;
