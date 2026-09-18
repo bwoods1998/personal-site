@@ -1259,6 +1259,15 @@ test('balance history survives tape retention and authenticated backfills do not
   const response = await get(capital, '/api/capital/history');
   assert.equal((await get(capital, '/api/capital/history', { 'If-None-Match': response.headers.get('etag') })).status, 304);
   assert.equal((await get(capital, '/api/capital/history?limit=1')).status, 400);
+  // A later mark may void an earlier one (a venue read that missed a wallet): the chart leaves
+  // the voided mark out, both stay archived, and the count of corrections is reported.
+  const voiding = floorMark(3, '980.10', {});
+  voiding.payload = { ...voiding.payload, voids: [floorMark(0).id], reason: 'Sept 18, 2026: the spot wallet alone was read while margin was held' };
+  assert.equal((await post(capital, '/api/capital/history', batch(voiding))).status, 200);
+  const corrected = await (await get(capital, '/api/capital/history')).json();
+  assert.equal(corrected.total, 2, 'the voided mark is left out, the voiding mark counts');
+  assert.equal(corrected.corrected, 1);
+  assert.deepEqual(corrected.points.map(point => point.at), [floorMark(1).at, voiding.at]);
 });
 
 test('long-running chart history is bounded while retaining its first and last recorded values', async () => {
