@@ -358,9 +358,13 @@ test('the retired Portfolio Agent redirects its pages and refuses its API', asyn
       assert.match((await response.json()).error, /Long Term Capital Management publishes to \/api\/capital\//);
     }
     // The floor's own pages and modules are still the only public files.
-    for (const path of ['/', '/capital/', '/capital/desk/', '/capital/committee/', '/capital/capital.js', '/capital/capital.css', '/capital/schema.js']) {
+    for (const path of ['/', '/capital/', '/capital/desk/', '/capital/capital.js', '/capital/capital.css', '/capital/schema.js']) {
       assert.equal((await fetch(origin + path)).status, 200, path);
     }
+    // The loop page is retired (Sept 19, 2026): its address sends a reader to the floor.
+    const loopPage = await fetch(origin + '/capital/committee/', { redirect: 'manual' });
+    assert.equal(loopPage.status, 301);
+    assert.equal(loopPage.headers.get('location'), '/capital/');
     for (const path of ['/capital/runtime.json', '/capital/desk/capital.js', '/capital/private.json', '/.env', '/.data/credentials.json']) {
       assert.equal((await fetch(origin + path)).status, 404, path);
     }
@@ -467,7 +471,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   const disclosure = 'Blake Woods owns every position shown. Nothing here is investment advice. Orders publish after they fill.';
-  const titles = { 'index.html': 'Long Term Capital Management', 'desk/index.html': 'Desk · LTCM', 'committee/index.html': 'The loop · LTCM' };
+  const titles = { 'index.html': 'Long Term Capital Management', 'desk/index.html': 'Desk · LTCM' };
   for (const [page, title] of Object.entries(titles)) {
     const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
     assert.match(html, new RegExp(`<title>${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</title>`), page);
@@ -491,18 +495,12 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   const order = floorIds.map(id => floorHtml.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, live, portfolio, past trades, partners');
   for (const label of ['Portfolio', 'Tracked profit', 'Self-improving', 'Sail spent', 'Tracked profit per Sail \\$']) assert.match(floorHtml, new RegExp(`<dt>${label}</dt>`), label);
-  assert.match(floorHtml, /href="\/capital\/committee\/">Everything ↗/, 'the full record is one link away');
+  // One page holds the project (Sept 19, 2026): the loop page is retired and nothing links to it.
+  assert.doesNotMatch(floorHtml, /capital\/committee/, 'the retired loop page is unlinked');
   // The word budget: at most 60 static words above the live feed.
   const aboveFeed = floorHtml.slice(floorHtml.indexOf('<body'), floorHtml.indexOf('id="floor-feed"')).replace(/<[^>]+>/g, ' ').replace(/[—…↗$]/g, ' ');
   const words = aboveFeed.split(/\s+/).filter(word => /[A-Za-z]/.test(word));
   assert.ok(words.length <= 60, `static words above the feed: ${words.length}`);
-  const committeeHtml = await readFile(new URL('../capital/committee/index.html', import.meta.url), 'utf8');
-  assert.match(committeeHtml, /<h1 id="committee-title">The loop<\/h1>/);
-  assert.match(committeeHtml, /Every night the floor breeds variants, scores them on real prices, promotes the ones that earn it and retires the rest\./);
-  const loopIds = ['loop-numbers', 'loop-next', 'loop-better', 'loop-race', 'loop-changes', 'loop-capital', 'loop-more'];
-  const loopOrder = loopIds.map(id => committeeHtml.indexOf(`id="${id}"`));
-  assert.ok(loopOrder.every((index, n) => index > 0 && (n === 0 || index > loopOrder[n - 1])), 'numbers, better, race, what changed, capital, then the memo');
-  for (const gone of ['loop-curve', 'committee-lab', 'loop-genome', 'committee-allocations', 'committee-gates', 'committee-evolution', 'committee-memos', 'committee-status']) assert.doesNotMatch(committeeHtml, new RegExp(`id="${gone}"`), gone);
   const deskHtml = await readFile(new URL('../capital/desk/index.html', import.meta.url), 'utf8');
   const deskIds = ['desk-header', 'desk-numbers', 'desk-state', 'desk-now', 'desk-detail'];
   const deskOrder = deskIds.map(id => deskHtml.indexOf(`id="${id}"`));
@@ -511,7 +509,6 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
   // Fewer words: what a visitor reads before anything loads.
   const staticWords = html => html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
   assert.ok(staticWords(deskHtml) < 60, `desk page static words: ${staticWords(deskHtml)}`);
-  assert.ok(staticWords(committeeHtml) < 100, `loop page static words: ${staticWords(committeeHtml)}`);
 
   const home = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(home, /Long Term Capital Management[\s\S]{0,400}AI partners trading real money in public, rewriting themselves from the results\./);
@@ -528,12 +525,12 @@ test('the build publishes the floor with hashed, self-hosted assets', async () =
     const build = () => spawnSync(process.execPath, ['build.mjs'], { cwd: root, encoding: 'utf8' });
     assert.equal(build().status, 0);
     assert.deepEqual((await readdir(join(root, 'dist'))).sort(), ['_headers', 'admin', 'assets', 'capital', 'index.html']);
-    assert.deepEqual((await readdir(join(root, 'dist/capital'))).sort(), ['committee', 'desk', 'index.html']);
+    assert.deepEqual((await readdir(join(root, 'dist/capital'))).sort(), ['desk', 'index.html']);
     const floorHtml = await readFile(join(root, 'dist/capital/index.html'), 'utf8');
     assert.match(floorHtml, /\.\.\/assets\/capital\.[a-f0-9]{12}\.css/);
     assert.match(floorHtml, /\.\.\/assets\/capital\.[a-f0-9]{12}\.js/);
     assert.match(await readFile(join(root, 'dist/capital/desk/index.html'), 'utf8'), /\.\.\/\.\.\/assets\/capital\.[a-f0-9]{12}\.js/);
-    for (const page of ['dist/capital/index.html', 'dist/capital/desk/index.html', 'dist/capital/committee/index.html']) {
+    for (const page of ['dist/capital/index.html', 'dist/capital/desk/index.html']) {
       const html = await readFile(join(root, page), 'utf8');
       const directory = join(root, page.slice(0, page.lastIndexOf('/')));
       for (const reference of html.matchAll(/(?:src|href)="((?:\.\.\/)+assets\/[^"]+)"/g)) assert(await readFile(join(directory, reference[1])));
@@ -543,7 +540,7 @@ test('the build publishes the floor with hashed, self-hosted assets', async () =
     assert.match(bundle, /from '\.\/schema\.[a-f0-9]{12}\.js'/);
     assert.doesNotMatch(bundle, /from '\.\/schema\.js'/);
     const headers = await readFile(join(root, 'dist/_headers'), 'utf8');
-    for (const path of ['/capital/', '/capital/desk/', '/capital/committee/']) {
+    for (const path of ['/capital/', '/capital/desk/']) {
       assert.match(headers, new RegExp(`${path}\\n  Cache-Control: public, max-age=0, must-revalidate, no-transform`));
     }
     assert.match(headers, /connect-src 'self' wss:\/\/blakewoods\.us wss:\/\/www\.blakewoods\.us/);
@@ -679,7 +676,8 @@ test('the floor page mounts the five numbers, the partner thinking now, and a li
     assert.equal(thought.getAttribute('aria-expanded'), 'false');
     thought.click();
     assert.equal(lines()[4].find('button')[0].getAttribute('aria-expanded'), 'true', 'a long thought opens in place');
-    assert.match(root.querySelector('#floor-status').textContent, /live · polling · 1 partner in session/);
+    // The floor is paused while the project is rebuilt: every live indicator says so.
+    assert.match(root.querySelector('#floor-status').textContent, /in development/);
     assert(root.find('a').every(node => node.href.startsWith('/') || node.href.startsWith('https://')), 'no insecure link');
   });
 
@@ -1057,7 +1055,7 @@ test('a shadow desk page says practice, and a page with nothing published yet sa
 });
 
 test('the pages say shadow, never paper', async () => {
-  for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
+  for (const page of ['index.html', 'desk/index.html']) {
     const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
     // The one permitted mention is the sentence that rules paper trading out.
     const mentions = (html.match(/paper/gi) || []).length;
@@ -1066,7 +1064,7 @@ test('the pages say shadow, never paper', async () => {
   }
   // The runtime repository was renamed; every link on the pages follows it.
   const REPO = 'https://github.com/bwoods1998/long-term-capital-management';
-  for (const page of ['index.html', 'desk/index.html', 'committee/index.html']) {
+  for (const page of ['index.html', 'desk/index.html']) {
     const html = await readFile(new URL('../capital/' + page, import.meta.url), 'utf8');
     assert.doesNotMatch(html, /github\.com\/bwoods1998\/portfolio-agent/, page);
     assert.ok(html.includes(REPO), `${page} links the runtime repository`);
@@ -1600,8 +1598,8 @@ test('the floor lists real-money positions with their reasons, past trades behin
     why.click();
     assert.equal(why.getAttribute('aria-expanded'), 'true');
     assert.match(why.textContent, /Holds to settlement\.$/, 'the whole thesis on demand');
-    assert.deepEqual(positions.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=haghani', '/capital/committee/']);
-    assert.match(positions.withClass('quiet-line')[0].textContent, /Shadow partners hold 2 practice positions \(scored on real prices, no money\) ↗/);
+    assert.deepEqual(positions.find('a').map(node => node.href), ['/capital/desk/?id=hilibrand', '/capital/desk/?id=haghani']);
+    assert.match(positions.withClass('quiet-line')[0].textContent, /Shadow partners hold 2 practice positions \(scored on real prices, no money\)/);
 
     const closed = root.querySelector('#floor-closed');
     assert.match(closed.withClass('record-line')[0].textContent, /9 real-money trades · 4 won · −\$6\.00/);
@@ -1633,7 +1631,7 @@ test('the floor lists real-money positions with their reasons, past trades behin
     const cells = learning.withClass('ladder-cell').map(words);
     assert.deepEqual(cells, ['+1.2% ★', '+0.4%', '−20.6%', '−2.6% ★', '−3.9%', '−0.7%'], 'families by generation, then every desk of a generation together');
     assert.deepEqual(learning.withClass('ladder-live').length, 2);
-    assert.match(words(learning.withClass('loop-line')[0]), /bred 2 · retired 0 · promoted 0 · experiments 1 The loop ↗/, 'the roster counts the children the trimmed log no longer shows');
+    assert.match(words(learning.withClass('loop-line')[0]), /bred 2 · retired 0 · promoted 0 · experiments 1/, 'the roster counts the children the trimmed log no longer shows');
   });
 });
 

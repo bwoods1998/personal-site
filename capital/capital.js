@@ -20,6 +20,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
 const REPOSITORY = 'https://github.com/bwoods1998/long-term-capital-management';
 const responseCache = new Map();
+// The floor is paused while the project is rebuilt (Sept 19, 2026): every live indicator says
+// so, and the pulse stops. Set to false when the loop trades again.
+export const IN_DEVELOPMENT = true;
+const DEVELOPMENT_WORDS = 'in development';
 const STREAM_LABELS = { risk: 'Risk engine', committee: 'Meriwether', evolution: 'Evolution', lab: 'Lab', ops: 'Ops' };
 
 // The partners the runtime publishes, with the human behind each surname. Page copy only: the
@@ -1637,7 +1641,7 @@ function positionsPanel(checkpoint, state) {
   }
   if (practice) {
     const quiet = element('p', null, 'quiet-line');
-    quiet.append(link(`Shadow partners hold ${plural(practice, 'practice position')} (scored on real prices, no money) ↗`, '/capital/committee/'));
+    quiet.append(element('span', `Shadow partners hold ${plural(practice, 'practice position')} (scored on real prices, no money)`));
     nodes.push(quiet);
   }
   return nodes;
@@ -1781,7 +1785,7 @@ function learningPanel(checkpoint, counts) {
   nodes.push(table);
   nodes.push(element('p', '● trades real money · ★ best in its family · return on capital', 'ladder-legend'));
   const loop = element('p', null, 'loop-line');
-  loop.append(element('span', loopCountLine(counts)), link('The loop ↗', '/capital/committee/', 'loop-link'));
+  loop.append(element('span', loopCountLine(counts)));
   nodes.push(loop);
   return nodes;
 }
@@ -1803,8 +1807,8 @@ async function startFloor(root) {
     if (!box.status) return;
     const working = state.checkpoint ? orderDesks(state.checkpoint.desks).filter(desk => desk?.live_session).length : 0;
     const words = state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'live · polling' : 'connecting';
-    const text = working ? `${words} · ${plural(working, 'partner')} in session` : words;
-    box.status.className = `live-status live-${state.mode}`;
+    const text = IN_DEVELOPMENT ? DEVELOPMENT_WORDS : (working ? `${words} · ${plural(working, 'partner')} in session` : words);
+    box.status.className = `live-status ${IN_DEVELOPMENT ? 'live-idle' : `live-${state.mode}`}`;
     // A status region re-announces whatever replaces it, so it changes only when the words do.
     if (state.statusText === text) return;
     state.statusText = text;
@@ -2549,7 +2553,7 @@ async function startDesk(root) {
     summary.textContent = current && !current.running ? current.summary : '';
     stage.className = thinking ? 'thoughts' : 'thoughts thoughts-idle';
     const text = join(idleLine(current || null, Date.now(), liveSession()), next && next !== 'now' ? `next session ${next}` : '');
-    box.state.className = `live-status ${thinking ? 'live-live' : 'live-idle'}`;
+    box.state.className = `live-status ${thinking && !IN_DEVELOPMENT ? 'live-live' : 'live-idle'}`;
     box.state.replaceChildren(pulse(), element('span', text));
   };
   const earlier = element('div', null, 'sessions-box');
@@ -2962,8 +2966,9 @@ async function startCommittee(root) {
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
   const drawStatus = () => {
     if (!box.status) return;
-    box.status.className = `live-status live-${state.mode}`;
-    box.status.replaceChildren(pulse(), element('span', state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'live · polling' : 'connecting'));
+    box.status.className = `live-status ${IN_DEVELOPMENT ? 'live-idle' : `live-${state.mode}`}`;
+    box.status.replaceChildren(pulse(), element('span', IN_DEVELOPMENT ? DEVELOPMENT_WORDS
+      : state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'live · polling' : 'connecting'));
   };
   const drawChecked = () => {
     if (!state.checkpoint) return;
