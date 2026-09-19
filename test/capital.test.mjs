@@ -486,7 +486,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
     assert.match(html, /data-capital="(?:floor|desk|committee)"/, page);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /AI traders run real money on Kalshi and Coinbase and rewrite themselves from every result\. Watch them think\./);
+  assert.match(floorHtml, /AI traders run real money on Kalshi, Coinbase and Alpaca and rewrite themselves from every result\. Watch them think\./);
   assert.match(floorHtml, /A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money\./);
   const floorIds = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-positions', 'closed-toggle', 'floor-closed', 'floor-leaders', 'floor-learning'];
   for (const id of floorIds) assert.match(floorHtml, new RegExp(`id="${id}"`), id);
@@ -1976,6 +1976,9 @@ test('the floor’s helpers read as words: relative times, numerals, triggers, t
 
   assert.equal(flatLine(checkpoint()), 'No real-money position open.');
   assert.equal(flatLine(checkpoint({ floor: accountFloor() })), 'No real-money position open. $980 in cash across Kalshi and Coinbase.');
+  // Three accounts read as a list, not as a pair (Alpaca joined on Sept 19, 2026).
+  const three = accountFloor({ venues: [venueRow(), venueRow('coinbase', COINBASE), venueRow('alpaca', { equity: '500.00', cash: '500.00' })], account_equity: '1479.69' });
+  assert.equal(flatLine(checkpoint({ floor: three })), 'No real-money position open. $1,480 in cash across Kalshi, Coinbase and Alpaca.');
 
   const race = raceRows(checkpoint({ desks: [
     desk('mullins-3', { family: 'kalshi', generation: 3, parent_id: 'mullins', mode: 'shadow', return_pct: '2.5', mutation: mutation({ model_profile: 'oss_asap', model_changed: true }) }),

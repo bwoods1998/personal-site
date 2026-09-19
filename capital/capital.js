@@ -565,7 +565,7 @@ export function modeBadge(desk) {
 
 // ------------------------------------------------- the accounts the money actually sits in
 // `live_equity` is the ledger's number, and it is what attributes a gain to a desk. This is what
-// Kalshi and Coinbase say the balance is, which is what the owner sees when they open the app.
+// the venues say the balance is, which is what the owner sees when they open the apps.
 export const accountEquity = floor => (numeric(floor?.account_equity) ? floor.account_equity : null);
 // "kalshi" is what the runtime publishes; "Kalshi" is what the account is called.
 export const venueLabel = value => { const name = show(value); return name ? name[0].toUpperCase() + name.slice(1) : ''; };
@@ -1125,9 +1125,12 @@ export function performanceSeries(events, checkpoint = null) {
   }
   return balanceSeries(marks);
 }
+// Every account the floor trades has to be answering before a profit figure means anything. The
+// floor names them in the checkpoint, so adding a venue (Alpaca, Sept 19, 2026) does not need an
+// edit here; a floor that publishes no venue at all is never complete.
 function completeAccounts(floor) {
-  return Array.isArray(floor?.venues) && floor.venues.length === 2
-    && ['kalshi', 'coinbase'].every(venue => floor.venues.some(row => row.venue === venue && !row.stale));
+  const venues = Array.isArray(floor?.venues) ? floor.venues : [];
+  return venues.length > 0 && venues.every(row => row && !row.stale && numeric(row.equity));
 }
 export function portfolioPerformance(checkpoint, marks = []) {
   const series = performanceSeries(marks, checkpoint);
@@ -1185,7 +1188,9 @@ export function deskPositionRows(desk, { minValue = 0.5 } = {}) {
 export function flatLine(checkpoint) {
   const total = accountEquity(checkpoint?.floor);
   const venues = accountVenues(checkpoint?.floor).map(row => row.name);
-  return `No real-money position open.${total === null ? '' : ` ${money(total, 0)} in cash${venues.length ? ` across ${venues.join(' and ')}` : ''}.`}`;
+  const across = venues.length < 2 ? venues.join('')
+    : `${venues.slice(0, -1).join(', ')} and ${venues[venues.length - 1]}`;
+  return `No real-money position open.${total === null ? '' : ` ${money(total, 0)} in cash${across ? ` across ${across}` : ''}.`}`;
 }
 
 // ---- past trades: every settled or exited trade, who took it and why
