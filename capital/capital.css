@@ -202,6 +202,9 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .improve-caption { margin: 10px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 
 footer.floor-footer { border-top: 1px solid var(--line); padding: 22px 0 44px; }
+.footer-links { display: flex; gap: 18px; margin: 0 0 8px; font: 11px/1.8 'Courier New', Courier, monospace; }
+.footer-links a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+.footer-links a:hover { border-bottom-color: var(--ink); }
 .footer-note { margin: 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
