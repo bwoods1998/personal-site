@@ -486,7 +486,7 @@ test('the pages carry the masthead, the disclosure and no external script', asyn
     assert.match(html, /data-capital="(?:floor|desk|committee)"/, page);
   }
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /AI traders run real money on Kalshi, Coinbase and Alpaca and rewrite themselves from every result\. Watch them think\./);
+  assert.match(floorHtml, /AI traders run real money on Kalshi and Alpaca and rewrite themselves from every result\. Watch them think\./);
   assert.match(floorHtml, /A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money\./);
   const floorIds = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-positions', 'closed-toggle', 'floor-closed', 'floor-leaders', 'floor-learning'];
   for (const id of floorIds) assert.match(floorHtml, new RegExp(`id="${id}"`), id);
