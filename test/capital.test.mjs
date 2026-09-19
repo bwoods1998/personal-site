@@ -534,8 +534,9 @@ test('the floor page mounts the two numbers, the partner thinking now, and a liv
     assert.equal(thought.getAttribute('aria-expanded'), 'false');
     thought.click();
     assert.equal(lines()[4].find('button')[0].getAttribute('aria-expanded'), 'true', 'a long thought opens in place');
-    // The floor is paused while the project is rebuilt: every live indicator says so.
+    // This checkpoint was published days ago, so the floor reads as stopped though polling is up.
     assert.match(root.querySelector('#floor-status').textContent, /^\s*stopped$/);
+    assert.equal(root.querySelector('#floor-status').className, 'live-status live-stopped');
     assert.deepEqual(root.find('a'), [], 'the page draws no link');
   });
 
@@ -1234,7 +1235,9 @@ test('a floor that has published nothing says so in every section and keeps its 
     assert.equal(words(root.querySelector('#floor-positions')), 'No position is open.');
     assert.equal(words(root.querySelector('#floor-closed')), 'No trade has closed yet.');
     assert.equal(words(root.querySelector('#floor-improvement')), 'No generations have finished yet.');
+    // No checkpoint at all (the address answers 404): stopped, whatever the transport is doing.
     assert.match(root.querySelector('#floor-status').textContent, /^\s*stopped$/);
+    assert.equal(root.querySelector('#floor-status').className, 'live-status live-stopped');
   });
 });
 
@@ -1319,7 +1322,33 @@ test('the floor’s helpers read as words: relative times, numerals, triggers, i
 
 });
 
-import { closedRows, quietLine, tapeOf, apiBase, titleCase, positionCounts, IN_DEVELOPMENT } from '../capital/capital.js';
+import { closedRows, quietLine, tapeOf, apiBase, titleCase, positionCounts, floorRunning, FLOOR_STALE_MS } from '../capital/capital.js';
+
+test('the floor is running while its newest checkpoint is recent: the status follows the data', () => {
+  const now = Date.parse('2026-09-20T13:30:00.000Z');
+  const aged = ms => ({ published_at: new Date(now - ms).toISOString() });
+  assert.equal(FLOOR_STALE_MS, 15 * 60 * 1000, 'fifteen of the runtime’s one-minute checkpoints');
+  assert.equal(floorRunning(aged(0), now), true);
+  assert.equal(floorRunning(aged(60 * 1000), now), true, 'the usual case: published a minute ago');
+  assert.equal(floorRunning(aged(FLOOR_STALE_MS), now), true, 'the last instant of the window');
+  assert.equal(floorRunning(aged(FLOOR_STALE_MS + 1), now), false);
+  assert.equal(floorRunning(aged(16 * 60 * 1000), now), false, 'sixteen minutes without a checkpoint is a stopped floor');
+  assert.equal(floorRunning(aged(4 * 24 * 60 * 60 * 1000), now), false);
+  // A clock that is a little off: the worker accepts a checkpoint stamped up to a minute ahead.
+  assert.equal(floorRunning(aged(-1000), now), true);
+  assert.equal(floorRunning(aged(-60 * 1000), now), true);
+  assert.equal(floorRunning(aged(-16 * 60 * 1000), now), false, 'further ahead than the window is not a time the page can read');
+  // Nothing published, or nothing that reads as a time.
+  for (const nothing of [null, undefined, {}, [], 'live', 7, true, { published_at: null }, { published_at: '' }, { published_at: 'this morning' },
+    { published_at: Date.parse('2026-09-20T13:29:00.000Z') }, { published_at: {} }, { published_at: [] }]) {
+    assert.equal(floorRunning(nothing, now), false, JSON.stringify(nothing) ?? 'undefined');
+  }
+  assert.equal(floorRunning(aged(0), NaN), false);
+  // Without a second argument it is measured against the clock on the wall.
+  assert.equal(floorRunning({ published_at: new Date().toISOString() }), true);
+  assert.equal(floorRunning(checkpoint()), false, 'the fixture was published on Sept 15');
+  assert.equal(floorRunning(checkpoint({ published_at: new Date(Date.now() - 60 * 1000).toISOString() })), true);
+});
 
 test('past trades name the desk, the market, the result and the reason', () => {
   const checkpoint = { desks: [
@@ -1669,7 +1698,7 @@ test('an agent named by slug reads as its words in the feed and both tables, and
 });
 
 // ---------------------------------------------------------------------------- the test tape
-test('a test tape is read from its own API base, fetches and socket alike, and its dot follows the transport', async () => {
+test('a test tape is read from its own API base, fetches and socket alike, and its status follows its checkpoints as the real floor’s does', async () => {
   // The same short list the worker routes by (schema.js TAPES): `test` and `canary`, nothing else.
   assert.deepEqual(TAPES, ['test', 'canary']);
   assert.equal(tapeOf('?tape=test'), 'test');
@@ -1689,41 +1718,128 @@ test('a test tape is read from its own API base, fetches and socket alike, and i
     addEventListener(name, handler) { this.listeners[name] = handler; }
     close() {}
   }
-  const mount = async search => {
+  // `publishedAt` is when the floor last published: a function of the clock, or null for a floor
+  // that has published nothing (its checkpoint address answers 404). `later` runs with the page
+  // mounted and the socket open, and can publish again, move the clock, and run the page's own
+  // 30-second refresh.
+  const STOPPED = ['stopped', 'live-status live-stopped'];
+  const CONNECTING = ['connecting', 'live-status live-idle'];
+  const LIVE = ['live', 'live-status live-live'];
+  const minutesAgo = minutes => () => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  const mount = async (search, publishedAt, later = null) => {
     const asked = [];
     const root = stubPage('floor', FLOOR_IDS);
-    await withBrowser(search, path => {
-      asked.push(path);
-      if (path.includes('/checkpoint')) return checkpoint({ floor: accountFloor(), run: run() });
-      if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
-      return { schema_version: 1, latest_seq: 0, events: [] };
-    }, async () => {
-      globalThis.WebSocket = FakeSocket;
-      const feed = await startCapital(root);
-      const status = root.querySelector('#floor-status');
-      root.before = [words(status), status.className];
-      sockets.at(-1).listeners.open();
-      root.after = [words(status), status.className];
-      feed.stop();
-    });
+    const wall = Date.now;
+    const held = { at: publishedAt ? publishedAt() : null, down: false };
+    try {
+      await withBrowser(search, path => {
+        asked.push(path);
+        if (path.includes('/checkpoint')) return held.at && !held.down ? checkpoint({ published_at: held.at, floor: accountFloor(), run: run() }) : null;
+        if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+        return { schema_version: 1, latest_seq: 0, events: [] };
+      }, async () => {
+        globalThis.WebSocket = FakeSocket;
+        const timers = [];
+        globalThis.setInterval = (work, every) => { timers.push({ work, every }); return 0; };
+        const feed = await startCapital(root);
+        const status = root.querySelector('#floor-status');
+        const read = () => [words(status), status.className];
+        root.before = read();
+        sockets.at(-1).listeners.open();
+        root.after = read();
+        if (later) {
+          await later({
+            read, word: () => status.children[1],
+            publish(at) { held.at = at; held.down = false; },
+            outage() { held.down = true; },
+            clock(minutes) { Date.now = () => wall() + minutes * 60 * 1000; },
+            // The page's own timer, not a new one: the refresh it already runs every 30 seconds.
+            async refresh() {
+              const every = timers.filter(timer => timer.every === 30000);
+              assert.equal(every.length, 1, 'one 30-second refresh');
+              assert.deepEqual(timers.map(timer => timer.every).sort((a, b) => a - b), [1000, 30000], 'the status adds no timer of its own');
+              const before = asked.filter(path => path.includes('/checkpoint')).length;
+              every[0].work();
+              for (let turn = 0; turn < 500 && asked.filter(path => path.includes('/checkpoint')).length === before; turn += 1) await tick();
+              for (let turn = 0; turn < 50; turn += 1) await tick();
+            },
+          });
+        }
+        feed.stop();
+      });
+    } finally { Date.now = wall; }
     return { root, asked };
   };
 
-  const tape = await mount('?tape=test');
+  const tape = await mount('?tape=test', minutesAgo(1));
   assert.ok(tape.asked.length >= 9, 'the checkpoint, the history and every event load');
   for (const path of tape.asked) assert.ok(path.startsWith('/api/capital/t/test/'), path);
   assert.deepEqual([...new Set(tape.asked.map(path => path.slice('/api/capital/t/test'.length).split('?')[0]))].sort(), ['/checkpoint', '/events', '/history']);
   assert.equal(sockets.at(-1).url, 'wss://blakewoods.us/api/capital/t/test/stream');
-  // IN_DEVELOPMENT is ignored on a tape: it reads as the floor will when it runs.
-  assert.deepEqual(tape.root.before, ['connecting', 'live-status live-idle']);
-  assert.deepEqual(tape.root.after, ['live', 'live-status live-live']);
+  // A tape whose publisher is running: the dot follows the transport.
+  assert.deepEqual(tape.root.before, CONNECTING);
+  assert.deepEqual(tape.root.after, LIVE);
   assert.match(tape.root.querySelector('#floor-positions').textContent, /No real-money position open\./, 'the sections themselves are the same');
+  // A tape is given no special reading: nothing published, or nothing lately, is a stopped floor.
+  for (const publishedAt of [null, minutesAgo(16), () => checkpoint().published_at]) {
+    const still = await mount('?tape=test', publishedAt);
+    assert.deepEqual(still.root.before, STOPPED);
+    assert.deepEqual(still.root.after, STOPPED, 'an open socket does not make a stopped floor live');
+  }
 
-  // Without the parameter, or with a name that is not on the list, the page is the real floor's.
+  // Without the parameter, or with a name that is not on the list, the page is the real floor's,
+  // and it reads the same way: the word is what the checkpoints say, not a switch in the code.
   for (const search of ['', '?tape=Not%20A%20Tape', '?tape=demo']) {
-    const real = await mount(search);
+    const real = await mount(search, minutesAgo(1));
     for (const path of real.asked) assert.ok(path.startsWith('/api/capital/') && !path.startsWith('/api/capital/t/'), path);
     assert.equal(sockets.at(-1).url, 'wss://blakewoods.us/api/capital/stream');
-    assert.deepEqual(real.root.after, IN_DEVELOPMENT ? ['stopped', 'live-status live-stopped'] : ['live', 'live-status live-live']);
+    assert.deepEqual(real.root.before, CONNECTING);
+    assert.deepEqual(real.root.after, LIVE);
+    for (const publishedAt of [null, minutesAgo(16)]) {
+      const stopped = await mount(search, publishedAt);
+      assert.deepEqual(stopped.root.before, STOPPED);
+      assert.deepEqual(stopped.root.after, STOPPED);
+    }
+  }
+
+  // The morning: the page is open on an empty floor, the runtime starts, and nothing else happens.
+  // The next refresh finds the first checkpoint and the word turns by itself. Then the runtime
+  // stops, and the word turns back once the last checkpoint is older than the window.
+  for (const search of ['', '?tape=test']) {
+    await mount(search, null, async page => {
+      assert.deepEqual(page.read(), STOPPED);
+      await page.refresh();
+      assert.deepEqual(page.read(), STOPPED, 'still nothing published');
+      page.publish(minutesAgo(0)());
+      await page.refresh();
+      assert.deepEqual(page.read(), LIVE, 'the first checkpoint turns the floor on');
+      // A status region re-announces whatever replaces it: the same word leaves the node alone.
+      const word = page.word();
+      page.publish(minutesAgo(0)());
+      await page.refresh();
+      assert.deepEqual(page.read(), LIVE);
+      assert.equal(page.word(), word, 'a second live checkpoint redraws nothing');
+      // Ten minutes of silence is inside the window; sixteen is not, whether the last checkpoint
+      // is still being served or the address has stopped answering.
+      page.clock(10);
+      await page.refresh();
+      assert.deepEqual(page.read(), LIVE);
+      assert.equal(page.word(), word);
+      page.clock(16);
+      page.outage();
+      await page.refresh();
+      assert.deepEqual(page.read(), STOPPED, 'a refresh that fails still ages the checkpoint the page holds');
+      const stoppedWord = page.word();
+      assert.notEqual(stoppedWord, word, 'the word changed, so the region was redrawn once');
+      page.publish(minutesAgo(16)());
+      await page.refresh();
+      assert.deepEqual(page.read(), STOPPED);
+      assert.equal(page.word(), stoppedWord);
+      // And on again: the runtime is started a second time and publishes at the clock as it stands.
+      page.publish(minutesAgo(0)());
+      await page.refresh();
+      assert.deepEqual(page.read(), LIVE);
+    });
   }
 });

@@ -25,11 +25,17 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
 
 ## The page, top to bottom
 
-1. **Masthead** (`#masthead`). "Long Term Capital Management", one sentence, the status indicator
-   (`IN_DEVELOPMENT` says "in development" and stills the pulse), and two numbers: **Total profit**
-   (`portfolioPerformance`: balance change since the audited start, less net deposits) and
-   **Running** (a ticking clock from `run.started_at`).
-2. **Live** (`#live`). The stage: the newest thought, typed, with the agent, real money or practice,
+1. **Masthead** (`#masthead`). "Long Term Capital Management", one sentence, and two numbers:
+   **Total profit** (`portfolioPerformance`: balance change since the audited start, less net
+   deposits) and **Running** (a ticking clock from `run.started_at`).
+2. **Live** (`#live`). The heading is the status: one dot and one word, and it follows the data,
+   not a switch in the code. The floor is running while the newest checkpoint the page holds was
+   published in the last 15 minutes (`floorRunning`, `FLOOR_STALE_MS`; the runtime publishes one a
+   minute): then the word is a green, pulsing **live** once the socket or polling is up, and
+   **connecting** until it is. With no checkpoint, or none that recent, it is a red, still
+   **stopped**, on the real floor and on a test tape alike. The page reads it again on every
+   30-second refresh, so starting the runtime turns it live and stopping it turns it stopped, with
+   no edit to the site. The stage: the newest thought, typed, with the agent, real money or practice,
    why it sat down, and its latest research. An agent keeps the stage while it is still talking
    (45s hold). Below it, twelve lines, newest first: thinking (`desk.thought`), researching
    (research `desk.tool_call`s in plain words), trading (`broker.fill`, `desk.outcome`), and the

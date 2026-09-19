@@ -27,10 +27,17 @@ export const PERFORMANCE_START_AT = '2026-09-19T04:56:53.000Z';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
 const responseCache = new Map();
-// The floor is paused while the project is rebuilt (Sept 19, 2026): every live indicator says
-// so, and the pulse stops. Set to false when the loop trades again.
-export const IN_DEVELOPMENT = true;
-const DEVELOPMENT_WORDS = 'stopped';
+// The status follows the data, never a switch in this file: the runtime publishes a checkpoint
+// every minute, so the floor is running while the newest one the page holds is younger than this.
+// Starting the runtime turns the word to "live"; stopping it turns the word to "stopped".
+export const FLOOR_STALE_MS = 15 * 60 * 1000;
+// The window runs both ways. The worker refuses a checkpoint stamped more than a minute ahead, so
+// a `published_at` in the future is a publisher or a reader whose clock is off, not a floor that
+// stopped; one further ahead than the window is not a time this page can read.
+export function floorRunning(checkpoint, now = Date.now()) {
+  const at = typeof checkpoint?.published_at === 'string' ? Date.parse(checkpoint.published_at) : NaN;
+  return Number.isFinite(at) && Number.isFinite(now) && Math.abs(now - at) <= FLOOR_STALE_MS;
+}
 
 // The partners the runtime publishes, with the human behind each surname. Page copy only: the
 // numbers, the thinking and the orders all come from the published checkpoint and event log.
@@ -1214,9 +1221,10 @@ async function startFloor(root) {
     if (!box.status) return;
     // One word beside one dot: green and pulsing when the floor is live, red when it is stopped.
     const live = state.mode === 'live' || state.mode === 'polling';
-    // A test tape is watched as it will look when the floor runs: its dot follows the transport.
-    const stopped = IN_DEVELOPMENT && !tapeOf(pageSearch());
-    const text = stopped ? DEVELOPMENT_WORDS : live ? 'live' : 'connecting';
+    // Stopped is what the checkpoints say, on the real floor and on a test tape alike: none yet,
+    // or none lately. While they keep arriving the dot follows the transport.
+    const stopped = !floorRunning(state.checkpoint);
+    const text = stopped ? 'stopped' : live ? 'live' : 'connecting';
     box.status.className = `live-status ${stopped ? 'live-stopped' : live ? 'live-live' : 'live-idle'}`;
     // A status region re-announces whatever replaces it, so it changes only when the words do.
     if (state.statusText === text) return;
@@ -1246,7 +1254,6 @@ async function startFloor(root) {
       drawn(box.positions, positionsPanel(state.checkpoint, state));
       drawn(box.improvement, improvementPanel(state.checkpoint));
       state.drawClosed();
-      drawStatus();
       if (state.primed) drawLive();
     } catch {
       if (state.checkpoint) return;
@@ -1259,6 +1266,9 @@ async function startFloor(root) {
       drawn(box.improvement, [element('p', improvementSeries(null).sentence, 'empty-state')]);
     } finally {
       state.asked = true;
+      // Every refresh re-reads the status, the ones that fail too: a fresh checkpoint turns the
+      // word to live, and the last one held turns it to stopped once it is older than the window.
+      drawStatus();
     }
   }
   await refresh();
@@ -1275,6 +1285,9 @@ async function startFloor(root) {
   drawPortfolio();
   state.drawClosed();
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
+  // A tab that was hidden asked for nothing meanwhile: it asks the moment it is looked at again,
+  // so the status is never read off a checkpoint that is only old because the page was away.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
   // The running clock ticks in the browser between checkpoints.
   setInterval(() => {
     if (!state.clock) return;
