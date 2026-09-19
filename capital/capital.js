@@ -39,39 +39,66 @@ export function floorRunning(checkpoint, now = Date.now()) {
   return Number.isFinite(at) && Number.isFinite(now) && Math.abs(now - at) <= FLOOR_STALE_MS;
 }
 
-// The partners the runtime publishes, with the human behind each surname. Page copy only: the
-// numbers, the thinking and the orders all come from the published checkpoint and event log.
+// The twelve desks the runtime publishes, each a partner of the firm the project is named after,
+// with the human behind the surname. Page copy only: the numbers, the thinking and the orders all
+// come from the published checkpoint and event log.
 export const PARTNERS = {
-  merton: {
-    surname: 'Merton', first: 'Robert', role: 'filings, long horizon', via: 'Alpaca',
-    mandate: 'Reads filings and holds for quarters rather than days. Concentrated, unlevered, and slow to change its mind.',
-  },
-  rosenfeld: {
-    surname: 'Rosenfeld', first: 'Eric', role: 'earnings drift', via: 'DeepSeek',
-    mandate: 'Buys the drift after an earnings surprise and leaves when the drift stops paying.',
-  },
-  hawkins: {
-    surname: 'Hawkins', first: 'Greg', role: 'earnings drift', via: 'Kimi',
-    mandate: 'The same drift mandate as Rosenfeld, run by a different model, so the family can be scored against itself.',
-  },
-  krasker: {
-    surname: 'Krasker', first: 'William', role: 'earnings drift', via: 'GLM',
-    mandate: 'The same drift mandate as Rosenfeld, run by a different model, so the family can be scored against itself.',
-  },
-  mullins: {
-    surname: 'Mullins', first: 'David', role: 'Fed & economic events', via: 'Kalshi',
-    mandate: 'Prices Fed decisions and economic releases as event contracts, sized to the edge it can argue for.',
+  meriwether: {
+    surname: 'Meriwether', first: 'John', role: 'sports results', via: 'Kalshi',
+    mandate: 'Winners, spreads and totals in every league Kalshi lists: the firm\'s largest book, and the one the calendar moves most.',
   },
   hilibrand: {
-    surname: 'Hilibrand', first: 'Lawrence', role: 'BTC and ETH', via: 'Coinbase',
-    mandate: 'Trades BTC and ETH on trend and funding, and holds no position it cannot explain.',
+    surname: 'Hilibrand', first: 'Lawrence', role: 'crypto strikes', via: 'Kalshi',
+    mandate: 'Hourly and daily strike ladders on bitcoin and ether, where the firm\'s one measured edge lives: resting bids on heavy favourites.',
+  },
+  scholes: {
+    surname: 'Scholes', first: 'Myron', role: 'index and sector ETFs', via: 'Alpaca',
+    mandate: 'SPY, QQQ and the sector funds, trading the published anomalies: overnight drift, two-day pullbacks, cross-asset momentum.',
+  },
+  rosenfeld: {
+    surname: 'Rosenfeld', first: 'Eric', role: 'bitcoin and ether', via: 'Alpaca',
+    mandate: 'Spot BTC and ETH around the clock, long only, where a 0.3% round trip means few trades and larger moves.',
+  },
+  haghani: {
+    surname: 'Haghani', first: 'Victor', role: 'alternative coins', via: 'Alpaca',
+    mandate: 'The liquid coins beyond BTC and ETH, with two to three times the range and wider spreads: a patient maker\'s book.',
+  },
+  mullins: {
+    surname: 'Mullins', first: 'David', role: 'daily weather', via: 'Kalshi',
+    mandate: 'City temperature and rain contracts, the best-measured favourites group the firm has traded, and no forecasting of its own.',
+  },
+  mcentee: {
+    surname: 'McEntee', first: 'James', role: 'large single stocks', via: 'Alpaca',
+    mandate: 'The dozen most traded US stocks, which move two to three times the index and gap on news.',
+  },
+  krasker: {
+    surname: 'Krasker', first: 'William', role: 'listed options', via: 'Alpaca',
+    mandate: 'Long calls and puts on sixteen underlyings, premium only: the most a position can lose is what was paid for it.',
+  },
+  hawkins: {
+    surname: 'Hawkins', first: 'Greg', role: 'slow published numbers', via: 'Kalshi',
+    mandate: 'Gasoline, diesel, oil, gold and currency ladders, where the number moves slowly and most of the ladder is settled before it pays.',
+  },
+  hufschmid: {
+    surname: 'Hufschmid', first: 'Hans', role: 'player props', via: 'Kalshi',
+    mandate: 'Thousands of thin player markets, where the spread is widest and a wrong price hurts most.',
+  },
+  huang: {
+    surname: 'Huang', first: 'Chi-fu', role: 'fifteen-minute crypto', via: 'Kalshi',
+    mandate: 'Up-or-down in the next quarter hour: ninety-six results a day a coin, the fastest feedback in the firm.',
+  },
+  leahy: {
+    surname: 'Leahy', first: 'Dick', role: 'counts and ratings', via: 'Kalshi',
+    mandate: 'Numbers that accumulate toward a deadline: review scores, approval averages, weekly counts, entered only once they are nearly final.',
   },
 };
-export const PARTNER_ORDER = ['merton', 'rosenfeld', 'hawkins', 'krasker', 'mullins', 'hilibrand'];
-// The four partners the owner wrote; families the floor founded itself start in a shadow book.
-const HUMAN_FOUNDERS = new Set(['mullins', 'scholes', 'haghani', 'hilibrand']);
-// The first run bred "<partner>-<generation>", read as a numeral: Mullins IV. The rebuilt runtime
-// names an agent by slug, and a number on the end only tells two agents of one name apart.
+export const PARTNER_ORDER = ['meriwether', 'hilibrand', 'scholes', 'rosenfeld', 'haghani', 'mullins',
+  'mcentee', 'krasker', 'hawkins', 'hufschmid', 'huang', 'leahy'];
+// Merton is not a desk: he is the frontier model that writes the code, audits every candidate for
+// real money and opens the pull requests. The firm's deepest theorist, doing the firm's thinking.
+export const MERTON = { surname: 'Merton', first: 'Robert', role: 'architect, auditor, teacher' };
+// Every desk is a partner the owner named; the league breeds within a desk, never a new surname.
+const HUMAN_FOUNDERS = new Set(Object.keys(PARTNERS));
 const isPartnerName = base => Object.hasOwn(PARTNERS, base) || HUMAN_FOUNDERS.has(base);
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // "crypto-reversion-2" reads as "Crypto Reversion 2".
@@ -179,13 +206,15 @@ export function partnerOf(desk) {
     const surname = (name ? name.replace(/\s+[IVXLCDM]+$/, '') : '') || (base ? base[0].toUpperCase() + base.slice(1) : id);
     return { id, surname, first: '', role: '', via: '', mandate: '', variant: generation > 1 ? roman(generation) : '' };
   }
-  // A bred desk keeps the partner's name and carries the runtime's own suffix beside it.
+  // A desk's own agents are numbered from its name, and the number reads as a numeral: Mullins IV.
+  // Anything else after the name (the first run's zero-padded "rosenfeld-02") is kept as it is.
   const base = known.surname.toLowerCase();
-  const variant = id === base ? '' : id.startsWith(`${base}-`) ? id.slice(base.length + 1) : id;
-  return { id, ...known, variant };
+  const suffix = id === base ? '' : id.startsWith(`${base}-`) ? id.slice(base.length + 1) : id;
+  const numbered = /^[1-9]\d{0,2}$/.test(suffix);
+  return { id, ...known, variant: numbered ? roman(Number(suffix)) : suffix };
 }
 export const partnerName = id => { const partner = partnerOf(id); return partner.variant ? `${partner.surname} ${partner.variant}` : partner.surname; };
-// The six founding partners lead; anything the floor breeds follows in published order.
+// The twelve desks lead in the owner's order; anything bred within one follows it.
 export function orderDesks(desks) {
   const list = Array.isArray(desks) ? desks : [];
   const rank = desk => {

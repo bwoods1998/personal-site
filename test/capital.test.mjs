@@ -335,9 +335,14 @@ test('the retired Portfolio Agent redirects its pages and refuses its API', asyn
 
 test('the floor projects partner names, truncation, money and the stream address without touching markup', () => {
   assert.deepEqual(Object.keys(PARTNERS), PARTNER_ORDER);
-  assert.deepEqual(PARTNER_ORDER, ['merton', 'rosenfeld', 'hawkins', 'krasker', 'mullins', 'hilibrand']);
+  // The twelve desks of the rebuilt league, each a partner of the firm. Merton is not a desk: he is
+  // the frontier model that writes the code and audits every candidate for real money.
+  assert.deepEqual(PARTNER_ORDER, ['meriwether', 'hilibrand', 'scholes', 'rosenfeld', 'haghani', 'mullins',
+    'mcentee', 'krasker', 'hawkins', 'hufschmid', 'huang', 'leahy']);
+  assert.ok(!Object.hasOwn(PARTNERS, 'merton'));
+  assert.equal(floorName('meriwether-3'), 'Meriwether III');
+  assert.equal(floorName('meriwether'), 'Meriwether');
   assert.equal(partnerOf(desk('rosenfeld-02', { family: 'rosenfeld' })).surname, 'Rosenfeld', 'a bred desk keeps the partner name');
-  assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld 02');
   assert.equal(partnerName('unknown-desk'), 'Unknown Desk', 'a slug reads as its words');
   // Desks the partner table does not know still get a name: Scholes, Scholes II, Haghani II once, not twice.
   assert.equal(partnerName('scholes'), 'Scholes');
@@ -345,7 +350,9 @@ test('the floor projects partner names, truncation, money and the stream address
   assert.equal(raceName(desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2 })), 'Haghani II');
   assert.equal(raceName(desk('scholes', { name: 'Scholes', family: 'ranges' })), 'Scholes');
   assert.equal(partnerOf(desk('lab-07', { name: 'Lab Seven', family: 'lab' })).surname, 'Lab Seven');
-  assert.deepEqual(orderDesks([desk('hilibrand'), desk('merton'), desk('mullins')]).map(d => d.id), ['merton', 'mullins', 'hilibrand']);
+  // The desks lead in the owner's order; Merton is no desk, so anything by that name follows them.
+  assert.deepEqual(orderDesks([desk('mullins'), desk('merton'), desk('hilibrand')]).map(d => d.id), ['hilibrand', 'mullins', 'merton']);
+  assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld 02', "the first run's zero-padded suffix is not a numeral");
 
   const long = truncate('word '.repeat(60), 140);
   assert.equal(long.truncated, true);
