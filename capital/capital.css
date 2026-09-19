@@ -61,6 +61,9 @@ section { min-width: 0; }
 
 /* 1 — the masthead: what this is, whether it is running, and two numbers. */
 .masthead { padding: 48px 0 34px; }
+.navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; }
+.navigation a { color: var(--muted); text-decoration: none; }
+.navigation a:hover { color: var(--ink); }
 .masthead-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
 .masthead .lede { max-width: 640px; margin: 14px 0 0; font-size: clamp(16px, 1.9vw, 20px); line-height: 1.5; color: var(--ink); }
 .live-status { display: inline-flex; align-items: center; gap: 7px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap; }
@@ -202,9 +205,6 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .improve-caption { margin: 10px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 
 footer.floor-footer { border-top: 1px solid var(--line); padding: 22px 0 44px; }
-.footer-links { display: flex; gap: 18px; margin: 0 0 8px; font: 11px/1.8 'Courier New', Courier, monospace; }
-.footer-links a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
-.footer-links a:hover { border-bottom-color: var(--ink); }
 .footer-note { margin: 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {

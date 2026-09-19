@@ -410,11 +410,11 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.match(floorHtml, /data-capital="floor"/);
   assert.match(floorHtml, /AI agents trade real money on Kalshi and Alpaca and rewrite themselves from every result\./);
   // No hyperlink at all: not to the home page, the repository, a desk page or a skip target.
-  // Exactly two links, both in the footer: the owner's site and the project's repository.
+  // Exactly two links, both in the header: the owner's site on the left, the repository on the right.
   const anchors = [...floorHtml.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map(match => [match[1], match[2]]);
-  assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub']]);
+  assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((floorHtml.match(/<a[\s>]/gi) || []).length, 2);
-  assert.ok(floorHtml.indexOf('<a ') > floorHtml.indexOf('<footer'), 'the links sit in the footer, below everything');
+  assert.ok(floorHtml.indexOf('<a ') > floorHtml.indexOf('<header class="navigation">') && floorHtml.lastIndexOf('<a ') < floorHtml.indexOf('</header>'), 'both links sit in the header');
   assert.doesNotMatch(floorHtml.slice(floorHtml.indexOf('<body')), /capital\/committee|capital\/desk/, 'no retired page is linked');
   // Exactly five sections, in the owner's order.
   assert.deepEqual([...floorHtml.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
@@ -441,7 +441,7 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.doesNotMatch(floorHtml, /Sail|Portfolio<|arena|Who’s winning/i);
   // The footer is one plain line.
   const footer = floorHtml.slice(floorHtml.indexOf('<footer'), floorHtml.indexOf('</footer>'));
-  assert.equal(footer.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), 'Blake Woods GitHub Blake Woods owns every position. Not investment advice.', 'two links, then the one line');
+  assert.equal(footer.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), 'Blake Woods owns every position. Not investment advice.');
   // The word budget: at most 40 static words above the live feed, 90 on the whole page.
   const staticWords = html => html.replace(/<[^>]+>/g, ' ').replace(/[—…$]/g, ' ').split(/\s+/).filter(word => /[A-Za-z]/.test(word));
   const aboveFeed = staticWords(floorHtml.slice(floorHtml.indexOf('<body'), floorHtml.indexOf('id="floor-feed"')));
@@ -468,7 +468,7 @@ test('the build publishes the floor with hashed, self-hosted assets', async () =
     const floorHtml = await readFile(join(root, 'dist/capital/index.html'), 'utf8');
     assert.match(floorHtml, /\.\.\/assets\/capital\.[a-f0-9]{12}\.css/);
     assert.match(floorHtml, /\.\.\/assets\/capital\.[a-f0-9]{12}\.js/);
-    assert.equal((floorHtml.match(/<a[\s>]/gi) || []).length, 2, 'the built page keeps only the two footer links');
+    assert.equal((floorHtml.match(/<a[\s>]/gi) || []).length, 2, 'the built page keeps only the two header links');
     for (const page of ['dist/capital/index.html']) {
       const html = await readFile(join(root, page), 'utf8');
       const directory = join(root, page.slice(0, page.lastIndexOf('/')));
@@ -807,7 +807,7 @@ test('the page says practice or shadow, never paper, and stills its motion on re
   const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /\.improve-bar/);
-  for (const gone of ['ladder', 'rows-arena', 'rows-leaders', 'partners-grid', 'navigation', 'skip-link']) assert.ok(!css.includes(`.${gone}`), `${gone} styles are gone`);
+  for (const gone of ['ladder', 'rows-arena', 'rows-leaders', 'partners-grid', 'footer-links', 'skip-link']) assert.ok(!css.includes(`.${gone}`), `${gone} styles are gone`);
 });
 
 // ---------------------------------------------------------------- the owner's real balances
