@@ -1,8 +1,18 @@
-import { MAX_EVENT_LIMIT, deskId, isLive, validCheckpoint, validPublicEvent, socketMatches } from './schema.js';
+import { MAX_EVENT_LIMIT, deskId, isLive, validCheckpoint, validPublicEvent, socketMatches, tapeName } from './schema.js';
 
 // Long Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
 // fills and marks; the page never contacts a quote vendor and never starts work on a desk.
 const API = '/api/capital';
+// A test tape: /capital/?tape=test reads the separate floor a publisher filled under
+// /api/capital/t/test, every fetch and the socket alike. Only the listed tapes (schema.js TAPES)
+// count; without the parameter, or with any other name, nothing changes.
+export function tapeOf(search) {
+  let tape = null;
+  try { tape = new URLSearchParams(typeof search === 'string' ? search : '').get('tape'); } catch { tape = null; }
+  return tapeName(tape) ? tape : null;
+}
+export const apiBase = search => { const tape = tapeOf(search); return tape ? `${API}/t/${tape}` : API; };
+const pageSearch = () => (typeof window === 'undefined' ? '' : window.location?.search);
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_CHECKPOINT_BYTES = 512 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
@@ -10,9 +20,10 @@ const TAPE_TEXT_LIMIT = 140;
 // Durable all-time balance history, separate from the bounded live activity tape.
 const FLOOR_MARK = { kind: 'floor.mark', field: 'account_equity' };
 const FLOOR_HISTORY_LIMIT = 2048;
-// First complete account mark after the Sept 16 Kalshi equity fix: earlier readings
-// reported positions without cash. Fixed provenance boundary, never a drawdown filter.
-export const PERFORMANCE_START_AT = '2026-09-16T04:58:42.508Z';
+// The account baseline, reset with the rebuild (Sept 19, 2026): the runtime's
+// `account_performance.start_at`, where it read $1,021.9251 across the venues. The first run's
+// boundary was 2026-09-16T04:58:42.508Z. Fixed provenance boundary, never a drawdown filter.
+export const PERFORMANCE_START_AT = '2026-09-19T04:56:53.000Z';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SCALE = 100000000n;
 const responseCache = new Map();
@@ -50,6 +61,14 @@ export const PARTNERS = {
   },
 };
 export const PARTNER_ORDER = ['merton', 'rosenfeld', 'hawkins', 'krasker', 'mullins', 'hilibrand'];
+// The four partners the owner wrote; families the floor founded itself start in a shadow book.
+const HUMAN_FOUNDERS = new Set(['mullins', 'scholes', 'haghani', 'hilibrand']);
+// The first run bred "<partner>-<generation>", read as a numeral: Mullins IV. The rebuilt runtime
+// names an agent by slug, and a number on the end only tells two agents of one name apart.
+const isPartnerName = base => Object.hasOwn(PARTNERS, base) || HUMAN_FOUNDERS.has(base);
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// "crypto-reversion-2" reads as "Crypto Reversion 2".
+export const titleCase = slug => show(slug).split('-').filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
 
 // "price_move" reads as "price move"; the runtime's ids are for the log, not the page.
 const humanize = value => (typeof value === 'string' ? value.replace(/[_:]+/g, ' ').trim() : '');
@@ -138,12 +157,17 @@ export function partnerOf(desk) {
   const known = PARTNERS[id] || PARTNERS[family] || PARTNERS[id.split('-')[0]] || null;
   const name = typeof desk === 'string' ? '' : show(desk?.name);
   if (!known) {
-    // A desk the partner table does not know (Scholes, Haghani, anything the lab breeds later)
-    // still gets a name: the id's base capitalised, a numeric suffix read as its generation,
-    // and a name that already carries the numeral is not given it twice.
     const dash = id.lastIndexOf('-');
     const numbered = dash > 0 && /^\d+$/.test(id.slice(dash + 1));
     const base = numbered ? id.slice(0, dash) : id;
+    // An agent of the rebuilt runtime: the name it was given when that is written for a reader,
+    // otherwise its slug in title case. Its number is not a generation, so it takes no numeral.
+    if (!isPartnerName(base)) {
+      return { id, surname: name && !SLUG.test(name) ? name : titleCase(name || id) || id, first: '', role: '', via: '', mandate: '', variant: '', agent: true };
+    }
+    // A founder the partner table does not know (Scholes, Haghani) still gets a name: the id's
+    // base capitalised, a numeric suffix read as its generation, and a name that already carries
+    // the numeral is not given it twice.
     const generation = numbered ? Number(id.slice(dash + 1)) : 0;
     const surname = (name ? name.replace(/\s+[IVXLCDM]+$/, '') : '') || (base ? base[0].toUpperCase() + base.slice(1) : id);
     return { id, surname, first: '', role: '', via: '', mandate: '', variant: generation > 1 ? roman(generation) : '' };
@@ -188,7 +212,7 @@ export function triggerText(trigger, verb = 'sat down') {
 export function streamUrl(streams, location) {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const selection = Array.isArray(streams) && streams.length && !streams.includes('all') ? `?streams=${encodeURIComponent(streams.join(','))}` : '';
-  return `${protocol}//${location.host}${API}/stream${selection}`;
+  return `${protocol}//${location.host}${apiBase(location.search)}/stream${selection}`;
 }
 
 async function fetchJson(path, limit = MAX_FEED_BYTES) {
@@ -212,17 +236,17 @@ async function fetchJson(path, limit = MAX_FEED_BYTES) {
 }
 async function loadEvents(query) {
   const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== null && value !== undefined));
-  const data = await fetchJson(`${API}/events?${params}`);
+  const data = await fetchJson(`${apiBase(pageSearch())}/events?${params}`);
   if (data?.schema_version !== 1 || !Array.isArray(data.events) || data.events.length > MAX_EVENT_LIMIT || !data.events.every(validPublicEvent)) throw new Error('Invalid tape.');
   return data;
 }
 async function loadCheckpoint() {
-  const data = await fetchJson(`${API}/checkpoint`, MAX_CHECKPOINT_BYTES);
+  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint`, MAX_CHECKPOINT_BYTES);
   if (!validCheckpoint(data)) throw new Error('Invalid checkpoint.');
   return data;
 }
 async function loadHistory() {
-  const data = await fetchJson(`${API}/history`);
+  const data = await fetchJson(`${apiBase(pageSearch())}/history`);
   if (data?.schema_version !== 1 || !Array.isArray(data.points) || data.points.length > FLOOR_HISTORY_LIMIT
       || !data.points.every(point => typeof point.at === 'string' && Number.isFinite(Date.parse(point.at))
         && typeof point.account_equity === 'string' && numeric(point.account_equity) && Number(point.account_equity) >= 0)) throw new Error('Invalid balance history.');
@@ -347,8 +371,9 @@ export function roman(value) {
   return out;
 }
 export const raceName = desk => {
+  const partner = partnerOf(desk);
   const generation = Number.isSafeInteger(desk?.generation) ? desk.generation : 1;
-  return generation > 1 ? `${partnerOf(desk).surname} ${roman(generation)}` : partnerOf(desk).surname;
+  return generation > 1 && !partner.agent ? `${partner.surname} ${roman(generation)}` : partner.surname;
 };
 // "in 12 min", "in 2h 14m": when the next partner sits down.
 export function untilText(value, now = Date.now()) {
@@ -398,7 +423,7 @@ const stepFrom = (value, delta) => String(Math.round((Number(value) + delta) * 1
 export function marketTitle(value) {
   const ticker = (typeof value === 'string' ? value : instrumentLabel(value)).trim();
   if (!ticker) return '';
-  const coin = /^([A-Z0-9]{2,10})-USDC?$/.exec(ticker);
+  const coin = /^([A-Z0-9]{2,10})[-/]USDC?$/.exec(ticker);
   if (coin) return coin[1];
   const [series, dated, strike = '', ...rest] = ticker.split('-');
   const when = tickerWhen(dated);
@@ -509,7 +534,7 @@ export function mastheadNumbers(checkpoint, now = Date.now(), marks = []) {
 // A tool call is shown when it is research, in the words a person would use for it. Orders, memos
 // and playbook writes are left out: the trade itself shows, and the rest is bookkeeping.
 const said = value => { const text = truncate(show(value), 70).text; return text ? `“${text}”` : ''; };
-const TICKERISH = /^(?:KX[A-Z0-9]+-[A-Z0-9.-]+|[A-Z0-9]{2,10}-USDC?)$/;
+const TICKERISH = /^(?:KX[A-Z0-9]+-[A-Z0-9.-]+|[A-Z0-9]{2,10}[-/]USDC?)$/;
 const topic = value => {
   const text = show(value).trim();
   if (TICKERISH.test(text)) return marketTitle(text);
@@ -539,6 +564,15 @@ export const RESEARCH = {
     const interval = INTERVAL_WORDS[show(args?.interval)] ? `${INTERVAL_WORDS[show(args.interval)]} ` : '';
     return symbol ? `reading ${count}${interval}${marketTitle(symbol)} price bars` : 'reading price history';
   },
+  // The rebuilt runtime's research tools (Sept 19, 2026). A write-up for the shared library is
+  // research the other agents read, so it shows; a request to the architect is how a tool is born.
+  web_search: args => { const query = argument(args, 'query'); return query ? `searching the web for ${said(query)}` : 'searching the web'; },
+  library_search: args => { const query = argument(args, 'query'); return query ? `searching the research library for ${said(query)}` : 'searching the research library'; },
+  library_read: args => { const title = argument(args, 'title'); return title ? `reading ${said(title)} in the research library` : 'reading the research library'; },
+  library_write: args => { const title = argument(args, 'title'); return title ? `writing up ${said(title)} for the library` : 'writing up its research for the library'; },
+  replay: args => { const purpose = argument(args, 'purpose'); return purpose ? `replaying ${said(purpose)} against history` : 'replaying a strategy against history'; },
+  request_tool: args => { const name = argument(args, 'name'); return name ? `asking the architect for a tool: ${truncate(humanize(name), 60).text}` : 'asking the architect for a tool'; },
+  playbook_read: () => 'reading the graveyard playbook',
 };
 export const FEED_KINDS = ['desk.thought', 'desk.tool_call', 'broker.fill', 'desk.outcome', 'lab.progress'];
 function fillWords(payload) {
@@ -552,10 +586,11 @@ function fillWords(payload) {
   }
   return `${fillVerb(payload.side)} ${size} ${marketTitle(symbol)}${numeric(payload.price) ? ` at ${priceText(payload.price)}` : ''}`;
 }
-// A bred desk reads with its generation as a numeral, "mullins-4" as Mullins IV, like the race.
+// A partner's bred desk reads with its generation as a numeral, "mullins-4" as Mullins IV, like
+// the race. An agent's slug reads as its words, in the feed and both tables alike.
 export function floorName(id) {
   const match = /^([a-z]+)-(\d{1,3})$/.exec(show(id));
-  return match ? `${partnerOf(match[1]).surname} ${roman(Number(match[2]))}` : partnerName(show(id));
+  return match && isPartnerName(match[1]) ? `${partnerOf(match[1]).surname} ${roman(Number(match[2]))}` : partnerName(show(id));
 }
 // A model's thought as prose: its markdown emphasis and code ticks are for a renderer the floor
 // does not use.
@@ -567,12 +602,19 @@ export function feedLine(event, liveIds = new Set()) {
   if (event.kind === 'lab.progress') {
     const text = plainThought(payload.message);
     const execution = payload.component === 'execution';
-    return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: execution ? 'arena' : 'foundry', name: execution ? 'Execution' : 'Foundry',
+    // The rebuilt runtime's research loop speaks as the League; the first run's spoke as the
+    // Foundry, and its execution heartbeat as Execution. Testing or learning is said by `stage`.
+    const league = payload.component === 'league';
+    return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: execution ? 'arena' : league ? 'league' : 'foundry',
+      name: execution ? 'Execution' : league ? 'League' : 'Foundry',
       practice: false, pnl: '', tone: '', kind: execution ? 'monitoring' : payload.stage === 'learn' ? 'learning' : 'testing', text } : null;
   }
   const desk = streamDeskOf(event.stream) || show(payload.desk_id);
   if (!deskId(desk) || desk === 'settlement') return null;
-  const practice = payload.shadow === true || event.stream === 'broker:shadow' || !(liveIds instanceof Set && liveIds.has(desk));
+  // A fill or an outcome that records `real_money` is believed over the desk's mode today, as in
+  // the closed table: a practice fill stays practice after its agent is promoted.
+  const recorded = typeof payload.real_money === 'boolean' ? !payload.real_money : null;
+  const practice = payload.shadow === true || event.stream === 'broker:shadow' || (recorded ?? !(liveIds instanceof Set && liveIds.has(desk)));
   const base = { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk, name: floorName(desk), practice, pnl: '', tone: '' };
   if (event.kind === 'desk.thought') {
     const text = plainThought(payload.text);
@@ -708,21 +750,28 @@ export function portfolioPerformance(checkpoint, marks = []) {
   return { series, netFlows, verifiedAt: valid ? basis.verified_at : null, profit: valid ? series.change - netFlows : null };
 }
 
-// Real-money positions worth showing. Practice positions and dust are counted, not listed.
+// Positions worth showing: real money first, then the practice books, each by value. The rebuilt
+// runtime keeps an agent on a practice book for its first weeks, so those are listed too, tagged
+// as the closed table tags a practice trade. Dust is counted, not listed, on either book.
 export function openPositionRows(checkpoint, { minValue = 0.5 } = {}) {
-  const rows = [];
-  let practice = 0;
+  const real = [];
+  const practice = [];
   let dust = 0;
   for (const desk of orderDesks(checkpoint?.desks).filter(item => item && typeof item === 'object')) {
     for (const position of Array.isArray(desk.positions) ? desk.positions : []) {
       if (!position || typeof position !== 'object') continue;
-      if (!isLive(desk)) { practice += 1; continue; }
       const row = positionRow(desk, position);
       if (!(Math.abs(row.value) >= minValue)) { dust += 1; continue; }
-      rows.push(row);
+      (row.live ? real : practice).push(row);
     }
   }
-  return { rows: rows.sort((left, right) => right.value - left.value), practice, dust };
+  const byValue = (left, right) => right.value - left.value;
+  return { rows: [...real.sort(byValue), ...practice.sort(byValue)], real: real.length, practice: practice.length, dust };
+}
+// "2 real · 5 practice" over a mixed book. A book of one kind needs no count: real rows are
+// untagged, and an all-practice book is announced by the flat line above it.
+export function positionCounts(book) {
+  return book?.real > 0 && book?.practice > 0 ? `${book.real} real · ${book.practice} practice` : '';
 }
 // One holding as the tables show it: the market in words, the side, value, P&L and the reason.
 function positionRow(desk, position) {
@@ -732,23 +781,23 @@ function positionRow(desk, position) {
   const side = show(position.side);
   const pnl = numeric(unrealized) ? unrealized : '';
   return {
-    desk: show(desk.id), name: raceName(desk), symbol, market: marketTitle(symbol) || '—',
+    desk: show(desk.id), name: raceName(desk), live: isLive(desk), symbol, market: marketTitle(symbol) || '—',
     side: event ? (side === 'no' || side === 'short' ? 'NO' : 'YES') : side, value: Number(position.market_value), valueText: money(looseAmount(position.market_value), 2),
     pnlText: pnl ? signedMoney(pnl, 2) : '—', tone: pnl ? signOf(pnl) : '', ...thesisParts(position.thesis),
   };
 }
-// The one line under an empty book.
-export function flatLine(checkpoint) {
+// The one line over a book with no real-money position: what the real accounts hold, and how
+// many practice positions are listed under it.
+export function flatLine(checkpoint, practice = 0) {
   const total = accountEquity(checkpoint?.floor);
   const venues = accountVenues(checkpoint?.floor).map(row => row.name);
   const across = venues.length < 2 ? venues.join('')
     : `${venues.slice(0, -1).join(', ')} and ${venues[venues.length - 1]}`;
-  return `No real-money position open.${total === null ? '' : ` ${money(total, 0)} in cash${across ? ` across ${across}` : ''}.`}`;
+  const below = practice > 0 ? ` ${plural(practice, 'practice position')} below.` : '';
+  return `No real-money position open.${total === null ? '' : ` ${money(total, 0)} in cash${across ? ` across ${across}` : ''}.`}${below}`;
 }
 
 // ---- past trades: every settled or exited trade, who took it and why
-// The four partners the owner wrote; families the floor founded itself start in a shadow book.
-const HUMAN_FOUNDERS = new Set(['mullins', 'scholes', 'haghani', 'hilibrand']);
 function isFounded(desk) {
   return !HUMAN_FOUNDERS.has(show(desk.id));
 }
@@ -1057,16 +1106,20 @@ function agentCell(name, live) {
   return cell;
 }
 function positionsPanel(checkpoint, state) {
-  const { rows } = openPositionRows(checkpoint);
+  const book = openPositionRows(checkpoint);
+  const { rows } = book;
   const nodes = [];
-  if (!rows.length) nodes.push(element('p', flatLine(checkpoint), 'empty-state'));
-  else {
+  if (!book.real) nodes.push(element('p', flatLine(checkpoint, book.practice), 'empty-state'));
+  const counts = positionCounts(book);
+  if (counts) nodes.push(element('p', counts, 'record-line'));
+  if (rows.length) {
     const table = element('table', null, 'rows rows-book');
     table.append(headRow([['Agent', 'col-agent'], ['Market', 'col-market'], ['Side', 'col-side'], ['Value', 'col-num'], ['P&L', 'col-num'], ['Why', 'col-why']]));
     const body = element('tbody');
     for (const row of rows) {
-      const line = element('tr');
-      line.append(agentCell(row.name, true), element('td', row.market, 'col-market'), element('td', row.side, 'col-side'),
+      // Real money is unmarked; a practice row carries the closed table's own tag and tone.
+      const line = element('tr', null, row.live ? '' : 'row-practice');
+      line.append(agentCell(row.name, row.live), element('td', row.market, 'col-market'), element('td', row.side, 'col-side'),
         element('td', row.valueText, 'col-num col-value'), element('td', row.pnlText, `col-num col-pnl ${row.tone}`.trim()), whyCell(row, state, `position:${row.desk}:${row.symbol}`));
       body.append(line);
     }
@@ -1161,8 +1214,10 @@ async function startFloor(root) {
     if (!box.status) return;
     // One word beside one dot: green and pulsing when the floor is live, red when it is stopped.
     const live = state.mode === 'live' || state.mode === 'polling';
-    const text = IN_DEVELOPMENT ? DEVELOPMENT_WORDS : live ? 'live' : 'connecting';
-    box.status.className = `live-status ${IN_DEVELOPMENT ? 'live-stopped' : live ? 'live-live' : 'live-idle'}`;
+    // A test tape is watched as it will look when the floor runs: its dot follows the transport.
+    const stopped = IN_DEVELOPMENT && !tapeOf(pageSearch());
+    const text = stopped ? DEVELOPMENT_WORDS : live ? 'live' : 'connecting';
+    box.status.className = `live-status ${stopped ? 'live-stopped' : live ? 'live-live' : 'live-idle'}`;
     // A status region re-announces whatever replaces it, so it changes only when the words do.
     if (state.statusText === text) return;
     state.statusText = text;

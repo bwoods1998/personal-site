@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, cp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +11,7 @@ import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
-  EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES,
+  EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
 } from '../capital/schema.js';
 import {
   orderDesks, partnerOf, partnerName, truncate, money, percent, signedMoney, streamUrl, startCapital, PARTNERS, PARTNER_ORDER,
@@ -21,9 +20,7 @@ import {
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
   closedRecord, improvementSeries,
 } from '../capital/capital.js';
-
-const token = 'woods-capital-test-publication-token-01';
-const NOW = Date.parse('2026-09-15T15:00:00.000Z');
+import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
 function event(n = 1, overrides = {}) {
   return {
@@ -66,35 +63,6 @@ const review = (overrides = {}) => ({
   payload: { intent_id: 'intent-2026-09-15-01', desk_id: 'merton', verdict: 'approve', reason: 'Inside the position cap and the mandate.', model: 'deterministic-rules-v4' },
   ...overrides,
 });
-// A stand-in for the Durable Object's synchronous SQLite surface and its socket registry.
-function floor() {
-  const database = new DatabaseSync(':memory:');
-  const sockets = [];
-  const ctx = {
-    storage: {
-      sql: { exec: (query, ...params) => { const rows = database.prepare(query).all(...params); return { toArray: () => rows }; } },
-      transactionSync(work) {
-        database.exec('BEGIN');
-        try { const value = work(); database.exec('COMMIT'); return value; }
-        catch (error) { database.exec('ROLLBACK'); throw error; }
-      },
-    },
-    acceptWebSocket(socket, tags) { socket.tags = tags; sockets.push(socket); },
-    getWebSockets: () => sockets,
-    getTags: socket => socket.tags || [],
-  };
-  const capital = new Capital(ctx, { CAPITAL_PUBLISH_TOKEN: token }, () => NOW);
-  const listen = tags => { const socket = { tags, received: [], send(message) { this.received.push(JSON.parse(message)); }, close() { this.closed = true; } }; sockets.push(socket); return socket; };
-  return { capital, sockets, listen };
-}
-const request = (method, path, body, { auth = token, headers = {} } = {}) => new Request('https://blakewoods.us' + path, {
-  method,
-  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}`, ...headers },
-  ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-});
-const post = (capital, path, body, options) => capital.fetch(request('POST', path, body, options));
-const get = (capital, path, headers = {}) => capital.fetch(request('GET', path, undefined, { headers }));
-
 test('the publisher projection is the only event shape the floor stores', async () => {
   const { capital } = floor();
   assert.equal(validEvent(event()), true);
@@ -370,7 +338,7 @@ test('the floor projects partner names, truncation, money and the stream address
   assert.deepEqual(PARTNER_ORDER, ['merton', 'rosenfeld', 'hawkins', 'krasker', 'mullins', 'hilibrand']);
   assert.equal(partnerOf(desk('rosenfeld-02', { family: 'rosenfeld' })).surname, 'Rosenfeld', 'a bred desk keeps the partner name');
   assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld 02');
-  assert.equal(partnerName('unknown-desk'), 'Unknown-desk');
+  assert.equal(partnerName('unknown-desk'), 'Unknown Desk', 'a slug reads as its words');
   // Desks the partner table does not know still get a name: Scholes, Scholes II, Haghani II once, not twice.
   assert.equal(partnerName('scholes'), 'Scholes');
   assert.equal(partnerName('scholes-2'), 'Scholes II');
@@ -492,53 +460,6 @@ test('the build publishes the floor with hashed, self-hosted assets', async () =
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-class StubElement {
-  constructor(tag) {
-    this.tag = tag; this.children = []; this._text = ''; this.attributes = {};
-    this.className = ''; this.dataset = {}; this.listeners = new Map(); this.id = '';
-  }
-  set textContent(value) { this._text = String(value); this.children = []; }
-  get textContent() { return this._text + this.children.map(child => child.textContent).join(' '); }
-  append(...nodes) { for (const node of nodes) if (node) this.children.push(node); }
-  replaceChildren(...nodes) { this._text = ''; this.children = nodes.filter(Boolean); }
-  setAttribute(name, value) { this.attributes[name] = String(value); }
-  getAttribute(name) { return this.attributes[name] ?? null; }
-  addEventListener(name, handler) { this.listeners.set(name, [...(this.listeners.get(name) || []), handler]); }
-  click() { for (const handler of this.listeners.get('click') || []) handler(); }
-  descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
-  querySelector(selector) { return this.descendants().find(node => node.id === selector.slice(1)) || null; }
-  querySelectorAll() { return []; }
-  find(tag) { return this.descendants().filter(node => node.tag === tag); }
-  withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
-}
-const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-positions', 'floor-closed', 'floor-improvement'];
-function stubPage(kind, ids) {
-  const root = new StubElement('main');
-  root.dataset.capital = kind;
-  for (const id of ids) { const node = new StubElement('div'); node.id = id; root.append(node); }
-  return root;
-}
-function withBrowser(search, routes, work) {
-  const saved = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, interval: globalThis.setInterval, socket: globalThis.WebSocket };
-  globalThis.document = {
-    createElement: tag => new StubElement(tag),
-    createElementNS: (_namespace, tag) => new StubElement(tag),
-    querySelector: () => null, visibilityState: 'visible', title: '', addEventListener() {}, removeEventListener() {},
-  };
-  globalThis.window = { location: { protocol: 'https:', host: 'blakewoods.us', search } };
-  globalThis.setInterval = () => 0;
-  globalThis.WebSocket = undefined;
-  globalThis.fetch = async path => {
-    const body = routes(path);
-    if (body === null) return new Response('{"error":"Not found."}', { status: 404 });
-    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', ETag: `"${path}"` } });
-  };
-  return Promise.resolve(work()).finally(() => {
-    globalThis.document = saved.document; globalThis.window = saved.window;
-    globalThis.fetch = saved.fetch; globalThis.setInterval = saved.interval; globalThis.WebSocket = saved.socket;
-  });
-}
 const published = (n, overrides) => ({ ...event(n, overrides), seq: n });
 function markEvent(id, index) {
   return {
@@ -822,8 +743,9 @@ const accountFloor = (overrides = {}) => ({
   ...checkpoint().floor, account_equity: '979.69', account_cash: '504.89',
   venues: [venueRow(), venueRow('coinbase', COINBASE)], ...overrides,
 });
+// The account baseline was reset with the rebuild (Sept 19, 2026); these fixtures sit on the days after it.
 const funding = (overrides = {}) => ({ start_at: PERFORMANCE_START_AT, start_equity: '976.11177639',
-  net_flows: '0', verified_at: '2026-09-17T00:00:00.000Z', ...overrides });
+  net_flows: '0', verified_at: '2026-09-21T00:00:00.000Z', ...overrides });
 function floorMark(index = 0, equity = '979.69', overrides = {}) {
   const at = `2026-09-15T13:0${index}:00.000Z`;
   return {
@@ -907,7 +829,7 @@ test('the checkpoint carries the account balances beside the ledger, or not at a
 
 test('all-time performance keeps the full balance history including transfers and losses', async () => {
   const marks = [floorMark(0, '950.00'), floorMark(1, '965.00'), floorMark(2, '979.69')]
-    .map(event => ({ ...event, at: event.at.replace('2026-09-15', '2026-09-16') }));
+    .map(event => ({ ...event, at: event.at.replace('2026-09-15', '2026-09-20') }));
   assert.equal(balanceSeries([marks[0]]), null, 'a line needs a second mark');
   const series = balanceSeries(marks);
   assert.equal(series.points.length, 3);
@@ -939,7 +861,7 @@ test('all-time performance keeps the full balance history including transfers an
     return { schema_version: 1, latest_seq: 302, events: [] };
   };
   const root = stubPage('floor', FLOOR_IDS);
-  await withBrowser('', routes(checkpoint({ published_at: '2026-09-17T00:00:00.000Z', desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
+  await withBrowser('', routes(checkpoint({ published_at: '2026-09-21T00:00:00.000Z', desks: board, floor: accountFloor(), run: run({ sessions_today: 7 }) }), marks), async () => {
     const feed = await startCapital(root);
     feed.stop();
     const portfolio = root.querySelector('#floor-portfolio');
@@ -1031,8 +953,8 @@ test('the floor chart loads archived marks older than the live tape', async () =
   const root = stubPage('floor', FLOOR_IDS);
   const old = { at: PERFORMANCE_START_AT, account_equity: '500' };
   await withBrowser('', path => {
-    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ published_at: '2026-09-17T00:00:00.000Z', floor: accountFloor() });
-    if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: '2026-09-17T00:00:00.000Z', account_equity: '979.69' }] };
+    if (path.startsWith('/api/capital/checkpoint')) return checkpoint({ published_at: '2026-09-21T00:00:00.000Z', floor: accountFloor() });
+    if (path.startsWith('/api/capital/history')) return { schema_version: 1, total: 2, points: [old, { at: '2026-09-21T00:00:00.000Z', account_equity: '979.69' }] };
     return { schema_version: 1, latest_seq: 300, events: path.includes('kind=floor.mark') ? [floorMark()] : [] };
   }, async () => {
     const feed = await startCapital(root);
@@ -1046,13 +968,15 @@ test('the floor chart loads archived marks older than the live tape', async () =
 test('performance starts at the complete-account boundary and never hides subsequent losses', () => {
   const point = (at, equity) => floorMark(0, equity, { at });
   const history = [
-    point('2026-09-15T18:23:06.913Z', '979.61'),
-    point('2026-09-16T04:47:46.709Z', '497.22'),
-    point('2026-09-16T04:53:06.201Z', '504.54'),
+    point('2026-09-18T18:23:06.913Z', '979.61'),
+    point('2026-09-19T04:47:46.709Z', '497.22'),
+    point('2026-09-19T04:53:06.201Z', '504.54'),
     point(PERFORMANCE_START_AT, '976.11'),
-    point('2026-09-16T05:05:01.805Z', '960.15'),
-    point('2026-09-17T00:00:00.000Z', '450'),
+    point('2026-09-19T05:05:01.805Z', '960.15'),
+    point('2026-09-21T00:00:00.000Z', '450'),
   ];
+  // The runtime's ltcm/config.json `account_performance.start_at`, to the millisecond.
+  assert.equal(PERFORMANCE_START_AT, '2026-09-19T04:56:53.000Z');
   const series = performanceSeries(history);
   assert.equal(series.first.at, Date.parse(PERFORMANCE_START_AT));
   assert.equal(series.first.equity, 976.11);
@@ -1064,13 +988,13 @@ test('performance starts at the complete-account boundary and never hides subseq
 });
 
 test('owner profit, portfolio and chart share the same endpoint and funding basis', () => {
-  const body = checkpoint({ published_at: '2026-09-17T00:00:00.000Z',
+  const body = checkpoint({ published_at: '2026-09-21T00:00:00.000Z',
     floor: accountFloor({ account_equity: '918.54', performance: funding() }),
     run: run({ pnl_total_usd: '-98.93' }) });
   assert.equal(validCheckpoint(body), true);
   const marks = [floorMark(0, '976.11177639', { at: PERFORMANCE_START_AT }),
-    floorMark(1, '917.69', { at: '2026-09-16T23:59:00.000Z' }),
-    floorMark(2, '999', { at: '2026-09-17T00:01:00.000Z' })];
+    floorMark(1, '917.69', { at: '2026-09-20T23:59:00.000Z' }),
+    floorMark(2, '999', { at: '2026-09-21T00:01:00.000Z' })];
   const report = portfolioPerformance(body, marks);
   assert.equal(report.series.last.equity, 918.54, 'newer tape waits for the matching account checkpoint');
   assert.equal(report.profit, report.series.change);
@@ -1084,7 +1008,7 @@ test('owner profit, portfolio and chart share the same endpoint and funding basi
     assert.equal(mastheadNumbers(moved, 0, marks)[0].note, '', 'cash flows do not produce a misleading simple percentage return');
   }
   for (const performance of [undefined, funding({ net_flows: null, verified_at: null }),
-    funding({ verified_at: '2026-09-16T23:00:00.000Z' })]) {
+    funding({ verified_at: '2026-09-20T23:00:00.000Z' })]) {
     assert.equal(portfolioPerformance({ ...body, floor: { ...body.floor, performance } }, marks).profit, null);
   }
   const stale = { ...body, floor: { ...body.floor, venues: body.floor.venues.map(row => ({ ...row, stale: true })) } };
@@ -1093,12 +1017,12 @@ test('owner profit, portfolio and chart share the same endpoint and funding basi
 });
 
 test('performance metadata is strictly typed, bounded by the checkpoint, and public aggregates only', () => {
-  const body = checkpoint({ published_at: '2026-09-17T00:00:00.000Z', floor: accountFloor({ performance: funding() }) });
+  const body = checkpoint({ published_at: '2026-09-21T00:00:00.000Z', floor: accountFloor({ performance: funding() }) });
   for (const performance of [funding({ net_flows: null, verified_at: null }), funding({ net_flows: '-123.45' })]) {
     assert.equal(validCheckpoint({ ...body, floor: { ...body.floor, performance } }), true);
   }
   for (const performance of [funding({ net_flows: 0 }), funding({ start_equity: '0' }),
-    funding({ verified_at: null }), funding({ verified_at: '2026-09-18T00:00:00.000Z' }),
+    funding({ verified_at: null }), funding({ verified_at: '2026-09-22T00:00:00.000Z' }),
     funding({ private_transactions: [] }), funding({ net_flows: 'NaN' })]) {
     assert.equal(validCheckpoint({ ...body, floor: { ...body.floor, performance } }), false);
   }
@@ -1221,7 +1145,7 @@ test('the checkpoint carries positions, mutations, live sessions, the lab and th
   assert.equal(validCalibration({ ...calibration().payload, since: '2026-09-16T00:00:00.000Z' }), false, 'since cannot follow as_of');
 });
 
-test('positions list open then closed real-money trades with their reasons, no link and no practice clutter; one chart says whether generations improve', async () => {
+test('positions list open (real money, then practice, tagged) and closed real-money trades with their reasons and no link; one chart says whether generations improve', async () => {
   const root = stubPage('floor', FLOOR_IDS);
   const austin = position({
     instrument: { symbol: 'KXHIGHAUS-26SEP16-B100.5', asset_class: 'event', venue: 'kalshi' }, side: 'no', quantity: '23.00', entry_price: '0.4300', mark_price: '0.4350',
@@ -1253,19 +1177,26 @@ test('positions list open then closed real-money trades with their reasons, no l
     feed.stop();
     const positions = root.querySelector('#floor-positions');
     const rows = positions.find('tbody')[0].find('tr');
-    assert.equal(rows.length, 2, 'real money only, dust left out');
+    assert.equal(rows.length, 4, 'real money first, then the practice books, dust left out');
     assert.deepEqual(rows.map(row => row.find('td').slice(0, 5).map(words)), [
       ['Hilibrand', 'BTC', 'long', '$772.10', '+$4.10'],
       ['Haghani', 'Austin high 100–101°F · Sep 16', 'NO', '$10.01', '+$0.12'],
+      ['Hilibrand II practice', 'BTC', 'long', '$772.10', '+$4.10'],
+      ['Haghani II practice', 'Austin high 100–101°F · Sep 16', 'NO', '$10.01', '+$0.12'],
     ]);
+    // The closed table's own tag and tone, nothing new: real rows stay unmarked.
+    assert.deepEqual(rows.map(row => [row.className, row.withClass('tag-practice').length]), [['', 0], ['', 0], ['row-practice', 1], ['row-practice', 1]]);
+    assert.deepEqual(rows.map(row => row.withClass('tag-practice').map(tag => [tag.tag, tag.className, tag.textContent])).flat(), [['span', 'tag tag-practice', 'practice'], ['span', 'tag tag-practice', 'practice']]);
+    assert.equal(words(positions.withClass('record-line')[0]), '2 real · 2 practice');
+    assert.equal(positions.withClass('empty-state').length, 0, 'a book with real money open has no flat line');
     const why = rows[1].withClass('why-toggle')[0];
     assert.match(why.textContent, /^daily temps Austin forecast high 101F .*…$/);
     assert.equal(why.getAttribute('aria-expanded'), 'false');
     why.click();
     assert.equal(why.getAttribute('aria-expanded'), 'true');
     assert.match(why.textContent, /Holds to settlement\.$/, 'the whole thesis on demand');
-    assert.deepEqual(positions.withClass('agent-name').map(node => node.tag), ['span', 'span'], 'agents are named in plain text');
-    assert.equal(positions.withClass('quiet-line').length, 0, 'practice positions are not mentioned');
+    assert.deepEqual(positions.withClass('agent-name').map(node => node.tag), ['span', 'span', 'span', 'span'], 'agents are named in plain text');
+    assert.match(words(rows[2].withClass('col-why')[0]), /^Shadow copy\.$/, 'a practice position says why as well');
 
     const closed = root.querySelector('#floor-closed');
     assert.match(closed.withClass('record-line')[0].textContent, /9 real-money trades · 4 won · −\$6\.00/);
@@ -1309,7 +1240,8 @@ test('a floor that has published nothing says so in every section and keeps its 
 
 test('when practice trades are all there is, one quiet button offers them', async () => {
   const root = stubPage('floor', FLOOR_IDS);
-  const board = checkpoint({ desks: [desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2, parent_id: 'haghani', mode: 'shadow', venues: ['kalshi'], orders: 0, gate: null })] });
+  const board = checkpoint({ floor: accountFloor(), desks: [desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2, parent_id: 'haghani', mode: 'shadow', venues: ['kalshi'], orders: 0, gate: null,
+    positions: [position({ thesis: 'Practice book. Watching the trend.' }), position({ market_value: '0.20' })] })] });
   const outcomes = [{ seq: 5, id: 'outcome:haghani-2:5', stream: 'desk:haghani-2', kind: 'desk.outcome', at: '2026-09-15T13:05:00.000Z', digest: '5'.repeat(64),
     payload: { market_id: 'KXHIGHNY-26SEP15-B81.5', result: 'no', pnl: '5.00', held_for_hours: 20, real_money: false, rationale_excerpt: 'NYC forecast high 79F against the 81° to 82° market.' } }];
   await withBrowser('', path => {
@@ -1328,6 +1260,13 @@ test('when practice trades are all there is, one quiet button offers them', asyn
     assert.match(words(closed().find('tbody')[0].find('tr')[0]), /^Haghani II practice NYC high 81–82°F · Sep 15 won \+\$5\.00 20h/);
     assert.equal(closed().find('button')[0].getAttribute('aria-pressed'), 'true');
     assert.equal(words(root.querySelector('#floor-improvement')), 'No generations have finished yet.');
+    // An all-practice book: the flat line says what the real accounts hold and announces the
+    // practice rows under it; each row is tagged, and there is nothing mixed to count.
+    const open = root.querySelector('#floor-positions');
+    assert.equal(words(open.withClass('empty-state')[0]), 'No real-money position open. $980 in cash across Kalshi and Coinbase. 1 practice position below.');
+    const held = open.find('tbody')[0].find('tr');
+    assert.deepEqual(held.map(row => [row.className, ...row.find('td').slice(0, 5).map(words)]), [['row-practice', 'Haghani II practice', 'BTC', 'long', '$772.10', '+$4.10']]);
+    assert.equal(open.withClass('record-line').length, 0);
   });
 });
 
@@ -1380,7 +1319,7 @@ test('the floor’s helpers read as words: relative times, numerals, triggers, i
 
 });
 
-import { closedRows, quietLine } from '../capital/capital.js';
+import { closedRows, quietLine, tapeOf, apiBase, titleCase, positionCounts, IN_DEVELOPMENT } from '../capital/capital.js';
 
 test('past trades name the desk, the market, the result and the reason', () => {
   const checkpoint = { desks: [
@@ -1446,6 +1385,9 @@ test('market tickers read as the thing they bet on, and anything unknown keeps i
     ['KXFED-26SEP-T3.75', 'Fed rate above 3.75% · Sep'],
     ['AAVE-USD', 'AAVE'],
     ['BTC-USD', 'BTC'],
+    ['BTC/USD', 'BTC'],
+    ['ETH/USDC', 'ETH'],
+    ['SPY', 'SPY'],
     ['KXSOMETHING-26SEP16-Q1', 'KXSOMETHING-26SEP16-Q1'],
     ['KXBTC-26XYZ16-B1', 'KXBTC-26XYZ16-B1'],
     ['SPX', 'SPX'],
@@ -1474,18 +1416,18 @@ test('market tickers read as the thing they bet on, and anything unknown keeps i
 });
 
 test('the masthead reads two numbers, total profit and running, and the clock ticks in hours, minutes and seconds', () => {
-  const now = Date.parse('2026-09-16T18:00:00.000Z');
-  const body = checkpoint({ published_at: '2026-09-16T18:00:00.000Z', floor: accountFloor({ account_equity: '943.83', performance: funding({ verified_at: '2026-09-16T18:00:00.000Z' }) }), run: run({ started_at: '2026-09-15T18:11:00.000Z', pnl_total_usd: '-75.80', sail_spend_total_usd: '18.86', sail_model_spend_today_usd: '13.15', pnl_per_sail_dollar: '-4.01' }) });
+  const now = Date.parse('2026-09-20T18:00:00.000Z');
+  const body = checkpoint({ published_at: '2026-09-20T18:00:00.000Z', floor: accountFloor({ account_equity: '943.83', performance: funding({ verified_at: '2026-09-20T18:00:00.000Z' }) }), run: run({ started_at: '2026-09-19T18:11:00.000Z', pnl_total_usd: '-75.80', sail_spend_total_usd: '18.86', sail_model_spend_today_usd: '13.15', pnl_per_sail_dollar: '-4.01' }) });
   assert.deepEqual(mastheadNumbers(body, now).map(item => [item.label, item.value, item.tone, item.note || '', item.tick || '']), [
     ['Total profit', '−$32.28', 'negative', '−3.31%', ''],
     ['Running', '23h 49m', '', '', '00s'],
   ]);
-  assert.equal(mastheadNumbers(body, now)[1].startedAt, Date.parse('2026-09-15T18:11:00.000Z'));
+  assert.equal(mastheadNumbers(body, now)[1].startedAt, Date.parse('2026-09-19T18:11:00.000Z'));
   const deposits = { ...body, floor: { ...body.floor, net_deposits: '1000' } };
   assert.equal(mastheadNumbers(deposits, now)[0].note, '−3.31%', 'internal desk funding never changes the account baseline');
   assert.deepEqual(mastheadNumbers(checkpoint(), now).map(item => item.value), ['—', '—'], 'no run, no guesses');
   // Honesty: a stale funding check or a venue that did not answer leaves a dash, never a guess.
-  const stale = { ...body, floor: { ...body.floor, performance: funding({ verified_at: '2026-09-16T10:00:00.000Z' }) } };
+  const stale = { ...body, floor: { ...body.floor, performance: funding({ verified_at: '2026-09-20T10:00:00.000Z' }) } };
   assert.equal(mastheadNumbers(stale, now)[0].value, '—', 'an unverified profit is not shown');
   assert.equal(mastheadNumbers(checkpoint({ run: run() }), now)[0].value, '—', 'the run’s own P&L claim is not the owner’s profit');
   assert.deepEqual(selfImprovingParts(42 * 60 + 5), { main: '42m', tick: '05s' });
@@ -1513,6 +1455,23 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   assert.equal(call('strategy_report', { name: 'daily_temps' }).text, 'reading the report on its daily temps strategy');
   assert.equal(call('quote', { instrument: { asset_class: 'future', symbol: 'SPX' } }).text, 'checking the price of SPX');
   assert.equal(call('bars', { instrument: { asset_class: 'crypto', symbol: 'ETH-USD' }, interval: '1d', limit: 60 }).text, 'reading 60 daily ETH price bars');
+  // The rebuilt runtime's research tools, in the same plain words.
+  assert.equal(call('web_search', { query: 'bitcoin ETF flows this week' }).text, 'searching the web for “bitcoin ETF flows this week”');
+  assert.equal(call('web_search', {}).text, 'searching the web');
+  assert.equal(call('library_search', { query: 'Kalshi maker fees' }).text, 'searching the research library for “Kalshi maker fees”');
+  assert.equal(call('library_search', {}).text, 'searching the research library');
+  assert.equal(call('library_read', { title: 'Why favorites pay' }).text, 'reading “Why favorites pay” in the research library');
+  assert.equal(call('library_read', {}).text, 'reading the research library');
+  assert.equal(call('library_write', { title: 'Hourly BTC reversion, 30 days' }).text, 'writing up “Hourly BTC reversion, 30 days” for the library');
+  assert.equal(call('library_write', {}).text, 'writing up its research for the library');
+  assert.equal(call('replay', { purpose: 'z-entry 2.5 on 5-minute BTC bars' }).text, 'replaying “z-entry 2.5 on 5-minute BTC bars” against history');
+  assert.equal(call('replay', {}).text, 'replaying a strategy against history');
+  assert.equal(call('request_tool', { name: 'funding_rates' }).text, 'asking the architect for a tool: funding rates');
+  assert.equal(call('request_tool', {}).text, 'asking the architect for a tool');
+  assert.equal(call('playbook_read', { query: 'reversion' }).text, 'reading the graveyard playbook');
+  assert.equal(call('playbook_read', {}).text, 'reading the graveyard playbook');
+  assert.equal(call('web_search', { query: 'word '.repeat(40) }).text.length < 110, true, 'a long query is cut, like every quoted argument');
+  assert.equal(call('web_search', { query: 'x' }, 'crypto-reversion-2').name, 'Crypto Reversion 2');
   for (const tool of ['propose_order', 'cancel_order', 'memo', 'playbook_write', 'memory_write', 'record_forecast', 'end_session', 'mystery']) assert.equal(call(tool, { side: 'buy' }), null, tool);
   assert.equal(call('news', { query: 'x' }).practice, true, 'a shadow desk is practice');
   assert.equal(call('news', { query: 'x' }, 'haghani').practice, false);
@@ -1542,6 +1501,13 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   assert.equal(feedLine(ev('lab.progress', 'lab', { stage: 'learn', message: 'No candidates qualified' }), live).kind, 'learning');
   const pulse = feedLine(ev('lab.progress', 'lab', { component: 'execution', stage: 'heartbeat', message: 'Coinbase: 0 real fills; 16 shadow strategies testing' }), live);
   assert.deepEqual([pulse.kind, pulse.name, pulse.desk, pulse.practice], ['monitoring', 'Execution', 'arena', false]);
+  // The rebuilt runtime's loop speaks as the League; testing or learning is still said by `stage`.
+  const league = stage => feedLine(ev('lab.progress', 'lab', { component: 'league', stage, message: 'Replayed 3 variants of crypto-reversion' }), live);
+  assert.deepEqual([league('test').kind, league('test').name, league('test').desk, league('test').practice], ['testing', 'League', 'league', false]);
+  assert.deepEqual([league('learn').kind, league('learn').name, league('learn').desk], ['learning', 'League', 'league']);
+  assert.deepEqual([league('heartbeat').kind, league(undefined).kind], ['testing', 'testing']);
+  assert.equal(feedLine(ev('lab.progress', 'lab', { component: 'league', stage: 'test', message: '  ' }), live), null);
+  assert.deepEqual([progress.desk, feedLine(ev('lab.progress', 'lab', { component: 'foundry', stage: 'test', message: 'x' }), live).name], ['foundry', 'Foundry'], 'any other component keeps the old speaker');
   assert.equal(validDesk(desk('merton', { equity: '-5', cash: '-10' }), '2026-09-15T14:05:00.000Z'), true, 'signed sleeve balances are honest');
   assert.ok(Object.keys(RESEARCH).every(tool => !['propose_order', 'cancel_order', 'memo', 'playbook_write'].includes(tool)));
 
@@ -1574,7 +1540,7 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   function pick(hero) { return [hero.desk, hero.text, hero.research]; }
 });
 
-test('real-money positions skip dust and count practice; one series says whether each generation does better', () => {
+test('open positions list real money then practice, skip dust and count each; one series says whether each generation does better', () => {
   const board = checkpoint({ desks: [
     desk('haghani', { name: 'Haghani', family: 'weather', mode: 'live', return_pct: '-20.6', pnl_usd: '-21.63', capital_usd: '104.93', positions: [
       position({ instrument: { symbol: 'KXHIGHNY-26SEP16-B77.5', asset_class: 'event', venue: 'kalshi' }, side: 'no', market_value: '7.98', unrealized_pnl: '-11.780000', thesis: '' }),
@@ -1582,17 +1548,33 @@ test('real-money positions skip dust and count practice; one series says whether
       position({ market_value: '0.49' }),
     ] }),
     desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2, parent_id: 'haghani', mode: 'shadow', return_pct: '-2.63', pnl_usd: '-3.94', capital_usd: '150', positions: [position(), position()] }),
-    desk('haghani-3', { name: 'Haghani III', family: 'weather', generation: 3, parent_id: 'haghani', mode: 'shadow', return_pct: '-22.1', pnl_usd: '-33.19', capital_usd: '150' }),
+    desk('haghani-3', { name: 'Haghani III', family: 'weather', generation: 3, parent_id: 'haghani', mode: 'shadow', return_pct: '-22.1', pnl_usd: '-33.19', capital_usd: '150', positions: [
+      position({ market_value: '0.30' }), position({ instrument: { symbol: 'ETH-USD', asset_class: 'crypto', venue: 'coinbase' }, market_value: '900.00', unrealized_pnl: '-3.00', thesis: '' }),
+    ] }),
     desk('mullins', { family: 'kalshi', mode: 'live', return_pct: '0', pnl_usd: '0', capital_usd: '300' }),
     desk('mullins-2', { family: 'kalshi', generation: 2, parent_id: 'mullins', mode: 'shadow', return_pct: '-0.0671', pnl_usd: '-0.33', capital_usd: '492', status: 'retired' }),
   ], lab: lab({ experiments: [experiment()] }) });
   const book = openPositionRows(board);
-  assert.deepEqual(book.rows.map(row => [row.market, row.side, row.valueText, row.pnlText, row.tone]), [
-    ['Miami high 90–91°F · Sep 16', 'YES', '$18.90', '+$9.03', 'positive'],
-    ['NYC high 77–78°F · Sep 16', 'NO', '$7.98', '−$11.78', 'negative'],
+  // Real money leads, by value; the practice books follow, by value, whatever they are worth.
+  assert.deepEqual(book.rows.map(row => [row.name, row.live, row.market, row.side, row.valueText, row.pnlText, row.tone]), [
+    ['Haghani', true, 'Miami high 90–91°F · Sep 16', 'YES', '$18.90', '+$9.03', 'positive'],
+    ['Haghani', true, 'NYC high 77–78°F · Sep 16', 'NO', '$7.98', '−$11.78', 'negative'],
+    ['Haghani III', false, 'ETH', 'long', '$900.00', '−$3.00', 'negative'],
+    ['Haghani II', false, 'BTC', 'long', '$772.10', '+$4.10', 'positive'],
+    ['Haghani II', false, 'BTC', 'long', '$772.10', '+$4.10', 'positive'],
   ]);
-  assert.deepEqual([book.practice, book.dust], [2, 1]);
-  assert.deepEqual(openPositionRows(checkpoint()), { rows: [], practice: 0, dust: 0 });
+  assert.deepEqual([book.real, book.practice, book.dust], [2, 3, 2], 'dust is dust on either book');
+  assert.equal(positionCounts(book), '2 real · 3 practice');
+  assert.deepEqual(openPositionRows(checkpoint()), { rows: [], real: 0, practice: 0, dust: 0 });
+  assert.equal(positionCounts(openPositionRows(checkpoint())), '');
+  // One kind of book needs no count: real rows are untagged, and the flat line announces practice.
+  const practiceOnly = openPositionRows(checkpoint({ desks: board.desks.filter(row => row.mode !== 'live') }));
+  assert.deepEqual([practiceOnly.real, practiceOnly.practice, practiceOnly.rows.every(row => row.live === false), positionCounts(practiceOnly)], [0, 3, true, '']);
+  const realOnly = openPositionRows(checkpoint({ desks: board.desks.filter(row => row.mode === 'live') }));
+  assert.deepEqual([realOnly.real, realOnly.practice, positionCounts(realOnly)], [2, 0, '']);
+  assert.equal(flatLine(checkpoint({ floor: accountFloor() }), 3), 'No real-money position open. $980 in cash across Kalshi and Coinbase. 3 practice positions below.');
+  assert.equal(flatLine(checkpoint(), 1), 'No real-money position open. 1 practice position below.');
+  assert.equal(flatLine(checkpoint(), 0), 'No real-money position open.');
 
   // Are the agents getting better: the lab's curve, one bar per generation, return after costs.
   const curve = improvementSeries(board);
@@ -1619,5 +1601,129 @@ test('real-money positions skip dust and count practice; one series says whether
   assert.deepEqual(many.rows.map(row => row.generation), [1, 14, 15, 16, 17, 18, 19, 20], 'the first generation and the newest seven');
   for (const empty of [null, {}, checkpoint({ desks: [] }), checkpoint({ desks: [desk('mullins', { orders: 0, gate: null })] }), checkpoint({ lab: lab({ curve: [] }), desks: [] })]) {
     assert.deepEqual(improvementSeries(empty), { rows: [], zero: 0, measure: improvementSeries(empty).measure, sentence: 'No generations have finished yet.' });
+  }
+});
+
+// ------------------------------------------------------------ the rebuilt runtime's agents
+test('an agent named by slug reads as its words in the feed and both tables, and unknown desks keep their published order', () => {
+  assert.equal(titleCase('crypto-reversion-2'), 'Crypto Reversion 2');
+  for (const [id, name] of [['favorites-maker', 'Favorites Maker'], ['crypto-reversion', 'Crypto Reversion'], ['crypto-reversion-2', 'Crypto Reversion 2'],
+    ['momentum-2', 'Momentum 2'], ['x9', 'X9'], ['kalshi-hour-favorites-12', 'Kalshi Hour Favorites 12']]) {
+    assert.equal(floorName(id), name, id);
+    assert.equal(partnerName(id), name, id);
+  }
+  // The first run's partners still read with their generation as a numeral.
+  assert.deepEqual(['mullins-4', 'scholes-2', 'haghani', 'hilibrand-3'].map(floorName), ['Mullins IV', 'Scholes II', 'Haghani', 'Hilibrand III']);
+
+  // The runtime publishes the slug as the name, and the number on an id is not its generation:
+  // a third-generation agent called crypto-reversion-2 is not "II" and not "III".
+  const agent = (id, overrides = {}) => desk(id, { name: id, family: 'alpaca-hour-reversion', venues: ['alpaca'], gate: null, ...overrides });
+  assert.equal(raceName(agent('crypto-reversion')), 'Crypto Reversion');
+  assert.equal(raceName(agent('crypto-reversion-2', { generation: 3, parent_id: 'crypto-reversion' })), 'Crypto Reversion 2');
+  assert.equal(raceName(agent('trend', { name: 'Trend Follower', generation: 2, parent_id: 'crypto-reversion' })), 'Trend Follower', 'a name written for a reader is kept');
+  assert.equal(partnerOf(agent('crypto-reversion-2')).variant, '');
+
+  const board = checkpoint({ desks: [
+    agent('zeta-maker', { mode: 'live', positions: [position({ market_value: '20.00', instrument: { symbol: 'BTC/USD', asset_class: 'crypto', venue: 'alpaca' } })] }),
+    agent('crypto-reversion-2', { generation: 2, parent_id: 'crypto-reversion', mode: 'live', positions: [position({ market_value: '35.49', thesis: 'Two deviations under the mean. Out at the mean.' })] }),
+    agent('alpha', { mode: 'shadow', positions: [position()] }),
+    agent('crypto-reversion', { mode: 'live', next_session_at: '2026-09-15T14:20:00.000Z' }),
+  ] });
+  assert.equal(validCheckpoint(board), true);
+  // No id is a founder and no family is a partner's: every rank ties, so the published order stands.
+  assert.deepEqual(orderDesks(board.desks).map(row => row.id), ['zeta-maker', 'crypto-reversion-2', 'alpha', 'crypto-reversion']);
+  assert.deepEqual(orderDesks([...board.desks].reverse()).map(row => row.id), ['crypto-reversion', 'alpha', 'crypto-reversion-2', 'zeta-maker']);
+  assert.deepEqual(orderDesks([...board.desks, desk('mullins')]).map(row => row.id)[0], 'mullins', 'a founder still leads');
+  const book = openPositionRows(board);
+  assert.deepEqual(book.rows.map(row => [row.name, row.live, row.market, row.valueText, row.short]), [
+    ['Crypto Reversion 2', true, 'BTC', '$35.49', 'Two deviations under the mean.'],
+    ['Zeta Maker', true, 'BTC', '$20.00', 'Trend continuation on the daily bars; invalid under 75,500.'],
+    ['Alpha', false, 'BTC', '$772.10', 'Trend continuation on the daily bars; invalid under 75,500.'],
+  ]);
+  assert.equal(positionCounts(book), '2 real · 1 practice');
+  assert.equal(quietLine(board, Date.parse('2026-09-15T14:05:00.000Z')), 'No partner is in session. Crypto Reversion sits down in 15 min. Their strategies keep quoting meanwhile.');
+
+  // Closed rows: the recorded flag decides, with no founder to fall back on. An agent that has
+  // died, or was promoted since, keeps the money its trade was really made with.
+  const outcome = (n, id, payload) => ({ id: `o${n}`, stream: `desk:${id}`, kind: 'desk.outcome', at: `2026-09-15T13:0${n}:00.000Z`,
+    payload: { market_id: 'KXBTCD-26SEP1513-T80999.99', result: 'yes', pnl: '0.14', held_for_hours: 0.8, rationale_excerpt: 'A favorite with an hour left.', ...payload } });
+  const rows = closedRows([
+    outcome(5, 'crypto-reversion-2', { real_money: true }), outcome(4, 'crypto-reversion-2', { real_money: false }),
+    outcome(3, 'gone-agent', { real_money: true }), outcome(2, 'gone-agent', {}), outcome(1, 'alpha', { real_money: false }), outcome(0, 'zeta-maker', {}),
+  ], board);
+  assert.deepEqual(rows.map(row => [row.name, row.live]), [
+    ['Crypto Reversion 2', true], ['Crypto Reversion 2', false], ['Gone Agent', true], ['Gone Agent', false], ['Alpha', false], ['Zeta Maker', true],
+  ]);
+  assert.equal(rows[0].market, 'BTC above $80,999.99 · Sep 15 1pm ET');
+  assert.equal(closedRecord(rows), '3 real-money trades · 3 won · +$0.42');
+
+  // The feed believes the same flag: a practice fill stays practice after its agent goes live.
+  const live = new Set(['crypto-reversion-2']);
+  const fill = (id, payload) => feedLine({ seq: 1, id: `fill:${id}`, kind: 'broker.fill', stream: 'broker:alpaca', at: '2026-09-15T13:00:00.000Z',
+    payload: { desk_id: id, instrument: { symbol: 'BTC/USD', asset_class: 'crypto', venue: 'alpaca' }, side: 'buy', quantity: '0.000437', price: '80950.00', ...payload } }, live);
+  assert.deepEqual([fill('crypto-reversion-2', { real_money: true }).text, fill('crypto-reversion-2', { real_money: true }).practice], ['bought 0.000437 BTC at $80,950.00', false]);
+  assert.equal(fill('crypto-reversion-2', { real_money: false }).practice, true);
+  assert.equal(fill('gone-agent', { real_money: true }).practice, false);
+  assert.equal(fill('gone-agent', {}).practice, true, 'with no flag the desk’s mode today still decides');
+  assert.equal(fill('crypto-reversion-2', { real_money: true, shadow: true }).practice, true, 'a shadow fill is never real');
+});
+
+// ---------------------------------------------------------------------------- the test tape
+test('a test tape is read from its own API base, fetches and socket alike, and its dot follows the transport', async () => {
+  // The same short list the worker routes by (schema.js TAPES): `test` and `canary`, nothing else.
+  assert.deepEqual(TAPES, ['test', 'canary']);
+  assert.equal(tapeOf('?tape=test'), 'test');
+  assert.equal(tapeOf('?x=1&tape=canary'), 'canary');
+  for (const search of ['', '?', '?tape=', '?tape=Test', '?tape=demo', '?tape=test-2', '?tape=a/b', '?tape=..', '?tape=constructor', `?tape=${'a'.repeat(25)}`, '?other=test', null, undefined, 7]) {
+    assert.equal(tapeOf(search), null, String(search));
+    assert.equal(apiBase(search), '/api/capital', String(search));
+  }
+  assert.equal(apiBase('?tape=canary'), '/api/capital/t/canary');
+  assert.equal(streamUrl(['all'], { protocol: 'https:', host: 'blakewoods.us', search: '?tape=test' }), 'wss://blakewoods.us/api/capital/t/test/stream');
+  assert.equal(streamUrl(['ops'], { protocol: 'http:', host: 'localhost:4173', search: '?tape=canary' }), 'ws://localhost:4173/api/capital/t/canary/stream?streams=ops');
+  assert.equal(streamUrl(['all'], { protocol: 'https:', host: 'blakewoods.us', search: '?tape=NOPE' }), 'wss://blakewoods.us/api/capital/stream');
+
+  const sockets = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.listeners = {}; sockets.push(this); }
+    addEventListener(name, handler) { this.listeners[name] = handler; }
+    close() {}
+  }
+  const mount = async search => {
+    const asked = [];
+    const root = stubPage('floor', FLOOR_IDS);
+    await withBrowser(search, path => {
+      asked.push(path);
+      if (path.includes('/checkpoint')) return checkpoint({ floor: accountFloor(), run: run() });
+      if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+      return { schema_version: 1, latest_seq: 0, events: [] };
+    }, async () => {
+      globalThis.WebSocket = FakeSocket;
+      const feed = await startCapital(root);
+      const status = root.querySelector('#floor-status');
+      root.before = [words(status), status.className];
+      sockets.at(-1).listeners.open();
+      root.after = [words(status), status.className];
+      feed.stop();
+    });
+    return { root, asked };
+  };
+
+  const tape = await mount('?tape=test');
+  assert.ok(tape.asked.length >= 9, 'the checkpoint, the history and every event load');
+  for (const path of tape.asked) assert.ok(path.startsWith('/api/capital/t/test/'), path);
+  assert.deepEqual([...new Set(tape.asked.map(path => path.slice('/api/capital/t/test'.length).split('?')[0]))].sort(), ['/checkpoint', '/events', '/history']);
+  assert.equal(sockets.at(-1).url, 'wss://blakewoods.us/api/capital/t/test/stream');
+  // IN_DEVELOPMENT is ignored on a tape: it reads as the floor will when it runs.
+  assert.deepEqual(tape.root.before, ['connecting', 'live-status live-idle']);
+  assert.deepEqual(tape.root.after, ['live', 'live-status live-live']);
+  assert.match(tape.root.querySelector('#floor-positions').textContent, /No real-money position open\./, 'the sections themselves are the same');
+
+  // Without the parameter, or with a name that is not on the list, the page is the real floor's.
+  for (const search of ['', '?tape=Not%20A%20Tape', '?tape=demo']) {
+    const real = await mount(search);
+    for (const path of real.asked) assert.ok(path.startsWith('/api/capital/') && !path.startsWith('/api/capital/t/'), path);
+    assert.equal(sockets.at(-1).url, 'wss://blakewoods.us/api/capital/stream');
+    assert.deepEqual(real.root.after, IN_DEVELOPMENT ? ['stopped', 'live-status live-stopped'] : ['live', 'live-status live-live']);
   }
 });

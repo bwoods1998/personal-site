@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { createExchange } from './lib/exchange.mjs';
 import { createApi, securityHeaders } from './lib/api.mjs';
-import { Capital, CAPITAL_OBJECT } from './lib/capital.mjs';
+import { Capital, capitalRoute } from './lib/capital.mjs';
 import { retiredRoute } from './lib/retired.mjs';
 
 export { Capital };
@@ -54,8 +54,12 @@ export default {
     const gone = retired(url.pathname);
     if (gone) return gone;
     if (url.pathname === '/api/capital' || url.pathname.startsWith('/api/capital/')) {
-      // The live tape upgrades to a WebSocket; only the public JSON reads are cacheable.
-      const floorRead = ['GET', 'HEAD'].includes(request.method) && url.pathname !== '/api/capital/stream';
+      // A test tape (/api/capital/t/<tape>/...) is the same floor under another object's name.
+      const route = capitalRoute(url.pathname);
+      if (!route) return Response.json({ error: 'Not found.' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      // The live tape upgrades to a WebSocket; only the public JSON reads are cacheable. The key
+      // is the address as asked, so a test tape and the real floor never share an entry.
+      const floorRead = ['GET', 'HEAD'].includes(request.method) && route.path !== '/api/capital/stream';
       const cacheKey = floorRead ? new Request(url.href) : null;
       if (cacheKey) {
         const hit = await caches.default.match(cacheKey);
@@ -64,7 +68,14 @@ export default {
           return request.method === 'HEAD' ? new Response(null, hit) : hit;
         }
       }
-      const response = await env.CAPITAL.get(env.CAPITAL.idFromName(CAPITAL_OBJECT)).fetch(request);
+      // The tape's object is shown the ordinary path: same method, headers, body and query.
+      let forwarded = request;
+      if (route.tape) {
+        const inner = new URL(url);
+        inner.pathname = route.path;
+        forwarded = new Request(inner.href, request);
+      }
+      const response = await env.CAPITAL.get(env.CAPITAL.idFromName(route.object)).fetch(forwarded);
       if (cacheKey && request.method === 'GET' && response.status === 200) ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
       return response;
     }

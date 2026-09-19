@@ -16,12 +16,16 @@ Public prices on these pages are the floor's own fills and account-level marks. 
 
 ### The pages
 
-The floor's **Performance · All time** chart starts at `2026-09-16T04:58:42.508Z`
-(September 15, 9:58 p.m. Pacific), the first complete-account mark after the Kalshi adapter
-was fixed to include cash alongside position value. Earlier incomplete readings stay archived
-but are not plotted. This is a fixed historical boundary: later large losses remain visible,
-and the chart does not reset after a large move. This is portfolio value,
-including deposits and withdrawals, not a cash-flow-adjusted return or trading P&L.
+The floor's **Performance · All time** chart starts at `2026-09-19T04:56:53.000Z`
+(September 18, 9:56 p.m. Pacific), the account baseline set when the floor was rebuilt: the
+venues read $1,021.93 in total (`start_equity` `"1021.9251"`, the runtime's
+`account_performance` block, mirrored by `PERFORMANCE_START_AT` in `capital/capital.js`). Any
+mark before it is not plotted; the first run began at `2026-09-16T04:58:42.508Z`. This is a
+fixed boundary: later large losses remain visible, and the chart does not reset after a large
+move. The line is portfolio value, so a deposit or withdrawal moves it. Deposits and withdrawals
+since the baseline are read as flows (`floor.performance.net_flows`), and **Total profit** is
+the balance change less those flows, shown only while the funding check is under ten minutes
+old and every venue answered.
 `GET /api/capital/history` reads a durable balance archive independent of the 20,000-event live
 tape. It returns at most 2,048 recorded points, retaining the first and last for long runs.
 New `floor.mark` publications automatically extend the archive. An authenticated
@@ -58,6 +62,8 @@ Every page is one column under 720 px, uses `textContent` for all text, loads no
 | `GET /api/capital/events?stream=&kind=&after=&limit=` | public | Newest first without `after`, oldest first following one; `limit` ≤200 (50 by default); ETag, cached 3 s. |
 | `GET /api/capital/desks`, `GET /api/capital/desks/<id>` | public | The desk rows of the latest checkpoint. ETag, cached 5 s. |
 | `GET /api/capital/stream?streams=desk:merton,risk` | public, same-origin | WebSocket. Sends `{"type":"hello","latest_seq":N}`, then each stored event to matching subscriptions. |
+
+**Test tape.** Every endpoint above also answers under `/api/capital/t/test/...` (and `/api/capital/t/canary/...`): a separate Durable Object with its own tape, balance history and checkpoint, published to with the same token, so a publisher can be tried end to end without touching the real record. `/capital/?tape=test` shows that tape on the ordinary page, with the status dot following the connection. Any other tape name is a 404 (`TAPES` in `capital/schema.js`).
 
 Events are append-only and idempotent by `id`: replaying an identical event is a no-op, and the same `id` with a different `digest` returns 409 without storing any event in that batch. The site assigns its own `seq`; the publisher's `seq` is accepted and ignored. Checkpoints move forward only — an older `published_at` returns 409, an identical body is a no-op, and more than a minute into the future is rejected. The desk roster is exactly the desks of the newest checkpoint.
 
