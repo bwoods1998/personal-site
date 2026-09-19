@@ -8,7 +8,7 @@ const output = new URL('./dist/', root);
 for (const directory of ['assets/', 'capital/', 'portfolio/']) {
   await rm(new URL(directory, output), { recursive: true, force: true });
 }
-for (const directory of ['assets/', 'capital/', 'capital/desk/', 'admin/']) {
+for (const directory of ['assets/', 'capital/', 'admin/']) {
   await mkdir(new URL(directory, output), { recursive: true });
 }
 const assets = new Map();
@@ -30,7 +30,7 @@ for (const filename of [
   assets.set(filename, asset);
   await writeFile(new URL(asset, output), content);
 }
-for (const filename of ['index.html', 'admin/index.html', 'capital/index.html', 'capital/desk/index.html']) {
+for (const filename of ['index.html', 'admin/index.html', 'capital/index.html']) {
   let html = await readFile(new URL(filename, root), 'utf8');
   const directory = filename.includes('/') ? filename.slice(0, filename.lastIndexOf('/') + 1) : '';
   for (const [source, target] of assets) {
@@ -47,8 +47,7 @@ for (const filename of ['index.html', 'admin/index.html', 'capital/index.html', 
 }
 
 // Prevent analytics injection outside the self-only script policy.
-const publicHtmlHeaders = ['/', '/index.html', '/capital/', '/capital/index.html',
-  '/capital/desk/', '/capital/desk/index.html']
+const publicHtmlHeaders = ['/', '/index.html', '/capital/', '/capital/index.html']
   .map(path => `${path}\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n`)
   .join('');
 await writeFile(new URL('_headers', output), `/*

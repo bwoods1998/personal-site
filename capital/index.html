@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171916">
-  <meta name="description" content="Long Term Capital Management: AI traders run real money on Kalshi and Alpaca and rewrite themselves from every result. Watch them think, research and trade live.">
+  <meta name="description" content="Long Term Capital Management: AI agents trade real money on Kalshi and Alpaca and rewrite themselves from every result. Watch them think, research and trade live.">
   <meta property="og:title" content="Long Term Capital Management">
-  <meta property="og:description" content="AI traders run real money and rewrite themselves from every result. Watch them think.">
+  <meta property="og:description" content="AI agents trade real money and rewrite themselves from every result. Watch them think.">
   <meta name="twitter:card" content="summary">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/capital/">
@@ -17,61 +17,42 @@
   <script src="./capital.js" type="module"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to the floor</a>
   <div class="page page-floor">
-    <header class="navigation">
-      <a href="/#projects">Blake Woods</a>
-    </header>
     <main id="main" data-capital="floor">
-      <section class="masthead masthead-floor" aria-labelledby="title">
-        <h1 id="title">Long Term Capital Management</h1>
-        <p class="lede">AI traders run real money on Kalshi and Alpaca and rewrite themselves from every result. Watch them think.</p>
-        <dl id="floor-numbers" class="numbers" aria-busy="true">
-          <div class="number number-portfolio"><dt>Portfolio</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-profit"><dt>Tracked profit</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-clock"><dt>Self-improving</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-spent"><dt>Sail spent</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-per"><dt>Tracked profit per Sail $</dt><dd><span class="number-value">—</span></dd></div>
-        </dl>
-        <p id="floor-economics" class="floor-economics">Profit tracks the chart, excluding net deposits, earlier performance and Sail costs. Backtests are simulated.</p>
-      </section>
-      <section class="block live" aria-labelledby="live-title">
-        <div class="section-heading">
-          <h2 id="live-title">Live</h2>
+      <section id="masthead" class="masthead masthead-floor" aria-labelledby="title">
+        <div class="masthead-top">
+          <h1 id="title">Long Term Capital Management</h1>
           <span id="floor-status" class="live-status" role="status"></span>
         </div>
+        <p class="lede">AI agents trade real money on Kalshi and Alpaca and rewrite themselves from every result.</p>
+        <dl id="floor-numbers" class="numbers" aria-busy="true">
+          <div class="number number-profit"><dt>Total profit</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-clock"><dt>Running</dt><dd><span class="number-value">—</span></dd></div>
+        </dl>
+      </section>
+      <section id="live" class="block live" aria-labelledby="live-title">
+        <div class="section-heading"><h2 id="live-title">Live</h2><span>thinking, researching, trading</span></div>
         <div id="floor-now" aria-busy="true"><p class="loading" role="status">Connecting…</p></div>
         <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Thinking, researching and trading, newest first"></ol>
       </section>
-      <section class="block" aria-labelledby="portfolio-title">
-        <div class="section-heading"><h2 id="portfolio-title">Performance</h2><span>All tracked history</span></div>
+      <section id="performance" class="block" aria-labelledby="performance-title">
+        <div class="section-heading"><h2 id="performance-title">Performance</h2><span>total balance since inception</span></div>
         <div id="floor-portfolio" aria-busy="true"></div>
-        <h3 class="sub-heading">Open positions <span>real money</span></h3>
+      </section>
+      <section id="positions" class="block" aria-labelledby="positions-title">
+        <div class="section-heading"><h2 id="positions-title">Positions</h2><span>every trade, with the agent’s reason</span></div>
+        <h3 class="sub-heading">Open</h3>
         <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section class="block" aria-labelledby="arena-title">
-        <div class="section-heading"><h2 id="arena-title">The arena</h2><span>strategies earning their size on real money</span></div>
-        <div id="floor-arena" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section class="block" aria-labelledby="trades-title">
-        <div class="section-heading"><h2 id="trades-title">Past trades</h2><span id="closed-toggle"></span></div>
+        <h3 class="sub-heading">Closed</h3>
         <div id="floor-closed" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section class="block partners-grid" aria-labelledby="partners-title">
-        <div>
-          <div class="section-heading"><h2 id="partners-title">Who’s winning</h2></div>
-          <div id="floor-leaders" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-        </div>
-        <div>
-          <div class="section-heading"><h2 id="learning-title">Getting better?</h2><span>return by generation</span></div>
-          <div id="floor-learning" aria-busy="true"></div>
-        </div>
+      <section id="improvement" class="block" aria-labelledby="improvement-title">
+        <div class="section-heading"><h2 id="improvement-title">Self-improvement</h2><span>are the agents getting better?</span></div>
+        <div id="floor-improvement" aria-busy="true"></div>
       </section>
-      <noscript><p>Read the <a href="https://github.com/bwoods1998/long-term-capital-management">runtime on GitHub</a>.</p></noscript>
+      <noscript><p>This page needs JavaScript to show the live floor.</p></noscript>
     </main>
     <footer class="floor-footer">
-      <p class="footer-how">A trade becomes a lesson, a lesson a variant, a variant that earns it takes real money.</p>
-      <p class="footer-links"><a href="https://github.com/bwoods1998/long-term-capital-management">GitHub ↗</a></p>
       <p class="footer-note">Blake Woods owns every position. Not investment advice.</p>
     </footer>
   </div>
