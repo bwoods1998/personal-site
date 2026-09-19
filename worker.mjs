@@ -33,7 +33,7 @@ const retired = pathname => {
   return route ? new Response(route.body || null, { status: route.status, headers: route.headers }) : null;
 };
 
-// Retired. Portfolio Agent is now Long Term Capital Management and nothing routes here, but the
+// Retired. Portfolio Agent is now Long-Term Capital Management and nothing routes here, but the
 // binding and its v2 migration stay declared so the deployment keeps its existing stored object.
 export class PortfolioState extends DurableObject {
   fetch(request) { return retired(new URL(request.url).pathname) ?? retired('/api/portfolio'); }

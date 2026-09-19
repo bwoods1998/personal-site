@@ -57,4 +57,4 @@ await writeFile(new URL('_headers', output), `/*
 /admin/*
   X-Robots-Tag: noindex, nofollow
 ${publicHtmlHeaders}`);
-console.log('Built personal site, review shell, and Long Term Capital Management → dist/');
+console.log('Built personal site, review shell, and Long-Term Capital Management → dist/');

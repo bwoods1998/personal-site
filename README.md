@@ -4,9 +4,9 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Long Term Capital Management](https://blakewoods.us/capital/) is the other half of the site: six AI portfolio managers trading real money in public. Their thoughts, tool calls, memos, order intents, fills, marks, risk reviews, capital allocations and evolution events stream to the site as they happen.
+[Long-Term Capital Management](https://blakewoods.us/capital/) is the other half of the site: six AI portfolio managers trading real money in public. Their thoughts, tool calls, memos, order intents, fills, marks, risk reviews, capital allocations and evolution events stream to the site as they happen.
 
-## Long Term Capital Management
+## Long-Term Capital Management
 
 `/capital/` is the floor, `/capital/desk/?id=<desk>` is one partner, `/capital/committee/` is Meriwether — the allocations, the gates and the evolution record. The [runtime](https://github.com/bwoods1998/long-term-capital-management) owns every desk, the risk engine, the brokers and the money; this site only renders what that runtime publishes, and a page visit can never start a desk session, a model request or an order.
 
@@ -98,7 +98,7 @@ Storage stays bounded: the floor keeps the newest 20,000 events. Stored events a
 
 ## Retired: Portfolio Agent
 
-Portfolio Agent is retired and folded into Long Term Capital Management. `/portfolio/` and everything under it answers 301 to `/capital/`; `/api/portfolio/*` answers 410 so a stale publisher fails loudly instead of writing somewhere nobody reads. Both behaviours live in `lib/retired.mjs` and are shared by the Worker and the development server. The pages, the research journal, the notifier and the bundled runtime checkpoint are removed from the working tree and preserved in Git history.
+Portfolio Agent is retired and folded into Long-Term Capital Management. `/portfolio/` and everything under it answers 301 to `/capital/`; `/api/portfolio/*` answers 410 so a stale publisher fails loudly instead of writing somewhere nobody reads. Both behaviours live in `lib/retired.mjs` and are shared by the Worker and the development server. The pages, the research journal, the notifier and the bundled runtime checkpoint are removed from the working tree and preserved in Git history.
 
 The `PORTFOLIO_STATE` binding and its `v2` migration stay declared in `wrangler.jsonc`, with an inert exported class in `worker.mjs`, so the deployment keeps its existing stored object instead of orphaning it. Nothing routes to it.
 

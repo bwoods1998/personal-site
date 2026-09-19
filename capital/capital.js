@@ -1,6 +1,6 @@
 import { MAX_EVENT_LIMIT, deskId, isLive, validCheckpoint, validPublicEvent, socketMatches, tapeName } from './schema.js';
 
-// Long Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
+// Long-Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
 // fills and marks; the page never contacts a quote vendor and never starts work on a desk.
 const API = '/api/capital';
 // A test tape: /capital/?tape=test reads the separate floor a publisher filled under

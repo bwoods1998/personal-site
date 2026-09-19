@@ -312,7 +312,7 @@ test('the retired Portfolio Agent redirects its pages and refuses its API', asyn
     for (const path of ['/api/portfolio/state', '/api/portfolio/research']) {
       const response = await fetch(origin + path);
       assert.equal(response.status, 410, path);
-      assert.match((await response.json()).error, /Long Term Capital Management publishes to \/api\/capital\//);
+      assert.match((await response.json()).error, /Long-Term Capital Management publishes to \/api\/capital\//);
     }
     // The floor's own pages and modules are still the only public files.
     for (const path of ['/', '/capital/', '/capital/capital.js', '/capital/capital.css', '/capital/schema.js']) {
@@ -371,8 +371,8 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   assert.doesNotMatch(source, /createElement\('a'\)|element\('a'|\/capital\/desk|github\.com/, 'the script builds no link');
   const floorHtml = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(floorHtml, /<title>Long Term Capital Management<\/title>/);
-  assert.match(floorHtml, /<h1 id="title">Long Term Capital Management<\/h1>/);
+  assert.match(floorHtml, /<title>Long-Term Capital Management<\/title>/);
+  assert.match(floorHtml, /<h1 id="title">Long-Term Capital Management<\/h1>/);
   assert.doesNotMatch(floorHtml, /http:\/\/|<script(?![^>]*type="module" *>)[^>]*>(?!\s*<\/script>)/);
   assert.doesNotMatch(floorHtml, /\/portfolio\//);
   assert.match(floorHtml, /data-capital="floor"/);
@@ -420,7 +420,7 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.ok(whole.length <= 90, `static words on the page: ${whole.length}`);
 
   const home = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(home, /Long Term Capital Management[\s\S]{0,400}AI partners trading real money in public, rewriting themselves from the results\./);
+  assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI partners trading real money in public, rewriting themselves from the results\./);
   assert.match(home, /href="\/capital\/"/);
   assert.doesNotMatch(home, /href="\/portfolio\/"|Portfolio Agent|Woods Capital/, 'the retired project leaves the home page');
 });
