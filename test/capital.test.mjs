@@ -422,8 +422,8 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.doesNotMatch(floorHtml, /<div class="section-heading"><h2[^>]*>[^<]+<\/h2><span>/);
   assert.deepEqual([...floorHtml.matchAll(/<h3 [^>]*>([^<]+)<\/h3>/g)].map(match => match[1]), ['Open', 'Closed']);
   const order = FLOOR_IDS.map(id => floorHtml.indexOf(`id="${id}"`));
-  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'status and numbers, live, the chart, open then closed positions, improvement');
-  for (const [id, section] of [['floor-status', 'masthead'], ['floor-numbers', 'masthead'], ['floor-now', 'live'], ['floor-feed', 'live'], ['floor-portfolio', 'performance'],
+  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, the live status and stream, the chart, open then closed positions, improvement');
+  for (const [id, section] of [['floor-status', 'live'], ['floor-numbers', 'masthead'], ['floor-now', 'live'], ['floor-feed', 'live'], ['floor-portfolio', 'performance'],
     ['floor-positions', 'positions'], ['floor-closed', 'positions'], ['floor-improvement', 'improvement']]) {
     const start = floorHtml.indexOf(`<section id="${section}"`);
     const inside = floorHtml.slice(start, floorHtml.indexOf('</section>', start));
@@ -505,7 +505,7 @@ class StubElement {
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-const FLOOR_IDS = ['floor-status', 'floor-numbers', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-positions', 'floor-closed', 'floor-improvement'];
+const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-positions', 'floor-closed', 'floor-improvement'];
 function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;
