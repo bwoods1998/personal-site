@@ -410,9 +410,8 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   // Two numbers, no more.
   assert.deepEqual([...floorHtml.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Total profit', 'Running']);
   assert.doesNotMatch(floorHtml, /Sail|Portfolio<|arena|Who’s winning/i);
-  // The footer is one plain line.
-  const footer = floorHtml.slice(floorHtml.indexOf('<footer'), floorHtml.indexOf('</footer>'));
-  assert.equal(footer.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), 'Blake Woods owns every position. Not investment advice.');
+  // No footer: the owner removed the ownership and advice line on Sept 19, 2026.
+  assert.doesNotMatch(floorHtml, /<footer|owns every position|investment advice/i);
   // The word budget: at most 40 static words above the live feed, 90 on the whole page.
   const staticWords = html => html.replace(/<[^>]+>/g, ' ').replace(/[—…$]/g, ' ').split(/\s+/).filter(word => /[A-Za-z]/.test(word));
   const aboveFeed = staticWords(floorHtml.slice(floorHtml.indexOf('<body'), floorHtml.indexOf('id="floor-feed"')));

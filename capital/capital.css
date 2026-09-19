@@ -204,8 +204,6 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .improve-latest .improve-gen { color: var(--ink); }
 .improve-caption { margin: 10px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 
-footer.floor-footer { border-top: 1px solid var(--line); padding: 22px 0 44px; }
-.footer-note { margin: 0; font: 11px/1.8 'Courier New', Courier, monospace; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   .pulse, .line-new, .now-thought::after { animation: none; }
