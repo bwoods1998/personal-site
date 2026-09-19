@@ -104,7 +104,7 @@ test('published to a floor and read back, the fixtures fill all five sections', 
   assert.deepEqual(book.rows.map(row => [row.name, row.live, row.market, row.side, row.valueText, row.pnlText]), [
     ['Crypto Reversion', true, 'BTC', 'long', '$35.49', '+$0.11'],
     ['Favorites Maker', true, 'BTC above $80,999.99 · Sep 19 3am ET', 'YES', '$18.80', '+$0.20'],
-    ['Crypto Reversion 2', false, 'ETH', 'long', '$24.96', '−$0.04'],
+    ['Crypto Reversion II', false, 'ETH', 'long', '$24.96', '−$0.04'],
   ]);
   for (const row of book.rows) assert.ok(row.short.length > 10 && row.full.length >= row.short.length, `${row.name} says why`);
   assert.deepEqual([book.real, book.practice, book.dust], [2, 1, 0]);
@@ -159,7 +159,7 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
     assert.deepEqual(open.map(row => [row.className, ...row.find('td').slice(0, 5).map(words)]), [
       ['', 'Crypto Reversion', 'BTC', 'long', '$35.49', '+$0.11'],
       ['', 'Favorites Maker', 'BTC above $80,999.99 · Sep 19 3am ET', 'YES', '$18.80', '+$0.20'],
-      ['row-practice', 'Crypto Reversion 2 practice', 'ETH', 'long', '$24.96', '−$0.04'],
+      ['row-practice', 'Crypto Reversion II practice', 'ETH', 'long', '$24.96', '−$0.04'],
     ]);
     assert.equal(words(root.querySelector('#floor-positions').withClass('record-line')[0]), '2 real · 1 practice');
     for (const row of open) assert.ok(words(row.withClass('col-why')[0]).length > 10);

@@ -352,7 +352,7 @@ test('the floor projects partner names, truncation, money and the stream address
   assert.equal(partnerOf(desk('lab-07', { name: 'Lab Seven', family: 'lab' })).surname, 'Lab Seven');
   // The desks lead in the owner's order; Merton is no desk, so anything by that name follows them.
   assert.deepEqual(orderDesks([desk('mullins'), desk('merton'), desk('hilibrand')]).map(d => d.id), ['hilibrand', 'mullins', 'merton']);
-  assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld 02', "the first run's zero-padded suffix is not a numeral");
+  assert.equal(partnerName('rosenfeld-02'), 'Rosenfeld II', "one rule: a number on the end is always a numeral");
 
   const long = truncate('word '.repeat(60), 140);
   assert.equal(long.truncated, true);
@@ -1506,7 +1506,7 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   assert.equal(call('playbook_read', { query: 'reversion' }).text, 'reading the graveyard playbook');
   assert.equal(call('playbook_read', {}).text, 'reading the graveyard playbook');
   assert.equal(call('web_search', { query: 'word '.repeat(40) }).text.length < 110, true, 'a long query is cut, like every quoted argument');
-  assert.equal(call('web_search', { query: 'x' }, 'crypto-reversion-2').name, 'Crypto Reversion 2');
+  assert.equal(call('web_search', { query: 'x' }, 'crypto-reversion-2').name, 'Crypto Reversion II');
   for (const tool of ['propose_order', 'cancel_order', 'memo', 'playbook_write', 'memory_write', 'record_forecast', 'end_session', 'mystery']) assert.equal(call(tool, { side: 'buy' }), null, tool);
   assert.equal(call('news', { query: 'x' }).practice, true, 'a shadow desk is practice');
   assert.equal(call('news', { query: 'x' }, 'haghani').practice, false);
@@ -1641,22 +1641,24 @@ test('open positions list real money then practice, skip dust and count each; on
 
 // ------------------------------------------------------------ the rebuilt runtime's agents
 test('an agent named by slug reads as its words in the feed and both tables, and unknown desks keep their published order', () => {
-  assert.equal(titleCase('crypto-reversion-2'), 'Crypto Reversion 2');
-  for (const [id, name] of [['favorites-maker', 'Favorites Maker'], ['crypto-reversion', 'Crypto Reversion'], ['crypto-reversion-2', 'Crypto Reversion 2'],
-    ['momentum-2', 'Momentum 2'], ['x9', 'X9'], ['kalshi-hour-favorites-12', 'Kalshi Hour Favorites 12']]) {
+  assert.equal(titleCase('crypto-reversion-2'), 'Crypto Reversion 2', 'titleCase itself only spells a slug out');
+  // One rule for every name on the page: a number on the end is a numeral, whatever precedes it.
+  for (const [id, name] of [['favorites-maker', 'Favorites Maker'], ['crypto-reversion', 'Crypto Reversion'], ['crypto-reversion-2', 'Crypto Reversion II'],
+    ['momentum-2', 'Momentum II'], ['x9', 'X9'], ['kalshi-hour-favorites-12', 'Kalshi Hour Favorites XII']]) {
     assert.equal(floorName(id), name, id);
     assert.equal(partnerName(id), name, id);
   }
   // The first run's partners still read with their generation as a numeral.
   assert.deepEqual(['mullins-4', 'scholes-2', 'haghani', 'hilibrand-3'].map(floorName), ['Mullins IV', 'Scholes II', 'Haghani', 'Hilibrand III']);
 
-  // The runtime publishes the slug as the name, and the number on an id is not its generation:
-  // a third-generation agent called crypto-reversion-2 is not "II" and not "III".
+  // One name everywhere: it comes from the id, never from the generation. A third-generation agent
+  // whose id is crypto-reversion-2 reads as II, the same in the race, the feed and both tables.
   const agent = (id, overrides = {}) => desk(id, { name: id, family: 'alpaca-hour-reversion', venues: ['alpaca'], gate: null, ...overrides });
   assert.equal(raceName(agent('crypto-reversion')), 'Crypto Reversion');
-  assert.equal(raceName(agent('crypto-reversion-2', { generation: 3, parent_id: 'crypto-reversion' })), 'Crypto Reversion 2');
+  assert.equal(raceName(agent('crypto-reversion-2', { generation: 3, parent_id: 'crypto-reversion' })), 'Crypto Reversion II');
+  assert.equal(raceName(agent('meriwether-7', { generation: 2, parent_id: 'meriwether-3' })), 'Meriwether VII', 'a child takes the next number on its desk, not its generation');
   assert.equal(raceName(agent('trend', { name: 'Trend Follower', generation: 2, parent_id: 'crypto-reversion' })), 'Trend Follower', 'a name written for a reader is kept');
-  assert.equal(partnerOf(agent('crypto-reversion-2')).variant, '');
+  assert.equal(partnerOf(agent('crypto-reversion-2')).variant, 'II');
 
   const board = checkpoint({ desks: [
     agent('zeta-maker', { mode: 'live', positions: [position({ market_value: '20.00', instrument: { symbol: 'BTC/USD', asset_class: 'crypto', venue: 'alpaca' } })] }),
@@ -1671,7 +1673,7 @@ test('an agent named by slug reads as its words in the feed and both tables, and
   assert.deepEqual(orderDesks([...board.desks, desk('mullins')]).map(row => row.id)[0], 'mullins', 'a founder still leads');
   const book = openPositionRows(board);
   assert.deepEqual(book.rows.map(row => [row.name, row.live, row.market, row.valueText, row.short]), [
-    ['Crypto Reversion 2', true, 'BTC', '$35.49', 'Two deviations under the mean.'],
+    ['Crypto Reversion II', true, 'BTC', '$35.49', 'Two deviations under the mean.'],
     ['Zeta Maker', true, 'BTC', '$20.00', 'Trend continuation on the daily bars; invalid under 75,500.'],
     ['Alpha', false, 'BTC', '$772.10', 'Trend continuation on the daily bars; invalid under 75,500.'],
   ]);
@@ -1687,7 +1689,7 @@ test('an agent named by slug reads as its words in the feed and both tables, and
     outcome(3, 'gone-agent', { real_money: true }), outcome(2, 'gone-agent', {}), outcome(1, 'alpha', { real_money: false }), outcome(0, 'zeta-maker', {}),
   ], board);
   assert.deepEqual(rows.map(row => [row.name, row.live]), [
-    ['Crypto Reversion 2', true], ['Crypto Reversion 2', false], ['Gone Agent', true], ['Gone Agent', false], ['Alpha', false], ['Zeta Maker', true],
+    ['Crypto Reversion II', true], ['Crypto Reversion II', false], ['Gone Agent', true], ['Gone Agent', false], ['Alpha', false], ['Zeta Maker', true],
   ]);
   assert.equal(rows[0].market, 'BTC above $80,999.99 · Sep 15 1pm ET');
   assert.equal(closedRecord(rows), '3 real-money trades · 3 won · +$0.42');

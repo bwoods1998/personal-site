@@ -97,9 +97,6 @@ export const PARTNER_ORDER = ['meriwether', 'hilibrand', 'scholes', 'rosenfeld',
 // Merton is not a desk: he is the frontier model that writes the code, audits every candidate for
 // real money and opens the pull requests. The firm's deepest theorist, doing the firm's thinking.
 export const MERTON = { surname: 'Merton', first: 'Robert', role: 'architect, auditor, teacher' };
-// Every desk is a partner the owner named; the league breeds within a desk, never a new surname.
-const HUMAN_FOUNDERS = new Set(Object.keys(PARTNERS));
-const isPartnerName = base => Object.hasOwn(PARTNERS, base) || HUMAN_FOUNDERS.has(base);
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // "crypto-reversion-2" reads as "Crypto Reversion 2".
 export const titleCase = slug => show(slug).split('-').filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
@@ -185,33 +182,24 @@ const join = (...parts) => parts.map(part => (part === null || part === undefine
 const quantity = value => show(value) || '—';
 
 // Page copy for a published desk. An unknown or bred desk keeps the name the runtime gave it.
+//
+// A number on the end of an id always reads as a NUMERAL, whatever the name in front of it is:
+// Meriwether III, Favorites Maker II, Rosenfeld II. The firm's desks number their own agents
+// (`meriwether-3`), and nothing on this page should show two ways of saying the same thing.
+const NUMBERED = /^(.*?)-0*([1-9]\d{0,2})$/;
 export function partnerOf(desk) {
   const id = typeof desk === 'string' ? desk : show(desk?.id);
   const family = typeof desk === 'string' ? '' : show(desk?.family);
   const known = PARTNERS[id] || PARTNERS[family] || PARTNERS[id.split('-')[0]] || null;
   const name = typeof desk === 'string' ? '' : show(desk?.name);
-  if (!known) {
-    const dash = id.lastIndexOf('-');
-    const numbered = dash > 0 && /^\d+$/.test(id.slice(dash + 1));
-    const base = numbered ? id.slice(0, dash) : id;
-    // An agent of the rebuilt runtime: the name it was given when that is written for a reader,
-    // otherwise its slug in title case. Its number is not a generation, so it takes no numeral.
-    if (!isPartnerName(base)) {
-      return { id, surname: name && !SLUG.test(name) ? name : titleCase(name || id) || id, first: '', role: '', via: '', mandate: '', variant: '', agent: true };
-    }
-    // A founder the partner table does not know (Scholes, Haghani) still gets a name: the id's
-    // base capitalised, a numeric suffix read as its generation, and a name that already carries
-    // the numeral is not given it twice.
-    const generation = numbered ? Number(id.slice(dash + 1)) : 0;
-    const surname = (name ? name.replace(/\s+[IVXLCDM]+$/, '') : '') || (base ? base[0].toUpperCase() + base.slice(1) : id);
-    return { id, surname, first: '', role: '', via: '', mandate: '', variant: generation > 1 ? roman(generation) : '' };
-  }
-  // A desk's own agents are numbered from its name, and the number reads as a numeral: Mullins IV.
-  // Anything else after the name (the first run's zero-padded "rosenfeld-02") is kept as it is.
-  const base = known.surname.toLowerCase();
-  const suffix = id === base ? '' : id.startsWith(`${base}-`) ? id.slice(base.length + 1) : id;
-  const numbered = /^[1-9]\d{0,2}$/.test(suffix);
-  return { id, ...known, variant: numbered ? roman(Number(suffix)) : suffix };
+  const parts = NUMBERED.exec(id);
+  const variant = parts ? roman(Number(parts[2])) : '';
+  if (known) return { id, ...known, variant };
+  // An agent of the rebuilt runtime that no desk claims: the name it was given when that is
+  // written for a reader, otherwise its slug in title case, with any number as a numeral.
+  const base = parts ? parts[1] : id;
+  const written = name && !SLUG.test(name) ? name.replace(/\s+[IVXLCDM]+$/, '') : '';
+  return { id, surname: written || titleCase(base) || id, first: '', role: '', via: '', mandate: '', variant };
 }
 export const partnerName = id => { const partner = partnerOf(id); return partner.variant ? `${partner.surname} ${partner.variant}` : partner.surname; };
 // The twelve desks lead in the owner's order; anything bred within one follows it.
@@ -406,11 +394,9 @@ export function roman(value) {
   for (const [size, glyph] of table) while (number >= size) { out += glyph; number -= size; }
   return out;
 }
-export const raceName = desk => {
-  const partner = partnerOf(desk);
-  const generation = Number.isSafeInteger(desk?.generation) ? desk.generation : 1;
-  return generation > 1 && !partner.agent ? `${partner.surname} ${roman(generation)}` : partner.surname;
-};
+// A desk's agents are told apart by the number in their id, never by their generation: a child of
+// Meriwether III is the next free number on that desk, not "Meriwether IV". One name, everywhere.
+export const raceName = desk => partnerName(desk);
 // "in 12 min", "in 2h 14m": when the next partner sits down.
 export function untilText(value, now = Date.now()) {
   const at = Date.parse(value);
@@ -622,12 +608,8 @@ function fillWords(payload) {
   }
   return `${fillVerb(payload.side)} ${size} ${marketTitle(symbol)}${numeric(payload.price) ? ` at ${priceText(payload.price)}` : ''}`;
 }
-// A partner's bred desk reads with its generation as a numeral, "mullins-4" as Mullins IV, like
-// the race. An agent's slug reads as its words, in the feed and both tables alike.
-export function floorName(id) {
-  const match = /^([a-z]+)-(\d{1,3})$/.exec(show(id));
-  return match && isPartnerName(match[1]) ? `${partnerOf(match[1]).surname} ${roman(Number(match[2]))}` : partnerName(show(id));
-}
+// Every name on the page comes from one place, so a numbered agent reads the same everywhere.
+export const floorName = id => partnerName(show(id));
 // A model's thought as prose: its markdown emphasis and code ticks are for a renderer the floor
 // does not use.
 export const plainThought = value => show(value).replace(/\*\*|__|`+/g, '').replace(/^#{1,6}\s+/gm, '').replace(/\s+/g, ' ').trim();
@@ -834,17 +816,14 @@ export function flatLine(checkpoint, practice = 0) {
 }
 
 // ---- past trades: every settled or exited trade, who took it and why
-function isFounded(desk) {
-  return !HUMAN_FOUNDERS.has(show(desk.id));
-}
-
 export function closedRows(events, checkpoint, { limit = 40 } = {}) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
   const live = new Set(desks.filter(desk => isLive(desk)).map(desk => show(desk.id)));
   // The four founders traded real money from the first day; an outcome written before the
   // runtime recorded `real_money` is real when its desk is live now or is a founder, so a
   // later demotion does not turn a real loss into practice.
-  const founders = new Set(desks.filter(desk => desk.parent_id === null && Number(desk.generation) === 1 && !isFounded(desk)).map(desk => show(desk.id)));
+  // The owner's own founders: the runtime says so itself, with no parent and the first generation.
+  const founders = new Set(desks.filter(desk => desk.parent_id === null && Number(desk.generation) === 1).map(desk => show(desk.id)));
   return (Array.isArray(events) ? events : [])
     .filter(event => event?.kind === 'desk.outcome' && typeof event.stream === 'string' && event.stream.startsWith('desk:'))
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
