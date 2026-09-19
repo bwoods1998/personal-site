@@ -411,7 +411,10 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.match(floorHtml, /AI agents trade real money on Kalshi and Alpaca and rewrite themselves from every result\./);
   // No hyperlink at all: not to the home page, the repository, a desk page or a skip target.
   // Exactly two links, both in the header: the owner's site on the left, the repository on the right.
-  const anchors = [...floorHtml.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map(match => [match[1], match[2]]);
+  const anchors = [...floorHtml.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)].map(match => [match[1], match[2]]);
+  // The repository opens in a new tab, without handing the new page a reference to this one; the owner's site opens in place.
+  assert.match(floorHtml, /<a href="https:\/\/github\.com\/bwoods1998\/long-term-capital-management" target="_blank" rel="noopener noreferrer">/);
+  assert.match(floorHtml, /<a href="\/">Blake Woods<\/a>/);
   assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((floorHtml.match(/<a[\s>]/gi) || []).length, 2);
   assert.ok(floorHtml.indexOf('<a ') > floorHtml.indexOf('<header class="navigation">') && floorHtml.lastIndexOf('<a ') < floorHtml.indexOf('</header>'), 'both links sit in the header');
