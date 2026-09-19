@@ -20,10 +20,7 @@
   <div class="page page-floor">
     <main id="main" data-capital="floor">
       <section id="masthead" class="masthead masthead-floor" aria-labelledby="title">
-        <div class="masthead-top">
-          <h1 id="title">Long Term Capital Management</h1>
-          <span id="floor-status" class="live-status" role="status"></span>
-        </div>
+        <h1 id="title">Long Term Capital Management</h1>
         <p class="lede">AI agents trade real money on Kalshi and Alpaca and rewrite themselves from every result.</p>
         <dl id="floor-numbers" class="numbers" aria-busy="true">
           <div class="number number-profit"><dt>Total profit</dt><dd><span class="number-value">—</span></dd></div>
@@ -31,23 +28,23 @@
         </dl>
       </section>
       <section id="live" class="block live" aria-labelledby="live-title">
-        <div class="section-heading"><h2 id="live-title">Live</h2><span>thinking, researching, trading</span></div>
+        <h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"></span><span>stopped</span></span></h2>
         <div id="floor-now" aria-busy="true"><p class="loading" role="status">Connecting…</p></div>
         <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Thinking, researching and trading, newest first"></ol>
       </section>
       <section id="performance" class="block" aria-labelledby="performance-title">
-        <div class="section-heading"><h2 id="performance-title">Performance</h2><span>total balance since inception</span></div>
+        <div class="section-heading"><h2 id="performance-title">Performance</h2></div>
         <div id="floor-portfolio" aria-busy="true"></div>
       </section>
       <section id="positions" class="block" aria-labelledby="positions-title">
-        <div class="section-heading"><h2 id="positions-title">Positions</h2><span>every trade, with the agent’s reason</span></div>
+        <div class="section-heading"><h2 id="positions-title">Positions</h2></div>
         <h3 class="sub-heading">Open</h3>
         <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
         <h3 class="sub-heading">Closed</h3>
         <div id="floor-closed" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
       <section id="improvement" class="block" aria-labelledby="improvement-title">
-        <div class="section-heading"><h2 id="improvement-title">Self-improvement</h2><span>are the agents getting better?</span></div>
+        <div class="section-heading"><h2 id="improvement-title">Self-improvement</h2></div>
         <div id="floor-improvement" aria-busy="true"></div>
       </section>
       <noscript><p>This page needs JavaScript to show the live floor.</p></noscript>

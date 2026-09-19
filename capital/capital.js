@@ -19,7 +19,7 @@ const responseCache = new Map();
 // The floor is paused while the project is rebuilt (Sept 19, 2026): every live indicator says
 // so, and the pulse stops. Set to false when the loop trades again.
 export const IN_DEVELOPMENT = true;
-const DEVELOPMENT_WORDS = 'in development';
+const DEVELOPMENT_WORDS = 'stopped';
 
 // The partners the runtime publishes, with the human behind each surname. Page copy only: the
 // numbers, the thinking and the orders all come from the published checkpoint and event log.
@@ -1159,10 +1159,10 @@ async function startFloor(root) {
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
   const drawStatus = () => {
     if (!box.status) return;
-    const working = state.checkpoint ? orderDesks(state.checkpoint.desks).filter(desk => desk?.live_session).length : 0;
-    const words = state.mode === 'live' ? 'live' : state.mode === 'polling' ? 'live · polling' : 'connecting';
-    const text = IN_DEVELOPMENT ? DEVELOPMENT_WORDS : (working ? `${words} · ${plural(working, 'partner')} in session` : words);
-    box.status.className = `live-status ${IN_DEVELOPMENT ? 'live-idle' : `live-${state.mode}`}`;
+    // One word beside one dot: green and pulsing when the floor is live, red when it is stopped.
+    const live = state.mode === 'live' || state.mode === 'polling';
+    const text = IN_DEVELOPMENT ? DEVELOPMENT_WORDS : live ? 'live' : 'connecting';
+    box.status.className = `live-status ${IN_DEVELOPMENT ? 'live-stopped' : live ? 'live-live' : 'live-idle'}`;
     // A status region re-announces whatever replaces it, so it changes only when the words do.
     if (state.statusText === text) return;
     state.statusText = text;

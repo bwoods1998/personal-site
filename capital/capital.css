@@ -67,7 +67,12 @@ section { min-width: 0; }
 .live-status:empty { display: none; }
 .live-status .pulse { background: var(--muted); animation: none; }
 .live-live .pulse { background: var(--positive); animation: pulse 2.4s ease-in-out infinite; }
-.live-polling .pulse { background: var(--accent); }
+.live-stopped { color: var(--negative); }
+.live-stopped .pulse { background: var(--negative); animation: none; }
+.live-live { color: var(--positive); }
+.live-heading { margin: 0; font: inherit; }
+.live-heading .live-status { font: 13px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .8px; }
+.live-heading .pulse { width: 9px; height: 9px; }
 .numbers { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 0 56px; margin: 30px 0 0; }
 .number { min-width: 0; }
 .number dt { font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: .3px; }

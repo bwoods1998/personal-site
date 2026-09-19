@@ -415,7 +415,11 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   // Exactly five sections, in the owner's order.
   assert.deepEqual([...floorHtml.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
   assert.equal((floorHtml.match(/<section\b/g) || []).length, SECTION_IDS.length);
-  assert.deepEqual([...floorHtml.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Live', 'Performance', 'Positions', 'Self-improvement']);
+  assert.deepEqual([...floorHtml.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Performance', 'Positions', 'Self-improvement']);
+  // The live section's heading is the status itself: one dot and one word, red and "stopped" until the floor runs.
+  assert.match(floorHtml, /<h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"><\/span><span>stopped<\/span><\/span><\/h2>/);
+  // No section carries a subtitle: each is clear from its title and its content.
+  assert.doesNotMatch(floorHtml, /<div class="section-heading"><h2[^>]*>[^<]+<\/h2><span>/);
   assert.deepEqual([...floorHtml.matchAll(/<h3 [^>]*>([^<]+)<\/h3>/g)].map(match => match[1]), ['Open', 'Closed']);
   const order = FLOOR_IDS.map(id => floorHtml.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'status and numbers, live, the chart, open then closed positions, improvement');
@@ -603,7 +607,7 @@ test('the floor page mounts the two numbers, the partner thinking now, and a liv
     thought.click();
     assert.equal(lines()[4].find('button')[0].getAttribute('aria-expanded'), 'true', 'a long thought opens in place');
     // The floor is paused while the project is rebuilt: every live indicator says so.
-    assert.match(root.querySelector('#floor-status').textContent, /in development/);
+    assert.match(root.querySelector('#floor-status').textContent, /^\s*stopped$/);
     assert.deepEqual(root.find('a'), [], 'the page draws no link');
   });
 
@@ -1292,7 +1296,7 @@ test('a floor that has published nothing says so in every section and keeps its 
     assert.equal(words(root.querySelector('#floor-positions')), 'No position is open.');
     assert.equal(words(root.querySelector('#floor-closed')), 'No trade has closed yet.');
     assert.equal(words(root.querySelector('#floor-improvement')), 'No generations have finished yet.');
-    assert.match(root.querySelector('#floor-status').textContent, /in development/);
+    assert.match(root.querySelector('#floor-status').textContent, /^\s*stopped$/);
   });
 });
 
