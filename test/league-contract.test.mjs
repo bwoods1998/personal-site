@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validCheckpoint, validEventBatch, validEvent, deskId, isLive } from '../capital/schema.js';
 import {
-  PERFORMANCE_START_AT, mastheadNumbers, portfolioPerformance, balanceSeries, openPositionRows, closedRows, closedRecord, improvementSeries,
+  PERFORMANCE_START_AT, mastheadNumbers, portfolioPerformance, balanceSeries, openPositionRows, closedRows, closedRecord, ladderSnapshot,
   feedLines, heroThought, selfImprovingParts, positionCounts, startCapital,
 } from '../capital/capital.js';
 import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
@@ -117,11 +117,11 @@ test('published to a floor and read back, the fixtures fill all five sections', 
   assert.ok(closed[0].short.length > 10, 'the closed trade says why');
   assert.equal(closedRecord(closed), '1 real-money trade · 1 won · +$0.14');
 
-  // 5. Self-improvement: one bar per generation, from the lab's curve.
-  const curve = improvementSeries(board);
-  assert.deepEqual(curve.rows.map(row => [row.generation, row.text, row.tone, row.desks, row.decisions]), [[1, '+0.1%', 'positive', 2, 11], [2, '−0.1%', 'negative', 1, 3]]);
-  assert.equal(curve.measure, 'after costs');
-  assert.equal(curve.sentence, 'Generation 2 agents return −0.1% after costs; generation 1 returned +0.1%.');
+  // 5. The ladder uses the publisher's actual rung, including empty tiers.
+  const ladder = ladderSnapshot(board, events, now);
+  assert.deepEqual(ladder.rungs.map(row => [row.name, row.agents.length]), [['Scaled', 0], ['Live', 2], ['Paper', 1], ['Replay', 0]]);
+  assert.equal(ladder.living, 3);
+  assert.equal(ladder.unranked.length, 0);
 });
 
 test('the page itself, mounted on that floor, draws every section from the fixtures', { skip }, async () => {
@@ -168,8 +168,8 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
     assert.match(words(closed.find('tbody')[0].find('tr')[0]), /^Favorites Maker BTC above \$80,499\.99 · Sep 19 2am ET won \+\$0\.14 48m BTC sat \$600 above/);
 
     const improvement = root.querySelector('#floor-improvement');
-    assert.deepEqual(improvement.withClass('improve-col').map(words), ['+0.1% 1', '−0.1% 2']);
-    assert.equal(improvement.withClass('improve-bar').length, 2);
+    assert.deepEqual(improvement.withClass('game-rung-title').map(words), ['Scaled 0', 'Live 2', 'Paper 1', 'Replay 0']);
+    assert.equal(improvement.withClass('game-agent').length, 3);
     assert.deepEqual(root.find('a'), []);
   });
 });
