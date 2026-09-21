@@ -1225,7 +1225,7 @@ function ladderPanel(checkpoint, state) {
     const credits = agent.desk.gate?.evidence?.credits_usd;
     const budget = numeric(credits) ? `${money(credits, 2)} compute credits` : '';
     detail.replaceChildren(element('strong', agent.name), element('span', join(where, result, budget)),
-      ...(agent.move ? [element('span', `${MOVE_MARK[agent.move.kind]} ${MOVE_LABEL[agent.move.kind]} · ${truncate(agent.move.reason, 220)}`, 'game-detail-reason')] : []));
+      ...(agent.move ? [element('span', `${MOVE_MARK[agent.move.kind]} ${MOVE_LABEL[agent.move.kind]} · ${truncate(agent.move.reason, 220).text}`, 'game-detail-reason')] : []));
   }
   function tokens(agents, retired = false) {
     const cluster = element('div', null, 'game-agents');

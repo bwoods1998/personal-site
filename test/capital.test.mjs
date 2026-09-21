@@ -131,6 +131,7 @@ test('the live ladder redraws after socket promotions and demotions, keeps selec
         for (let i = 0; i < 30; i += 1) await new Promise(resolve => setImmediate(resolve));
         assert.equal(read().withClass(`game-rung-${rung}`)[0].withClass('game-agent').length, 1);
         assert.match(words(read().withClass('game-detail')[0]), rung === 2 ? /Haghani Live/ : /Haghani Paper/);
+        assert.equal(words(read().withClass('game-detail-reason')[0]), rung === 2 ? '↑ promoted · verified record.' : '↓ demoted · drift.');
         assert.equal(read().withClass('game-agent')[0].getAttribute('aria-pressed'), 'true');
         assert.match(words(read().withClass('game-moves')[0]), rung === 2 ? /Paper → Live/ : /Live → Paper/);
       }
