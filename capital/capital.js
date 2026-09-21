@@ -858,54 +858,9 @@ export function closedRecord(rows) {
   return `${plural(list.length, 'real-money trade')} · ${won} won · ${signedMoney(total.toFixed(2), 2)}`;
 }
 
-// ---- are the agents getting better: one bar per generation
+// Reported trading P&L, separate from the game's earned promotion record.
 const deskPnl = desk => (numeric(looseAmount(desk?.pnl_usd)) ? Number(desk.pnl_usd)
   : numeric(desk?.equity) && numeric(desk?.capital_usd) ? Number(desk.equity) - Number(desk.capital_usd) : null);
-const generationOf = desk => (Number.isSafeInteger(desk?.generation) && desk.generation > 0 ? desk.generation : 1);
-// Scored decisions, as the gate counts them; the order count when the gate has not reported.
-const deskDecisions = desk => (Number.isSafeInteger(desk?.gate?.evidence?.decisions) ? desk.gate.evidence.decisions : Number.isSafeInteger(desk?.orders) ? desk.orders : 0);
-const pctText = value => (Math.abs(value) < 0.05 ? '0.0%' : `${value > 0 ? '+' : '−'}${Math.abs(value).toFixed(1)}%`);
-const toneOf = value => (Math.abs(value) < 0.05 ? '' : value > 0 ? 'positive' : 'negative');
-const IMPROVEMENT_BARS = 8;
-// The lab's curve is the record: one row per generation, return after every cost. Until the lab
-// publishes one, the desks' own return on capital stands in, grouped by generation. A generation
-// counts once it has made a decision.
-export function improvementSeries(checkpoint) {
-  const curve = Array.isArray(checkpoint?.lab?.curve) ? checkpoint.lab.curve : [];
-  let measure = 'after costs';
-  let rows = curve.filter(row => row && Number.isSafeInteger(row.generation) && row.generation > 0 && row.decisions > 0 && numeric(show(row.cost_adjusted_excess_pct)))
-    .map(row => ({
-      generation: row.generation, value: Number(row.cost_adjusted_excess_pct), decisions: row.decisions, desks: Number.isSafeInteger(row.desks) ? row.desks : 0,
-      net: numeric(show(row.pnl_usd)) && numeric(show(row.cost_usd)) ? Number(row.pnl_usd) - Number(row.cost_usd) : null,
-    }));
-  if (!rows.length) {
-    measure = 'on capital';
-    const desks = orderDesks(checkpoint?.desks).filter(desk => desk && typeof desk === 'object');
-    rows = [...new Set(desks.map(generationOf))].map(generation => {
-      const members = desks.filter(desk => generationOf(desk) === generation);
-      const pnl = members.reduce((sum, desk) => sum + (deskPnl(desk) ?? 0), 0);
-      const capital = members.reduce((sum, desk) => sum + (numeric(desk.capital_usd) ? Number(desk.capital_usd) : 0), 0);
-      const decisions = members.reduce((sum, desk) => sum + deskDecisions(desk), 0);
-      return { generation, value: capital > 0 ? pnl / capital * 100 : null, decisions, desks: members.length, net: pnl };
-    }).filter(row => row.value !== null && row.decisions > 0);
-  }
-  rows.sort((left, right) => left.generation - right.generation);
-  if (rows.length > IMPROVEMENT_BARS) rows = [rows[0], ...rows.slice(1 - IMPROVEMENT_BARS)];
-  if (!rows.length) return { rows: [], zero: 0, measure, sentence: 'No generations have finished yet.' };
-  const top = Math.max(0, ...rows.map(row => row.value));
-  const bottom = Math.min(0, ...rows.map(row => row.value));
-  const span = top - bottom || 1;
-  const bars = rows.map((row, index) => ({
-    ...row, text: pctText(row.value), tone: toneOf(row.value), latest: index === rows.length - 1,
-    top: (top - Math.max(row.value, 0)) / span * 100, height: Math.abs(row.value) / span * 100,
-  }));
-  const first = bars[0];
-  const last = bars.at(-1);
-  const sentence = bars.length === 1
-    ? `Generation ${first.generation} agents return ${first.text} ${measure}. No later generation has finished yet.`
-    : `Generation ${last.generation} agents return ${last.text} ${measure}; generation ${first.generation} returned ${first.text}.`;
-  return { rows: bars, zero: top / span * 100, measure, sentence };
-}
 
 // ---- the floor page, drawn
 const FEED_LINES = 12;
@@ -1186,30 +1141,157 @@ function practiceToggle(state) {
   button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawClosed(); });
   return button;
 }
-function improvementPanel(checkpoint) {
-  const series = improvementSeries(checkpoint);
-  const nodes = [element('p', series.sentence, series.rows.length ? 'improve-reading' : 'empty-state')];
-  if (!series.rows.length) return nodes;
-  const figure = element('figure', null, 'improve');
-  figure.setAttribute('role', 'img');
-  figure.setAttribute('aria-label', `Return ${series.measure} by agent generation: ${series.rows.map(row => `generation ${row.generation} ${row.text}`).join(', ')}.`);
-  const plot = element('div', null, 'improve-plot');
-  for (const row of series.rows) {
-    const column = element('div', null, `improve-col${row.latest ? ' improve-latest' : ''}`);
-    column.setAttribute('title', join(`Generation ${row.generation}`, `${row.text} ${series.measure}`, plural(row.decisions, 'decision'), plural(row.desks, 'agent'),
-      row.net === null ? '' : `${signedMoney(row.net.toFixed(2), 2)} net`));
-    const track = element('div', null, 'improve-track');
-    const zero = element('span', null, 'improve-zero');
-    place(zero, { top: `${series.zero.toFixed(2)}%` });
-    const bar = element('span', null, `improve-bar ${row.tone}`.trim());
-    place(bar, { top: `${row.top.toFixed(2)}%`, height: `${Math.max(row.height, 1).toFixed(2)}%` });
-    track.append(zero, bar);
-    column.append(element('span', row.text, `improve-value ${row.tone}`.trim()), track, element('span', String(row.generation), 'improve-gen'));
-    plot.append(column);
+export const GAME_RUNGS = [
+  { rung: 3, name: 'Scaled', note: 'More real capital' },
+  { rung: 2, name: 'Live', note: 'Real money' },
+  { rung: 1, name: 'Paper', note: 'Simulated trades' },
+  { rung: 0, name: 'Replay', note: 'Historical tests' },
+];
+const rungNumber = value => Number.isInteger(value) && value >= 0 && value <= 3;
+const rungName = rung => GAME_RUNGS.find(row => row.rung === rung)?.name || 'Unranked';
+// The current publisher's lifecycle record is league_news(), not a strategy's prose. Only its
+// exact, anchored templates qualify. Never infer a promotion from P&L, mode or a missing desk.
+export function ladderMove(event) {
+  if (event?.kind !== 'lab.progress' || event.payload?.component !== 'league' || !Number.isFinite(Date.parse(event.at))) return null;
+  const text = event.payload.message;
+  if (typeof text !== 'string') return null;
+  const moved = /^([a-z0-9-]{1,40}) (climbs|drops) from rung ([0-3]) to rung ([0-3]): (.+)$/s.exec(text);
+  const born = /^([a-z0-9-]{1,40}) is born \((.+)\)\.(?: .*)?$/s.exec(text);
+  const died = /^([a-z0-9-]{1,40}) died of ([^.]+)\.(?: .*)?$/s.exec(text);
+  const match = moved || born || died;
+  if (!match || !deskId(match[1])) return null;
+  if (moved && (moved[2] === 'climbs' ? Number(moved[4]) <= Number(moved[3]) : Number(moved[4]) >= Number(moved[3]))) return null;
+  return { id: event.id, agent: match[1], at: event.at, seq: event.seq || 0,
+    kind: moved ? (moved[2] === 'climbs' ? 'up' : 'down') : born ? 'born' : 'out',
+    from: moved ? Number(moved[3]) : null, to: moved ? Number(moved[4]) : null,
+    reason: moved ? moved[5] : died ? text.slice(text.indexOf(' died of ') + 9) : text.slice(text.indexOf(' is born ') + 9),
+  };
+}
+export function ladderSnapshot(checkpoint, events = [], now = Date.now()) {
+  const desks = orderDesks(checkpoint?.desks).filter(desk => desk && deskId(desk.id));
+  const recorded = [];
+  for (const desk of desks) {
+    const life = desk.gate?.evidence?.lifecycle;
+    if (!life) continue;
+    const move = life.last_move;
+    if (move && rungNumber(move.from_rung) && rungNumber(move.to_rung)
+      && (move.decision === 'promote' ? move.to_rung > move.from_rung : move.decision === 'demote' && move.to_rung < move.from_rung)) {
+      recorded.push({ id: move.id, agent: desk.id, at: move.at, kind: move.decision === 'promote' ? 'up' : 'down', from: move.from_rung, to: move.to_rung, reason: show(move.reason), seq: 0 });
+    }
+    if (life.born_at) recorded.push({ id: `born:${desk.id}`, agent: desk.id, at: life.born_at, kind: 'born', from: null, to: null, reason: desk.parent_id ? `Child of ${floorName(desk.parent_id)}` : 'Founding agent', seq: 0 });
+    if (life.died_at && desk.status === 'retired') recorded.push({ id: `died:${desk.id}`, agent: desk.id, at: life.died_at, kind: 'out', from: null, to: null, reason: show(life.cause), seq: 0 });
   }
-  figure.append(plot, element('figcaption', `Agent generation → · average return ${series.measure}`, 'improve-caption'));
-  nodes.push(figure);
-  return nodes;
+  const moves = [...new Map([...recorded, ...events.map(ladderMove).filter(Boolean)].filter(move => move.id && Number.isFinite(Date.parse(move.at))).map(move => [move.id, move])).values()]
+    .filter(move => Date.parse(move.at) <= now + 60000)
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || b.seq - a.seq);
+  const agents = desks.map(desk => {
+    const rung = rungNumber(desk.gate?.evidence?.rung) ? desk.gate.evidence.rung : null;
+    const retired = desk.status === 'retired';
+    const move = moves.find(move => move.agent === desk.id);
+    // A tape message can precede its checkpoint. Do not move the dot until the roster agrees.
+    const recent = move && now - Date.parse(move.at) <= 3600000
+      && (move.kind === 'out' ? retired : move.kind === 'born' ? !retired : !retired && move.to === rung) ? move : null;
+    const accountingIssue = desk.gate?.evidence?.accounting_ok === false;
+    const pnl = !accountingIssue && rung !== null && rung > 0 ? deskPnl(desk) : null;
+    return { id: desk.id, name: floorName(desk.id), desk, rung, retired, move, recent, pnl, accountingIssue,
+      tone: pnl === null || Math.abs(pnl) < 0.005 ? 'flat' : pnl > 0 ? 'positive' : 'negative' };
+  });
+  const living = agents.filter(agent => !agent.retired);
+  return { living: living.length, rungs: GAME_RUNGS.map(row => ({ ...row, agents: living.filter(agent => agent.rung === row.rung) })),
+    unranked: living.filter(agent => agent.rung === null), retired: agents.filter(agent => agent.retired), moves: moves.slice(0, 5),
+    publishedAt: checkpoint?.published_at || null, stale: !floorRunning(checkpoint, now),
+  };
+}
+const MOVE_MARK = { up: '↑', down: '↓', born: '✦', out: '×' };
+const MOVE_LABEL = { up: 'promoted', down: 'demoted', born: 'born', out: 'retired' };
+function ladderPanel(checkpoint, state) {
+  const model = ladderSnapshot(checkpoint, state.ladderEvents);
+  if (!checkpoint) return [element('p', 'Waiting for the agent roster.', 'empty-state')];
+  const panel = element('div', null, 'game-ladder');
+  const caption = element('div', null, 'game-caption');
+  caption.append(element('span', `${model.living} competing · one dot each`), element('span', model.stale ? 'Last known positions · data stale' : 'Updates live', model.stale ? 'negative' : ''));
+  panel.append(caption);
+  const detail = element('p', null, 'game-detail');
+  detail.setAttribute('role', 'status');
+  detail.setAttribute('aria-live', 'polite');
+  const hint = 'Each dot is an agent. Tap or hover for its record.';
+  detail.textContent = hint;
+  const buttons = [];
+  function select(agent, button) {
+    state.ladderSelected = agent.id;
+    for (const item of buttons) item.setAttribute('aria-pressed', item === button ? 'true' : 'false');
+    const where = agent.retired ? 'Retired' : rungName(agent.rung);
+    const result = agent.accountingIssue ? 'Accounting under review' : agent.pnl === null ? '' : `${signedMoney(agent.pnl.toFixed(2), 2)} ${isLive(agent.desk) ? 'live' : 'paper'} P&L`;
+    const credits = agent.desk.gate?.evidence?.credits_usd;
+    const budget = numeric(credits) ? `${money(credits, 2)} compute credits` : '';
+    detail.replaceChildren(element('strong', agent.name), element('span', join(where, result, budget)),
+      ...(agent.move ? [element('span', `${MOVE_MARK[agent.move.kind]} ${MOVE_LABEL[agent.move.kind]} · ${truncate(agent.move.reason, 220)}`, 'game-detail-reason')] : []));
+  }
+  function tokens(agents, retired = false) {
+    const cluster = element('div', null, 'game-agents');
+    for (const agent of agents) {
+      const move = agent.recent?.kind;
+      const glyph = retired ? '×' : move ? MOVE_MARK[move] : agent.tone === 'positive' ? '+' : agent.tone === 'negative' ? '−' : '·';
+      const arriving = move && !state.ladderAnimated.has(agent.recent.id);
+      if (move) state.ladderAnimated.add(agent.recent.id);
+      const button = element('button', null, `game-agent ${retired ? 'game-retired' : agent.tone}${move ? ` game-move-${move}` : ''}${arriving ? ' game-arriving' : ''}`);
+      button.type = 'button';
+      button.setAttribute('data-agent', agent.id);
+      button.setAttribute('aria-pressed', 'false');
+      const label = `${agent.name} · ${retired ? 'retired' : rungName(agent.rung)}${agent.accountingIssue ? ' · accounting under review' : agent.pnl === null ? '' : ` · ${signedMoney(agent.pnl.toFixed(2), 2)} ${isLive(agent.desk) ? 'live' : 'paper'} P&L`}${move ? ` · recently ${MOVE_LABEL[move]}` : ''}`;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      const mark = element('span', glyph, 'game-agent-mark');
+      mark.setAttribute('aria-hidden', 'true');
+      button.append(mark, element('span', agent.name, 'game-agent-name'));
+      button.addEventListener('click', () => select(agent, button));
+      button.addEventListener('mouseenter', () => select(agent, button));
+      button.addEventListener('focus', () => select(agent, button));
+      buttons.push(button);
+      if (state.ladderSelected === agent.id) select(agent, button);
+      cluster.append(button);
+    }
+    return cluster;
+  }
+  for (const row of model.rungs) {
+    const band = element('div', null, `game-rung game-rung-${row.rung}`);
+    const label = element('div', null, 'game-rung-label');
+    const heading = element('div', null, 'game-rung-title');
+    heading.append(element('span', row.name), element('span', String(row.agents.length), 'game-count'));
+    label.append(heading, element('span', row.note, 'game-rung-note'));
+    band.append(element('span', String(row.rung), 'game-step'), label,
+      row.agents.length ? tokens(row.agents) : element('span', 'No agents yet', 'game-vacant'));
+    panel.append(band);
+  }
+  if (model.unranked.length) {
+    const pending = element('div', null, 'game-exits');
+    pending.append(element('span', 'Rank unreported', 'game-rung-note'), tokens(model.unranked));
+    panel.append(pending);
+  }
+  const legend = element('div', null, 'game-legend');
+  legend.append(element('span', '+ Profit', 'positive'), element('span', '− Loss', 'negative'), element('span', '· Unscored / flat'), element('span', '↑ Promoted'), element('span', '↓ Demoted'), element('span', '✦ New'), element('span', 'P&L within each tier', 'game-legend-note'));
+  panel.append(legend);
+  if (model.retired.length) {
+    const exits = element('div', null, 'game-exits');
+    const label = element('div', null, 'game-rung-label');
+    label.append(element('span', 'Retired'), element('span', `${model.retired.length} recent exits`, 'game-rung-note'));
+    exits.append(label, tokens(model.retired, true));
+    panel.append(exits);
+  }
+  panel.append(detail);
+  if (model.moves.length) {
+    const trail = element('ol', null, 'game-moves');
+    trail.setAttribute('aria-label', 'Latest ladder changes, newest first');
+    for (const move of model.moves.slice(0, 3)) {
+      const line = element('li', null, `game-change game-change-${move.kind}`);
+      line.setAttribute('title', move.reason);
+      const description = move.from === null ? MOVE_LABEL[move.kind] : `${rungName(move.from)} → ${rungName(move.to)}`;
+      line.append(element('span', MOVE_MARK[move.kind], 'game-change-mark'), element('span', `${floorName(move.agent)} · ${description}`), element('time', ago(move.at), 'game-change-time'));
+      trail.append(line);
+    }
+    panel.append(trail);
+  }
+  return [panel];
 }
 
 async function startFloor(root) {
@@ -1222,6 +1304,7 @@ async function startFloor(root) {
   const state = {
     checkpoint: null, liveIds: new Set(), desks: new Map(), feed: [], outcomes: [], marks: [], mode: 'loading',
     hero: null, rendered: new Set(), primed: false, expanded: new Set(), open: new Set(), practice: false, more: false, clock: null,
+    ladderEvents: [], ladderSelected: null, ladderAnimated: new Set(),
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
@@ -1251,6 +1334,16 @@ async function startFloor(root) {
     const byId = new Map([...state.feed, ...events].map(event => [event.id, event]));
     state.feed = [...byId.values()].sort((left, right) => (Number(right.seq) || 0) - (Number(left.seq) || 0)).slice(0, 400);
   };
+  const keepLadder = events => {
+    const byId = new Map([...state.ladderEvents, ...events.filter(event => ladderMove(event))].map(event => [event.id, event]));
+    state.ladderEvents = [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (b.seq || 0) - (a.seq || 0)).slice(0, MAX_EVENT_LIMIT);
+  };
+  const drawLadder = () => {
+    const focused = document.activeElement?.getAttribute('data-agent');
+    drawn(box.improvement, ladderPanel(state.checkpoint, state));
+    // A polling redraw must not strand a keyboard user on the document body.
+    if (deskId(focused)) box.improvement?.querySelector(`[data-agent="${focused}"]`)?.focus({ preventScroll: true });
+  };
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
@@ -1260,7 +1353,7 @@ async function startFloor(root) {
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
       drawPortfolio();
       drawn(box.positions, positionsPanel(state.checkpoint, state));
-      drawn(box.improvement, improvementPanel(state.checkpoint));
+      drawLadder();
       state.drawClosed();
       if (state.primed) drawLive();
     } catch {
@@ -1271,7 +1364,7 @@ async function startFloor(root) {
       drawn(box.portfolio, [element('p', 'No balance has been published yet.', 'empty-state')]);
       drawn(box.positions, [element('p', 'No position is open.', 'empty-state')]);
       drawn(box.closed, [element('p', 'No trade has closed yet.', 'empty-state')]);
-      drawn(box.improvement, [element('p', improvementSeries(null).sentence, 'empty-state')]);
+      drawn(box.improvement, [element('p', 'Waiting for the agent roster.', 'empty-state')]);
     } finally {
       state.asked = true;
       // Every refresh re-reads the status, the ones that fail too: a fresh checkpoint turns the
@@ -1283,11 +1376,13 @@ async function startFloor(root) {
   const loads = [
     { kind: 'desk.thought', limit: 60 }, { kind: 'desk.tool_call', limit: 100 }, { kind: 'broker.fill', limit: 60 },
     { kind: 'desk.session_ended', limit: 40 }, { kind: 'desk.outcome', limit: MAX_EVENT_LIMIT },
-    { stream: 'ops', kind: 'floor.mark', limit: MAX_EVENT_LIMIT }, { kind: 'lab.progress', limit: 60 },
+    { stream: 'ops', kind: 'floor.mark', limit: MAX_EVENT_LIMIT }, { kind: 'lab.progress', limit: MAX_EVENT_LIMIT },
   ];
   const [thoughts, calls, fills, endings, outcomes, marks, progress] = await Promise.all(loads.map(query => loadEvents(query).catch(() => ({ events: [] }))));
   keepFeed([...thoughts.events, ...calls.events, ...fills.events, ...endings.events, ...outcomes.events.slice(0, 40), ...progress.events]);
   state.outcomes = outcomes.events;
+  keepLadder(progress.events);
+  drawLadder();
   if (!state.marks.length) state.marks = marks.events;
   drawLive();
   drawPortfolio();
@@ -1311,9 +1406,11 @@ async function startFloor(root) {
       const live = events.filter(event => FEED_KINDS.includes(event.kind) || event.kind === 'desk.session_ended');
       const closed = events.filter(event => event.kind === 'desk.outcome');
       const balance = events.filter(event => event.kind === FLOOR_MARK.kind);
+      const changes = events.filter(event => ladderMove(event));
       if (live.length) { keepFeed(live); drawLive(); }
       if (closed.length) { state.outcomes = [...closed, ...state.outcomes].slice(0, MAX_EVENT_LIMIT); state.drawClosed(); }
       if (balance.length) { state.marks = [...state.marks, ...balance]; drawPortfolio(); }
+      if (changes.length) { keepLadder(changes); drawLadder(); refresh(); }
     },
   });
   feed.remember(loaded);

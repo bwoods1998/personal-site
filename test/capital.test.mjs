@@ -18,7 +18,7 @@ import {
   accountEquity, accountVenues, venueLabel, instrumentLabel, ago, roman, raceName, triggerText, flatLine,
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers,
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
-  closedRecord, improvementSeries,
+  closedRecord, ladderMove, ladderSnapshot,
 } from '../capital/capital.js';
 import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
@@ -34,6 +34,8 @@ function event(n = 1, overrides = {}) {
   };
 }
 const batch = (...events) => ({ schema_version: 1, events });
+const ladderEvent = (message, overrides = {}) => published(300, { stream: 'lab', kind: 'lab.progress',
+  payload: { component: 'league', stage: 'test', message }, ...overrides });
 function desk(id = 'rosenfeld', overrides = {}) {
   return {
     id, name: 'Rosenfeld', family: 'rosenfeld', generation: 1, parent_id: null, mode: 'paper',
@@ -53,6 +55,104 @@ function checkpoint(overrides = {}) {
     ...overrides,
   };
 }
+
+test('the ladder parses only real league lifecycle templates, never strategy claims or a successful trial', () => {
+  assert.deepEqual([ladderMove(ladderEvent('haghani climbs from rung 1 to rung 2: audited evidence.')).kind,
+    ladderMove(ladderEvent('haghani drops from rung 3 to rung 2: drift.')).kind,
+    ladderMove(ladderEvent('haghani-2 is born (a child of haghani, generation 2, niche alpaca/day/revert). mutation.')).kind,
+    ladderMove(ladderEvent('haghani-2 died of displaced. Newcomer earns the seat.')).kind], ['up', 'down', 'born', 'out']);
+  for (const message of ['haghani passed replay: 24 trades.', 'The auditor approved haghani for real money.',
+    'haghani climbs from rung 2 to rung 1: malformed.', 'haghani drops from rung 2 to rung 3: malformed.',
+    'haghani climbs from rung 2 to rung 9: invalid.', 'I think haghani climbs from rung 1 to rung 2: rumor.']) {
+    assert.equal(ladderMove(ladderEvent(message)), null, message);
+  }
+  const change = ladderEvent('haghani climbs from rung 1 to rung 2: evidence.');
+  assert.equal(ladderMove({ ...change, kind: 'desk.thought' }), null);
+  assert.equal(ladderMove({ ...change, payload: { ...change.payload, component: 'agent' } }), null);
+});
+
+test('the ladder keeps every living agent on its explicit rung and never treats tape lag as a promotion', () => {
+  const gate = rung => ({ name: `rung ${rung}`, passed: rung >= 2, evidence: { rung } });
+  const now = Date.parse('2026-09-15T15:00:00.000Z');
+  const change = ladderEvent('haghani climbs from rung 1 to rung 2: evidence.', { at: '2026-09-15T14:59:00.000Z' });
+  const board = checkpoint({ published_at: '2026-09-15T14:58:00.000Z', desks: [
+    desk('haghani', { gate: gate(1), pnl_usd: '50.00' }), desk('winner', { gate: gate(3), mode: 'live', pnl_usd: '4' }),
+    desk('newcomer', { gate: gate(0), pnl_usd: '100' }), desk('old-agent', { gate: gate(2), status: 'retired' }),
+    desk('legacy', { mode: 'live', gate: null }), desk('broken', { gate: gate('2') }),
+  ] });
+  const before = ladderSnapshot(board, [change, change], now);
+  assert.deepEqual(before.rungs.map(row => [row.name, row.agents.map(agent => agent.id)]), [
+    ['Scaled', ['winner']], ['Live', []], ['Paper', ['haghani']], ['Replay', ['newcomer']],
+  ]);
+  assert.equal(before.living, 5);
+  assert.equal(before.retired.length, 1);
+  assert.equal(before.unranked.length, 2);
+  assert.equal(before.moves.length, 1, 'socket replay is deduplicated');
+  assert.equal(before.rungs[2].agents[0].recent, null, 'the event arrived before the roster changed');
+  assert.equal(before.rungs[3].agents[0].pnl, null, 'replay P&L is not a forward result');
+  board.desks[0].gate = gate(2);
+  const after = ladderSnapshot(board, [change], now);
+  assert.equal(after.rungs[1].agents[0].recent.kind, 'up');
+  assert.equal(after.stale, false);
+  assert.equal(ladderSnapshot(board, [change], now + 7200000).rungs[1].agents[0].recent, null, 'old moves do not pulse forever');
+  assert.equal(ladderSnapshot(board, [], now + 7200000).stale, true);
+  assert.deepEqual(ladderSnapshot(null).rungs.map(row => row.agents.length), [0, 0, 0, 0]);
+});
+
+test('the live ladder redraws after socket promotions and demotions, keeps selection, and separates recent exits', async () => {
+  const root = stubPage('floor', FLOOR_IDS);
+  const gate = rung => ({ name: `rung ${rung}`, passed: rung >= 2, evidence: { rung, credits_usd: '12.50' } });
+  let board = checkpoint({ published_at: new Date().toISOString(), desks: [
+    desk('haghani', { gate: gate(1), pnl_usd: '3.00' }), desk('haghani-2', { gate: gate(0), status: 'retired' }),
+  ] });
+  let socket;
+  class Socket {
+    constructor() { socket = this; this.listeners = {}; }
+    addEventListener(name, work) { this.listeners[name] = work; }
+    close() {}
+  }
+  await withBrowser('', path => {
+    if (path.includes('/checkpoint')) return board;
+    if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+    return { schema_version: 1, latest_seq: 0, events: [] };
+  }, async () => {
+    globalThis.WebSocket = Socket;
+    const feed = await startCapital(root);
+    try {
+      const read = () => root.querySelector('#floor-improvement');
+      assert.deepEqual(read().withClass('game-rung-title').map(words), ['Scaled 0', 'Live 0', 'Paper 1', 'Replay 0']);
+      assert.equal(read().withClass('game-retired').length, 1);
+      read().withClass('game-agent')[0].click();
+      assert.match(words(read().withClass('game-detail')[0]), /Haghani Paper · \+\$3.00 paper P&L · \$12.50 compute credits/);
+      for (const [seq, rung, message] of [[301, 2, 'haghani climbs from rung 1 to rung 2: verified record.'], [302, 1, 'haghani drops from rung 2 to rung 1: drift.']]) {
+        board = { ...board, desks: [{ ...board.desks[0], gate: gate(rung), mode: rung === 2 ? 'live' : 'shadow' }, board.desks[1]] };
+        const event = ladderEvent(message, { seq, id: `ladder:${seq}`, at: new Date().toISOString() });
+        socket.listeners.message({ data: JSON.stringify(event) });
+        for (let i = 0; i < 30; i += 1) await new Promise(resolve => setImmediate(resolve));
+        assert.equal(read().withClass(`game-rung-${rung}`)[0].withClass('game-agent').length, 1);
+        assert.match(words(read().withClass('game-detail')[0]), rung === 2 ? /Haghani Live/ : /Haghani Paper/);
+        assert.equal(read().withClass('game-agent')[0].getAttribute('aria-pressed'), 'true');
+        assert.match(words(read().withClass('game-moves')[0]), rung === 2 ? /Paper → Live/ : /Live → Paper/);
+      }
+    } finally { feed.stop(); }
+  });
+});
+
+test('checkpoint lifecycle survives a quiet or truncated tape and contaminated accounts never appear profitable', () => {
+  const now = Date.parse('2026-09-15T15:00:00.000Z');
+  const board = checkpoint({ desks: [desk('haghani', { pnl_usd: '500', gate: { name: 'rung 1', passed: false, evidence: {
+    rung: 1, accounting_ok: false, lifecycle: { born_at: '2026-09-14T00:00:00.000Z', died_at: null, cause: null,
+      last_move: { id: 'demote:1', at: '2026-09-15T14:59:00.000Z', decision: 'demote', from_rung: 2, to_rung: 1, reason: 'drift' } },
+  } } })] });
+  const snapshot = ladderSnapshot(board, [], now);
+  assert.equal(snapshot.moves[0].kind, 'down');
+  assert.equal(snapshot.rungs[2].agents[0].pnl, null);
+  assert.equal(snapshot.rungs[2].agents[0].tone, 'flat');
+  assert.equal(snapshot.rungs[2].agents[0].accountingIssue, true);
+  assert.equal(snapshot.rungs[2].agents[0].recent.kind, 'down');
+  const same = ladderEvent('haghani drops from rung 2 to rung 1: drift.', { id: 'demote:1', at: '2026-09-15T14:59:00.000Z' });
+  assert.equal(ladderSnapshot(board, [same], now).moves.filter(move => move.kind === 'down').length, 1);
+});
 const infra = (overrides = {}) => ({
   host: 'sailbox', box_id: 'box-9f2c1ad4', checkpoint_count: 118, spend_usd: '4.21',
   uptime_seconds: 93784, region: 'us-east', requests_today: 37, ...overrides,
@@ -397,11 +497,11 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   // Exactly five sections, in the owner's order.
   assert.deepEqual([...floorHtml.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
   assert.equal((floorHtml.match(/<section\b/g) || []).length, SECTION_IDS.length);
-  assert.deepEqual([...floorHtml.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Performance', 'Positions', 'Self-improvement']);
+  assert.deepEqual([...floorHtml.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Performance', 'Positions', 'The ladder']);
   // The live section's heading is the status itself: one dot and one word, red and "stopped" until the floor runs.
   assert.match(floorHtml, /<h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"><\/span><span>stopped<\/span><\/span><\/h2>/);
-  // No section carries a subtitle: each is clear from its title and its content.
-  assert.doesNotMatch(floorHtml, /<div class="section-heading"><h2[^>]*>[^<]+<\/h2><span>/);
+  // One short ladder caption explains why agents climb.
+  assert.match(floorHtml, /<h2 id="improvement-title">The ladder<\/h2><span>Performance earns the next rung\.<\/span>/);
   assert.deepEqual([...floorHtml.matchAll(/<h3 [^>]*>([^<]+)<\/h3>/g)].map(match => match[1]), ['Open', 'Closed']);
   const order = FLOOR_IDS.map(id => floorHtml.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, the live status and stream, the chart, open then closed positions, improvement');
@@ -556,7 +656,7 @@ test('the floor page mounts the two numbers, the partner thinking now, and a liv
     assert.match(quiet.querySelector('#floor-feed').textContent, /Quiet for now\./);
     assert.match(quiet.querySelector('#floor-positions').textContent, /No real-money position open\./);
     assert.match(quiet.querySelector('#floor-closed').textContent, /No trade has closed yet\./);
-    assert.match(words(quiet.querySelector('#floor-improvement')), /^Generation 1 agents return \+0\.5% on capital\. No later generation has finished yet\./, 'the desks stand in until the lab publishes a curve');
+    assert.match(words(quiet.querySelector('#floor-improvement')), /1 competing.*Rank unreported.*Rosenfeld/, 'legacy desks do not acquire an invented rung');
     assert.deepEqual(quiet.find('a'), []);
   });
 });
@@ -737,7 +837,7 @@ test('the page says practice or shadow, never paper, and stills its motion on re
   assert.doesNotMatch(script, /portfolio-agent|paper trad/i);
   const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
   assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /\.improve-bar/);
+  assert.match(css, /\.game-rung/);
   for (const gone of ['ladder', 'rows-arena', 'rows-leaders', 'partners-grid', 'footer-links', 'skip-link']) assert.ok(!css.includes(`.${gone}`), `${gone} styles are gone`);
 });
 
@@ -1152,7 +1252,7 @@ test('the checkpoint carries positions, mutations, live sessions, the lab and th
   assert.equal(validCalibration({ ...calibration().payload, since: '2026-09-16T00:00:00.000Z' }), false, 'since cannot follow as_of');
 });
 
-test('positions list open (real money, then practice, tagged) and closed real-money trades with their reasons and no link; one chart says whether generations improve', async () => {
+test('positions list open (real money, then practice, tagged) and closed real-money trades with their reasons and no link; the ladder shows the roster', async () => {
   const root = stubPage('floor', FLOOR_IDS);
   const austin = position({
     instrument: { symbol: 'KXHIGHAUS-26SEP16-B100.5', asset_class: 'event', venue: 'kalshi' }, side: 'no', quantity: '23.00', entry_price: '0.4300', mark_price: '0.4350',
@@ -1217,14 +1317,13 @@ test('positions list open (real money, then practice, tagged) and closed real-mo
     assert.equal(all.length, 9);
     assert.match(words(all[0]), /^Haghani NYC high 81–82°F · Sep 15 (?:won|lost) [+−]\$\d\.00 20h daily temps NYC forecast high 79F/, 'who, what, how it ended, and why');
 
-    // Are the agents getting better: one sentence and one bar per generation, from the lab's curve.
     const improvement = root.querySelector('#floor-improvement');
     assert.equal(improvement.getAttribute('aria-busy'), 'false');
-    assert.equal(improvement.withClass('improve-reading')[0].textContent, 'Generation 2 agents return +2.1% after costs; generation 1 returned +1.2%.');
-    assert.deepEqual(improvement.withClass('improve-col').map(words), ['+1.2% 1', '+2.1% 2']);
-    assert.equal(improvement.withClass('improve-bar').length, 2);
-    assert.equal(improvement.withClass('improve-latest').length, 1);
-    assert.equal(improvement.find('table').length, 0, 'no table of desks');
+    assert.equal(improvement.withClass('game-rung').length, 4);
+    assert.equal(improvement.withClass('game-agent').length, 4);
+    assert.match(words(improvement), /4 competing/);
+    assert.match(words(improvement), /Rank unreported/, 'mode alone cannot prove an earned rung');
+    assert.equal(improvement.find('table').length, 0, 'a ladder, not another table');
     assert.deepEqual(root.find('a'), [], 'nothing on the page is a link');
   });
 });
@@ -1240,7 +1339,7 @@ test('a floor that has published nothing says so in every section and keeps its 
     assert.equal(words(root.querySelector('#floor-portfolio')), 'No balance has been published yet.');
     assert.equal(words(root.querySelector('#floor-positions')), 'No position is open.');
     assert.equal(words(root.querySelector('#floor-closed')), 'No trade has closed yet.');
-    assert.equal(words(root.querySelector('#floor-improvement')), 'No generations have finished yet.');
+    assert.equal(words(root.querySelector('#floor-improvement')), 'Waiting for the agent roster.');
     // No checkpoint at all (the address answers 404): stopped, whatever the transport is doing.
     assert.match(root.querySelector('#floor-status').textContent, /^\s*stopped$/);
     assert.equal(root.querySelector('#floor-status').className, 'live-status live-stopped');
@@ -1268,7 +1367,7 @@ test('when practice trades are all there is, one quiet button offers them', asyn
     buttons[0].click();
     assert.match(words(closed().find('tbody')[0].find('tr')[0]), /^Haghani II practice NYC high 81–82°F · Sep 15 won \+\$5\.00 20h/);
     assert.equal(closed().find('button')[0].getAttribute('aria-pressed'), 'true');
-    assert.equal(words(root.querySelector('#floor-improvement')), 'No generations have finished yet.');
+    assert.match(words(root.querySelector('#floor-improvement')), /1 competing.*Rank unreported.*Haghani II/);
     // An all-practice book: the flat line says what the real accounts hold and announces the
     // practice rows under it; each row is tagged, and there is nothing mixed to count.
     const open = root.querySelector('#floor-positions');
@@ -1575,7 +1674,7 @@ test('the live feed shows thinking, research and trades in plain words, folds re
   function pick(hero) { return [hero.desk, hero.text, hero.research]; }
 });
 
-test('open positions list real money then practice, skip dust and count each; one series says whether each generation does better', () => {
+test('open positions list real money then practice, skip dust and count each', () => {
   const board = checkpoint({ desks: [
     desk('haghani', { name: 'Haghani', family: 'weather', mode: 'live', return_pct: '-20.6', pnl_usd: '-21.63', capital_usd: '104.93', positions: [
       position({ instrument: { symbol: 'KXHIGHNY-26SEP16-B77.5', asset_class: 'event', venue: 'kalshi' }, side: 'no', market_value: '7.98', unrealized_pnl: '-11.780000', thesis: '' }),
@@ -1611,32 +1710,6 @@ test('open positions list real money then practice, skip dust and count each; on
   assert.equal(flatLine(checkpoint(), 1), 'No real-money position open. 1 practice position below.');
   assert.equal(flatLine(checkpoint(), 0), 'No real-money position open.');
 
-  // Are the agents getting better: the lab's curve, one bar per generation, return after costs.
-  const curve = improvementSeries(board);
-  assert.equal(curve.sentence, 'Generation 2 agents return +2.1% after costs; generation 1 returned +1.2%.');
-  assert.deepEqual(curve.rows.map(row => [row.generation, row.text, row.tone, row.latest, row.decisions, row.desks, row.net.toFixed(2)]), [
-    [1, '+1.2%', 'positive', false, 14, 2, '11.30'], [2, '+2.1%', 'positive', true, 14, 2, '11.30'],
-  ]);
-  assert.deepEqual(curve.rows.map(row => [Math.round(row.top), Math.round(row.height)]), [[43, 57], [0, 100]], 'bars share one scale from zero');
-  assert.equal(curve.zero, 100, 'every bar stands on the zero line');
-  const mixed = improvementSeries(checkpoint({ lab: lab({ curve: [
-    curveRow(1, { cost_adjusted_excess_pct: '-0.8' }), curveRow(4, { cost_adjusted_excess_pct: '1.2' }), curveRow(5, { decisions: 0, cost_adjusted_excess_pct: '9' }),
-  ] }) }));
-  assert.equal(mixed.sentence, 'Generation 4 agents return +1.2% after costs; generation 1 returned −0.8%.', 'a generation with no decision has not finished');
-  assert.deepEqual(mixed.rows.map(row => [row.tone, Math.round(row.top), Math.round(row.height)]), [['negative', 60, 40], ['positive', 0, 60]]);
-  assert.equal(mixed.zero, 60);
-  // Until the lab publishes a curve, the desks' own return on capital stands in.
-  const { lab: _lab, ...noLab } = board;
-  const fallback = improvementSeries(noLab);
-  assert.deepEqual(fallback.rows.map(row => [row.generation, row.text]), [[1, '−5.3%'], [2, '−0.7%'], [3, '−22.1%']]);
-  assert.equal(fallback.sentence, 'Generation 3 agents return −22.1% on capital; generation 1 returned −5.3%.');
-  const alone = improvementSeries(checkpoint({ lab: lab({ curve: [curveRow(1)] }) }));
-  assert.equal(alone.sentence, 'Generation 1 agents return +1.2% after costs. No later generation has finished yet.');
-  const many = improvementSeries(checkpoint({ lab: lab({ curve: Array.from({ length: 20 }, (_, n) => curveRow(n + 1)) }) }));
-  assert.deepEqual(many.rows.map(row => row.generation), [1, 14, 15, 16, 17, 18, 19, 20], 'the first generation and the newest seven');
-  for (const empty of [null, {}, checkpoint({ desks: [] }), checkpoint({ desks: [desk('mullins', { orders: 0, gate: null })] }), checkpoint({ lab: lab({ curve: [] }), desks: [] })]) {
-    assert.deepEqual(improvementSeries(empty), { rows: [], zero: 0, measure: improvementSeries(empty).measure, sentence: 'No generations have finished yet.' });
-  }
 });
 
 // ------------------------------------------------------------ the rebuilt runtime's agents
