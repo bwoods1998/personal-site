@@ -47,31 +47,57 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
 4. **Positions** (`#positions`). **Open**: real money, dust under $0.50 hidden: Agent, Market, Side,
    Value, P&L, Why (first sentence; tap for the full thesis). **Closed**: the record in one line,
    then eight trades, newest first, "N more" for the rest: Agent, Market, Result, P&L, Held, Why.
-5. **The ladder** (`#improvement`), a live capital board (the owner, Sept 23, 2026: an agent's
-   rank is its capital). One lane per band, top first: **Star**, **Swing**, **Bunt** (real money),
-   **Practice**, **Replay**. Each agent is one bar. A real-money bar is as wide as its stake (square
-   root, so a $10 bunt shows beside a star's stake); a practice bar is as wide as its practice
-   wealth multiple W (to the fourth power, so a few percent shows); a replay bar is a dot. Green is
-   profit, red loss (practice reads by W, real money by P&L). Tap, hover or focus a bar for its
-   record: band, stake, E and the two multiples, trades, P&L, credits, and the reason for its last
-   move. Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
-   `real_trades`} and `last_move`, and the checkpoint's `board` {`bands` (count and capital per
-   band per venue: the lane notes), `moves` (the trail), `throttle`, `enabled`}. A checkpoint from
-   before the allocator publishes none of these: the band then follows `gate.evidence.rung` (0
-   Replay, 1 Practice, 2 Bunt, 3 Swing) and a real desk's `capital_usd` stands in for its stake.
-   - **Motion.** A move glides the bar from its old lane to its new one (FLIP with the Web
-     Animations API, measured before and after each redraw); a birth rises into Replay; a death
-     fades into the Retired row. A move seen for the first time within the hour glows once and
-     keeps an arrow over its bar. Nothing moves until the roster agrees with the tape, and a band
-     move on the tape asks for the checkpoint again six seconds later, so a crossing shows within
-     seconds. Reduced motion stills all of it.
-   - **Practice follows the Positions switch.** Off (every visit), the Practice and Replay lanes
-     are one tick per agent, and pressing the ticks turns the switch on; on, every practice agent
-     is a bar with its record.
-   - Under the lanes: the Retired row (the recent exits the checkpoint carries), a two-word legend,
-     the record of the selected bar, and the last five moves ("Mullins VII · Practice → Bunt ·
-     $10"). A throttle that is on says so above the lanes.
-   - The House's word for the practice band is `paper`; the page says Practice, everywhere.
+5. **The ladder** (`#improvement`), three floors and one dot per agent (the owner, Sept 23, 2026:
+   "level 1, 2, 3 with very limited text", and dots, not bars). Top first: **Level 3** · Increased
+   capital (the House's `swing` and `star` bands), **Level 2** · Live trading (`bunt`), **Level 1** ·
+   Practice (`paper`, and `replay` agents still being tested on history). The level number is the
+   headline and the word is a small tag; the House's band names never appear, and `LEVELS` in
+   `capital.js` is the one table that maps them. Every row is centred, so the counts alone draw the
+   pyramid, and an empty level keeps its place ("No one yet").
+   - **Dots.** Level 1 is a 12px disc in a 24px cell (the tap target): green up, red down, grey flat,
+     by practice growth W. A hollow ring has no closed trade yet (its colour is its open positions);
+     a dotted ring is a new agent on history. Order reads like text: nearest Level 2 top left, the
+     untested middle, losers last, the new agents at the end.
+   - **Coins.** Levels 2 and 3 are gold-rimmed coins, the rim meaning real money, the diameter the
+     stake on one absolute scale (`coinSize`: 6√stake px, 18 to 56, so $10 is 19px and $25 is 30px),
+     the fill the real P&L and the glyph (+ − ·) its sign, so a loss reads without colour. The top
+     three earners (`star`) stay on Level 3 with a gold medal ring.
+   - **Arcs.** A gold arc round a dot or coin is its progress toward the next level (`NEXT_LEVEL`,
+     mirroring league/constitution.py): practice to live trading at evidence 1.01 over five closed
+     trades, live trading to increased capital at 1.5 over eight real trades with real results at or
+     above even (capped at 95% until they are). It is the allocator's main rule only: Kalshi's
+     three-settlement route and the evaluator's screen are not published, so a closed ring is a
+     floor, never a promise. The copy says "Ready", never "next", and the readout's last move shows
+     which route a climb took. With no `board`, `board.enabled` false, an accounting issue or no
+     evidence there is no arc and no claim.
+   - **Gates.** A ↑ circle on the top edge of Levels 1 and 2 is the way up. A crossing travels
+     through it (FLIP with the Web Animations API, measured before and after each redraw): the dot
+     grows into its coin, the rim sweeps shut, one ripple, the gate flashes; a drop runs back through
+     it in red. Once a visit, when 40% of the ladder is first in view, the newest climb of the last
+     day that still stands plays again, and the readout says "Latest climb" so it never reads as
+     live. A birth rises into Level 1, a death fades into Retired, a thought, research call or fill
+     sends one faint ring out from its agent's dot (one per agent per 8 s, four at once, only while
+     the ladder is in view). Nothing moves until the roster agrees with the tape; a move on the tape
+     asks for the checkpoint again six seconds later. Reduced motion stills all of it.
+   - **Readout.** Tap, hover (fine pointers), or focus a dot: name, venue and strategy tag; its
+     level and money ("Level 1 · practice +1.2% · 4 trades", "Level 2 · $56.11 stake · +$1.29 real ·
+     4 real trades"); an XP bar ("62% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades"); and its
+     last move, with the reason rebuilt from fixed phrasings (`reasonWords`), never the House's
+     text. Arrow keys walk a floor (one tab stop each), Esc clears. With nothing chosen it names the
+     agent closest to Level 2.
+   - Above the floors: the caption, a legend of only what is on the board, and a throttle that is
+     on. Below: Retired (rings tinted by how each ended), "Level unknown" when a desk has no band,
+     the readout, and the last five moves as buttons ("Huang · Level 1 → 2 · $10"; a new agent
+     starting practice is not a crossing and is not listed).
+   - Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
+     `real_trades`} and `last_move`, and the checkpoint's `board` {`bands`, `moves`, `throttle`,
+     `enabled`}. A checkpoint from before the allocator publishes none of these: the level then
+     follows `gate.evidence.rung` (0 and 1 Level 1, 2 Level 2, 3 Level 3) and a real desk's
+     `capital_usd` stands in for its stake.
+   - The Positions switch does not touch the ladder: every agent is always a dot.
+   - The League's lines in the live feed speak the same way ("Huang climbs to Level 2 with $10
+     real"), and any other league line has the House's band words swapped for the page's. The
+     House's word for the practice band is `paper`; the page says practice, everywhere.
 
 **Footer.** "Blake Woods owns every position. Not investment advice."
 

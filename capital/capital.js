@@ -389,7 +389,8 @@ export function ago(value, now = Date.now()) {
 // Generations read as numerals: the founder is I, its first child II.
 export function roman(value) {
   let number = Number.isSafeInteger(value) && value > 0 ? value : 1;
-  const table = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+  const table = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
   let out = '';
   for (const [size, glyph] of table) while (number >= size) { out += glyph; number -= size; }
   return out;
@@ -613,16 +614,58 @@ export const floorName = id => partnerName(show(id));
 // A model's thought as prose: its markdown emphasis and code ticks are for a renderer the floor
 // does not use.
 export const plainThought = value => show(value).replace(/\*\*|__|`+/g, '').replace(/^#{1,6}\s+/gm, '').replace(/\s+/g, ' ').trim();
+// The League speaks the House's words; the page speaks in levels. A move on the ladder reads as the
+// ladder tells it, and every other league line has the House's band words swapped for the page's.
+const HOUSE_WORDS = [
+  [/\b(passed|failed) (?:deep )?replay\b/gi, (match, verb) => `${verb} its history test`],
+  [/\breplay-passing\b/gi, () => 'history-tested'],
+  [/\breplay\b/gi, () => 'history test'],
+  [/\bbunt\b/gi, () => 'Level 2'],
+  [/\bswing\b/gi, () => 'Level 3'],
+  [/\bstar\b/gi, () => 'top 3'],
+  [/\bpaper\b/gi, () => 'practice'],
+  [/\brung 0\b/gi, () => 'the history test'],
+  [/\brung ([1-3])\b/gi, (match, rung) => `Level ${rung}`],
+  [/\brungs?\b/gi, match => (match.length > 4 ? 'levels' : 'level')],
+  [/\bE (?=[\d<>=≥≤])/g, () => 'evidence '],
+];
+export function houseWords(value) {
+  let text = show(value);
+  for (const [pattern, swap] of HOUSE_WORDS) {
+    text = text.replace(pattern, (match, ...rest) => {
+      const words = swap(match, ...rest.slice(0, -2));
+      const [offset, whole] = rest.slice(-2);
+      // A sentence that began with a House word still begins with a capital.
+      return /(?:^|[.!?]\s+)$/.test(whole.slice(0, offset)) ? capitalized(words) : words;
+    });
+  }
+  return text;
+}
+export function leagueWords(event) {
+  const move = ladderMove(event);
+  if (!move) return houseWords(plainThought(event?.payload?.message));
+  const name = floorName(move.agent);
+  const from = levelOf(move.fromBand);
+  const to = levelOf(move.toBand);
+  const said = move.kind === 'born' ? `${name} is born`
+    : move.kind === 'out' ? `${name} retired`
+      : move.kind === 'size' ? `${name}'s real stake is now ${money(move.stake, 0)}`
+        : to !== null && from === to ? (move.toBand === 'star' ? `${name} joins the top 3` : move.fromBand === 'star' ? `${name} leaves the top 3` : `${name} starts practice`)
+          : move.kind === 'up' ? `${name} climbs to Level ${to}${numeric(move.stake) ? ` with ${money(move.stake, 0)} real` : ''}`
+            : `${name} drops to Level ${to}`;
+  const reason = reasonWords(move);
+  return reason ? `${said}: ${reason}` : said;
+}
 // One live line, or null for everything the floor page does not show.
 export function feedLine(event, liveIds = new Set()) {
   if (!event || !FEED_KINDS.includes(event.kind)) return null;
   const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {};
   if (event.kind === 'lab.progress') {
-    const text = plainThought(payload.message);
     const execution = payload.component === 'execution';
     // The rebuilt runtime's research loop speaks as the League; the first run's spoke as the
     // Foundry, and its execution heartbeat as Execution. Testing or learning is said by `stage`.
     const league = payload.component === 'league';
+    const text = league ? leagueWords(event) : plainThought(payload.message);
     return text ? { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), desk: execution ? 'arena' : league ? 'league' : 'foundry',
       name: execution ? 'Execution' : league ? 'League' : 'Foundry',
       practice: false, pnl: '', tone: '', kind: execution ? 'monitoring' : payload.stage === 'learn' ? 'learning' : 'testing', text } : null;
@@ -866,6 +909,7 @@ const deskPnl = desk => (numeric(looseAmount(desk?.pnl_usd)) ? Number(desk.pnl_u
 const FEED_LINES = 12;
 const TRADE_ROWS = 8;
 const HERO_TEXT_LIMIT = 420;
+const PING_KINDS = { 'desk.thought': 'thought', 'desk.tool_call': 'tool', 'broker.fill': 'fill' };
 const FEED_LABELS = { thinking: 'thinking', researching: 'researching', trading: 'trading', testing: 'testing', learning: 'learning', monitoring: 'monitoring' };
 const tagNode = (text, kind) => element('span', text, `tag tag-${kind}`);
 const modeTag = live => tagNode(live ? 'real money' : 'practice', live ? 'real' : 'practice');
@@ -874,9 +918,14 @@ function pulse(className = 'pulse') {
   dot.setAttribute('aria-hidden', 'true');
   return dot;
 }
-// CSSOM, not a style attribute: the page's policy allows the one and refuses the other.
+// CSSOM, not a style attribute: the page's policy allows the one and refuses the other. A custom
+// property ("--p") is set by name.
 function place(node, properties) {
-  try { for (const [key, value] of Object.entries(properties)) node.style[key] = value; } catch { /* no layout here */ }
+  try {
+    for (const [key, value] of Object.entries(properties)) {
+      if (key.startsWith('--')) node.style.setProperty(key, value); else node.style[key] = value;
+    }
+  } catch { /* no layout here */ }
 }
 // Types a thought out at a readable pace, whatever its length, in about two seconds. Off when the
 // visitor asked for less motion, and anywhere without a window, where the text simply lands.
@@ -1140,31 +1189,35 @@ export function practiceCount(checkpoint, outcomes = []) {
   const closed = closedRows(outcomes, checkpoint, { limit: MAX_EVENT_LIMIT }).filter(row => !row.live).length;
   return open + closed;
 }
+// The ladder does not follow it: every agent is always a dot there.
 function practiceSwitch(state) {
   if (!state.practice && !practiceCount(state.checkpoint, state.outcomes)) return [];
   const button = element('button', state.practice ? 'hide practice trades' : 'show practice trades', state.practice ? 'chip chip-on' : 'chip');
   button.type = 'button';
   button.setAttribute('aria-pressed', state.practice ? 'true' : 'false');
-  button.setAttribute('aria-controls', 'floor-positions floor-closed floor-improvement');
-  button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawPositions(); state.drawClosed(); state.drawLadder?.(); state.focusSwitch(); });
+  button.setAttribute('aria-controls', 'floor-positions floor-closed');
+  button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawPositions(); state.drawClosed(); state.focusSwitch(); });
   return [button];
 }
-// ---- the capital board: an agent's rank is its capital (the owner, Sept 23, 2026)
-// Five lanes, the top first. Bunt, Swing and Star trade real money; the House calls the practice
-// band "paper", and the page never does.
-export const BOARD_LANES = [
-  { band: 'star', name: 'Star', note: 'Top real earners', real: true },
-  { band: 'swing', name: 'Swing', note: 'Stake grows with evidence', real: true },
-  { band: 'bunt', name: 'Bunt', note: 'First real money', real: true },
-  { band: 'paper', name: 'Practice', note: 'Practice money', real: false },
-  { band: 'replay', name: 'Replay', note: 'Tested on history', real: false },
+// ---- the ladder: three levels, one dot per agent (the owner, Sept 23, 2026)
+// The House ranks its agents in five bands; the page shows three levels and never names a band.
+// Level 1 is practice (an agent still being tested on history is a faint ring there), Level 2 is
+// live trading with a real stake, and Level 3 is increased capital, where the top three earners
+// wear a medal. The House calls the practice band "paper", and the page never does.
+export const LEVELS = [
+  { level: 3, word: 'Increased capital', bands: ['star', 'swing'], real: true },
+  { level: 2, word: 'Live trading', bands: ['bunt'], real: true },
+  { level: 1, word: 'Practice', bands: ['paper', 'replay'], real: false },
 ];
+const BAND_LEVEL = { replay: 1, paper: 1, bunt: 2, swing: 3, star: 3 };
+export const levelOf = band => BAND_LEVEL[band] ?? null;
 const BAND_RANK = { replay: 0, paper: 1, bunt: 2, swing: 3, star: 4 };
-const BAND_LABELS = { replay: 'Replay', paper: 'Practice', bunt: 'Bunt', swing: 'Swing', star: 'Star' };
-const LABEL_BANDS = Object.fromEntries(Object.entries(BAND_LABELS).map(([band, label]) => [label, band]));
+// The House's own words for its bands, as its league lines print them. Only the tape parser reads
+// these; the page's words are the levels above, so a band move still parses whatever the page says.
+const HOUSE_BAND_WORDS = { Replay: 'replay', Practice: 'paper', Bunt: 'bunt', Swing: 'swing', Star: 'star' };
 // Before the allocator a desk published only its rung: 0 replay, 1 practice, 2 and 3 real money.
 const RUNG_BANDS = ['replay', 'paper', 'bunt', 'swing'];
-export const bandLabel = band => BAND_LABELS[band] || 'Unranked';
+export const bandLabel = band => (levelOf(band) ? `Level ${levelOf(band)}` : 'Level unknown');
 const rungNumber = value => Number.isInteger(value) && value >= 0 && value <= 3;
 // The band a desk sits in: the allocator's own word when published, else the one its rung implies.
 export function deskBand(desk) {
@@ -1173,9 +1226,36 @@ export function deskBand(desk) {
   return rungNumber(rung) ? RUNG_BANDS[rung] : null;
 }
 const bandUp = (from, to) => (bandName(from) ? BAND_RANK[to] > BAND_RANK[from] : true);
+
+// What the House's allocator asks before it moves an agent up (league/constitution.py): practice
+// to live trading at evidence E of 1.01 or more over five closed trades; live trading to increased
+// capital at 1.5 or more over eight real trades, with real results at or above even. Its other
+// routes (Kalshi's three settlements, the evaluator's screen) are not published, so a closed ring
+// is a floor, never a promise: the page says "ready", not "next".
+export const NEXT_LEVEL = {
+  paper: { level: 2, evidence: 1.01, trades: 5, count: 'trades' },
+  bunt: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
+};
+const clamp01 = value => Math.min(1, Math.max(0, value));
+// How far an agent has come toward the next level, 0 to 1, or null when the page cannot honestly say.
+export function levelProgress(agent, enabled) {
+  const rule = NEXT_LEVEL[agent?.band];
+  const evidence = agent?.evidence;
+  if (enabled !== true || !rule || !evidence || agent.retired || agent.accountingIssue || !numeric(evidence.E)) return null;
+  const count = Number.isSafeInteger(evidence[rule.count]) ? evidence[rule.count] : 0;
+  let progress = Math.min(clamp01(count / rule.trades), clamp01((Number(evidence.E) - 1) / (rule.evidence - 1)));
+  if (rule.belowEven && !(numeric(evidence.W_real) && Number(evidence.W_real) >= 1)) progress = Math.min(progress, rule.belowEven);
+  return Math.round(progress * 10000) / 10000;
+}
+// A dot's arc shows from 2% on; below that it is noise.
+const ARC_MIN = 0.02;
+// A real stake is a gold coin, its area in proportion to the dollars: $10 is 19px, $25 is 30px,
+// $56 is 45px, and nothing is wider than 56px, so a phone never scrolls sideways.
+export const coinSize = stake => (Number.isFinite(stake) && stake > 0 ? Math.min(56, Math.max(18, Math.round(6 * Math.sqrt(stake)))) : 18);
+
 // The current publisher's lifecycle record is league_news(), not a strategy's prose. Only its
 // exact, anchored templates qualify. Never infer a promotion from P&L, mode or a missing desk.
-const BAND_WORD = '(Replay|Practice|Bunt|Swing|Star)';
+const BAND_WORD = `(${Object.keys(HOUSE_BAND_WORDS).join('|')})`;
 const AMOUNT = '(\\d[\\d,]*(?:\\.\\d+)?)';
 const BAND_MOVED = new RegExp(`^([a-z0-9-]{1,40}) (climbs|drops) from ${BAND_WORD} to ${BAND_WORD}(?: with a \\$${AMOUNT} real stake)?: (.+)$`, 's');
 const RESIZED = new RegExp(`^([a-z0-9-]{1,40})'s real stake is now \\$${AMOUNT}(?: \\((Bunt|Swing|Star)\\))?: (.+)$`, 's');
@@ -1198,13 +1278,16 @@ export function ladderMove(event) {
     return { ...base, kind: moved[2] === 'climbs' ? 'up' : 'down', from, to, fromBand: RUNG_BANDS[from], toBand: RUNG_BANDS[to], reason: moved[5] };
   }
   if (banded) {
-    const fromBand = LABEL_BANDS[banded[3]];
-    const toBand = LABEL_BANDS[banded[4]];
+    const fromBand = HOUSE_BAND_WORDS[banded[3]];
+    const toBand = HOUSE_BAND_WORDS[banded[4]];
     if ((banded[2] === 'climbs') !== (BAND_RANK[toBand] > BAND_RANK[fromBand]) || fromBand === toBand) return null;
     return { ...base, kind: banded[2] === 'climbs' ? 'up' : 'down', fromBand, toBand, stake: banded[5] ? banded[5].replace(/,/g, '') : null, reason: banded[6] };
   }
-  if (resized) return { ...base, kind: 'size', toBand: resized[3] ? LABEL_BANDS[resized[3]] : null, stake: resized[2].replace(/,/g, ''), reason: resized[4] };
-  if (born) return { ...base, kind: 'born', reason: text.slice(text.indexOf(' is born ') + 9) };
+  if (resized) return { ...base, kind: 'size', toBand: resized[3] ? HOUSE_BAND_WORDS[resized[3]] : null, stake: resized[2].replace(/,/g, ''), reason: resized[4] };
+  if (born) {
+    const parent = /^a child of ([a-z0-9-]{1,40})\b/.exec(born[2])?.[1] || null;
+    return { ...base, kind: 'born', parent: deskId(parent) ? parent : null, founder: /^a founding seed\b/.test(born[2]), reason: text.slice(text.indexOf(' is born ') + 9) };
+  }
   return { ...base, kind: 'out', reason: text.slice(text.indexOf(' died of ') + 9) };
 }
 // One move told three ways (the board's trail, the desk's own record, the tape) is one move: the
@@ -1224,17 +1307,53 @@ function distinctMoves(moves) {
   }
   return kept;
 }
-// Bar widths in pixels. Real money by stake, on a square root so a $10 bunt still shows beside a
-// star's stake; practice by wealth multiple, to the fourth power so a few percent is visible.
-export function barSize(agent, maxStake = 10) {
-  if (agent.real) return agent.stake === null ? 14 : Math.round(14 + 106 * Math.sqrt(Math.min(agent.stake, maxStake) / Math.max(maxStake, 1)));
-  if (agent.band === 'paper') return agent.growth === null ? 16 : Math.min(96, Math.max(8, Math.round(28 * agent.growth ** 4)));
-  return 12;
+// A move within one level (a new agent passing its history test and starting practice) is no
+// crossing: it has no line in the moves list and no arrow over its dot.
+const sameLevel = move => (move.kind === 'up' || move.kind === 'down') && levelOf(move.fromBand) === 1 && levelOf(move.toBand) === 1;
+
+// Why a move happened, in the page's words, from a fixed set of the House's phrasings. Anything
+// else says nothing: the House's own text is never shown.
+const REASONS = [
+  [/E (\d+\.\d+) is at or above [\d.]+ on (\d+) closed trades?/, match => `evidence ${Number(match[1]).toFixed(3)} on ${plural(Number(match[2]), 'trade')}`],
+  [/cleared the screen/, () => 'passed the practice screen'],
+  [/audit.*vetoed/i, () => 'the audit vetoed it'],
+  [/E (\d+\.\d+) fell below/, match => `evidence fell to ${Number(match[1]).toFixed(3)}`],
+  [/lost (\d+)% of its real/, match => `lost ${match[1]}% of its real stake`],
+  [/passed (?:deep )?replay/, () => 'passed its history test'],
+];
+export function reasonWords(move) {
+  if (!move) return '';
+  if (move.kind === 'born') return move.parent ? `child of ${floorName(move.parent)}` : move.founder ? 'founding agent' : '';
+  const text = show(move.reason);
+  for (const [pattern, words] of REASONS) {
+    const match = pattern.exec(text);
+    if (match) return words(match);
+  }
+  return '';
 }
+// "Level 1 → 2", "born", "stake $56": what a move did, in the words of the moves list.
+function moveStep(move) {
+  if (move.kind === 'born') return 'born';
+  if (move.kind === 'out') return 'retired';
+  if (move.kind === 'size') return `stake ${money(move.stake, 0)}`;
+  const from = levelOf(move.fromBand);
+  const to = levelOf(move.toBand);
+  if (to === null) return move.kind === 'up' ? 'promoted' : 'demoted';
+  if (from === to) return move.toBand === 'star' ? 'joined the top 3' : move.fromBand === 'star' ? 'left the top 3' : 'started practice';
+  return from === null ? `→ Level ${to}` : `Level ${from} → ${to}`;
+}
+export function moveWords(move) {
+  const crossed = (move.kind === 'up' || move.kind === 'down') && levelOf(move.toBand) !== levelOf(move.fromBand);
+  const stake = crossed && numeric(move.stake) && REAL_BANDS.includes(move.toBand) ? ` · ${money(move.stake, 0)}` : '';
+  return `${floorName(move.agent)} · ${moveStep(move)}${stake}`;
+}
+const capitalized = text => (text ? text[0].toUpperCase() + text.slice(1) : text);
+
 const moneyNumber = value => (numeric(value) ? Number(value) : null);
 export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && deskId(desk.id));
   const board = checkpoint?.board && typeof checkpoint.board === 'object' && !Array.isArray(checkpoint.board) ? checkpoint.board : null;
+  const enabled = board?.enabled === true;
   // The board's own trail first (it names the venue and the stake), then each desk's record, then the tape.
   const recorded = [];
   for (const move of Array.isArray(board?.moves) ? board.moves : []) {
@@ -1258,7 +1377,8 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
       recorded.push({ id: move.id, agent: desk.id, at: move.at, kind: move.decision === 'promote' ? 'up' : 'down', from: move.from_rung, to: move.to_rung,
         fromBand: RUNG_BANDS[move.from_rung], toBand: RUNG_BANDS[move.to_rung], stake: null, reason: show(move.reason), seq: 0 });
     }
-    if (life.born_at) recorded.push({ id: `born:${desk.id}`, agent: desk.id, at: life.born_at, kind: 'born', from: null, to: null, fromBand: null, toBand: null, stake: null, reason: desk.parent_id ? `Child of ${floorName(desk.parent_id)}` : 'Founding agent', seq: 0 });
+    const parent = deskId(desk.parent_id) ? desk.parent_id : null;
+    if (life.born_at) recorded.push({ id: `born:${desk.id}`, agent: desk.id, at: life.born_at, kind: 'born', from: null, to: null, fromBand: null, toBand: null, stake: null, parent, founder: !desk.parent_id, reason: '', seq: 0 });
     if (life.died_at && desk.status === 'retired') recorded.push({ id: `died:${desk.id}`, agent: desk.id, at: life.died_at, kind: 'out', from: null, to: null, fromBand: null, toBand: null, stake: null, reason: show(life.cause), seq: 0 });
   }
   const moves = distinctMoves([...recorded, ...(Array.isArray(events) ? events : []).map(ladderMove).filter(Boolean)])
@@ -1275,194 +1395,490 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
     const stake = real ? moneyNumber(desk.stake_usd) ?? moneyNumber(desk.capital_usd) : null;
     const pnl = !accountingIssue && band !== null && band !== 'replay' ? deskPnl(desk) : null;
     const move = moves.find(item => item.agent === desk.id) || null;
-    // A tape message can precede its checkpoint. Do not move the bar until the roster agrees.
+    // A tape message can precede its checkpoint. Do not move the dot until the roster agrees.
     const recent = move && now - Date.parse(move.at) <= 3600000
       && (move.kind === 'out' ? retired : move.kind === 'born' ? !retired : !retired && (move.toBand === null || move.toBand === band)) ? move : null;
     const byGrowth = !real && growth !== null;
     const tone = accountingIssue ? 'flat' : byGrowth ? (growth > 1.0005 ? 'positive' : growth < 0.9995 ? 'negative' : 'flat')
       : pnl === null || Math.abs(pnl) < 0.005 ? 'flat' : pnl > 0 ? 'positive' : 'negative';
-    return { id: desk.id, name: floorName(desk.id), desk, band, rung: rungNumber(desk.gate?.evidence?.rung) ? desk.gate.evidence.rung : null,
-      retired, real, live: isLive(desk), stake, evidence, growth, pnl, tone, move, recent, accountingIssue, size: 12 };
+    const family = show(desk.family);
+    const agent = {
+      id: desk.id, name: floorName(desk.id), desk, band, level: levelOf(band), rung: rungNumber(desk.gate?.evidence?.rung) ? desk.gate.evidence.rung : null,
+      retired, real, live: isLive(desk), stake, evidence, growth, pnl, tone, move, recent, accountingIssue,
+      // No closed trade yet: its colour is only the drift of open positions.
+      untraded: band === 'paper' && evidence !== null && Number(evidence.trades) === 0,
+      venue: venueLabel(Array.isArray(desk.venues) ? show(desk.venues[0]) : ''),
+      // The strategy it runs, as a small tag: what tells five agents called Huang apart.
+      tag: family && !PARTNERS[family] && family !== desk.id ? humanize(family.replace(/-/g, ' ')) : '',
+      progress: null,
+    };
+    agent.progress = levelProgress(agent, enabled);
+    return agent;
   });
   const living = agents.filter(agent => !agent.retired);
-  const maxStake = Math.max(10, ...living.filter(agent => agent.real && agent.stake !== null).map(agent => agent.stake));
-  for (const agent of agents) agent.size = barSize(agent, maxStake);
   // Per band across the venues: the board's own count and capital when published, else the roster's.
   const summary = {};
-  for (const [venue, bands] of Object.entries(board?.bands && typeof board.bands === 'object' ? board.bands : {})) {
+  for (const bands of Object.values(board?.bands && typeof board.bands === 'object' ? board.bands : {})) {
     for (const [band, row] of Object.entries(bands && typeof bands === 'object' ? bands : {})) {
       if (!bandName(band) || !Number.isSafeInteger(row?.count)) continue;
-      const entry = summary[band] || (summary[band] = { count: 0, capital: 0, venues: [] });
+      const entry = summary[band] || (summary[band] = { count: 0, capital: 0 });
       entry.count += row.count;
       entry.capital += moneyNumber(row.capital_usd) || 0;
-      if (row.count > 0) entry.venues.push(`${venueLabel(venue)} ${row.count}`);
     }
   }
-  const byStake = (a, b) => (b.stake ?? 0) - (a.stake ?? 0);
-  const byGrowth = (a, b) => (b.growth ?? 1) - (a.growth ?? 1);
-  const lanes = BOARD_LANES.map(lane => {
-    const members = living.filter(agent => agent.band === lane.band);
-    const ordered = lane.real ? [...members].sort(byStake) : lane.band === 'paper' ? [...members].sort(byGrowth) : members;
-    const published = summary[lane.band];
-    const capital = published ? published.capital : members.reduce((sum, agent) => sum + (agent.stake || 0), 0);
-    return { ...lane, agents: ordered, capital: lane.real ? capital : null, venues: published ? published.venues : [] };
+  // Practice reads like text: the agents nearest Level 2 top left under the gate, the untested
+  // middle, the losers sinking, and the newest (still on history) last. Rounding keeps a refresh
+  // from reshuffling the dots over a thousandth.
+  const evidenceOf = agent => (agent.evidence ? Number(agent.evidence.E) : 1);
+  const practiceOrder = (a, b) => (a.band === 'replay') - (b.band === 'replay')
+    || Math.round((b.progress ?? 0) * 20) - Math.round((a.progress ?? 0) * 20)
+    || Math.round(evidenceOf(b) * 1000) - Math.round(evidenceOf(a) * 1000)
+    || (b.growth ?? 1) - (a.growth ?? 1) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const realOrder = (a, b) => (b.band === 'star') - (a.band === 'star') || (b.stake ?? 0) - (a.stake ?? 0)
+    || (b.progress ?? 0) - (a.progress ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const levels = LEVELS.map(row => {
+    const members = living.filter(agent => row.bands.includes(agent.band)).sort(row.real ? realOrder : practiceOrder);
+    const capital = row.bands.reduce((sum, band) => sum + (summary[band] ? summary[band].capital
+      : members.filter(agent => agent.band === band).reduce((total, agent) => total + (agent.stake || 0), 0)), 0);
+    return { ...row, agents: members, capital: row.real ? capital : null };
   });
   const throttle = board?.throttle && typeof board.throttle === 'object' && typeof board.throttle.active === 'boolean' ? board.throttle : null;
+  const alive = new Map(living.map(agent => [agent.id, agent]));
+  // The newest climb of the last day whose agent still sits where it arrived: what the ladder
+  // shows a visitor the first time it comes into view.
+  const latestClimb = moves.find(move => {
+    const to = levelOf(move.toBand);
+    const from = levelOf(move.fromBand);
+    return move.kind === 'up' && to !== null && to >= 2 && (from === null || from < to) && now - Date.parse(move.at) <= 86400000
+      && alive.get(move.agent)?.level === to;
+  }) || null;
+  const practice = levels.find(row => row.level === 1).agents;
   return {
-    living: living.length, real: living.filter(agent => agent.real).length, lanes,
-    unranked: living.filter(agent => agent.band === null), retired: agents.filter(agent => agent.retired),
-    moves: moves.slice(0, 5), throttle, enabled: board?.enabled === true,
+    living: living.length, real: living.filter(agent => agent.real).length, levels, agents,
+    unknown: living.filter(agent => agent.band === null), retired: agents.filter(agent => agent.retired),
+    moves: moves.filter(move => !sameLevel(move)).slice(0, 5), throttle, enabled, latestClimb,
+    ready: living.filter(agent => agent.progress !== null && agent.progress >= 1).sort((a, b) => b.level - a.level)[0] || null,
+    closest: practice.reduce((best, agent) => (agent.progress !== null && agent.progress >= ARC_MIN && (!best || agent.progress > best.progress) ? agent : best), null),
     publishedAt: checkpoint?.published_at || null, stale: !floorRunning(checkpoint, now),
   };
 }
+
 const MOVE_MARK = { up: '↑', down: '↓', born: '✦', out: '×', size: '±' };
 const MOVE_LABEL = { up: 'promoted', down: 'demoted', born: 'born', out: 'retired', size: 'restaked' };
-const multipleText = value => (numeric(value) ? Number(value).toFixed(3) : '—');
-// The record behind one bar, in words: where it sits, its stake or its growth, its evidence.
+// "+1.2%", "−0.16%": practice growth, the number that colours the dot.
+const growthText = value => {
+  const change = (value - 1) * 100;
+  const size = Math.abs(change);
+  return `${change > 0 ? '+' : change < 0 ? '−' : ''}${size >= 0.1 || size === 0 ? size.toFixed(1) : size.toFixed(2)}%`;
+};
+// Where an agent stands, as parts: [text, tone]. The readout colours the money; a label reads it.
+function standing(agent) {
+  const pnl = agent.pnl === null ? null : signedMoney(agent.pnl.toFixed(2), 2);
+  const tone = agent.pnl === null ? '' : signOf(agent.pnl.toFixed(2));
+  const book = agent.real || (agent.band === null && agent.live) ? 'real' : 'practice';
+  const result = agent.accountingIssue ? [['accounting under review', '']] : pnl ? [[`${pnl} ${book}`, tone]] : [];
+  const evidence = agent.evidence;
+  if (agent.retired || agent.band === null) return result;
+  if (agent.band === 'replay') return [['new', ''], ['tested on history, not trading yet', '']];
+  if (agent.real) {
+    return [...(agent.stake === null ? [] : [[`${money(agent.stake.toFixed(2), 2)} stake`, '']]), ...result,
+      ...(evidence && Number.isSafeInteger(evidence.real_trades) ? [[plural(evidence.real_trades, 'real trade'), '']] : [])];
+  }
+  if (!evidence) return result;
+  // Practice reads by its growth, the number that colours the dot; under review, it reads by nothing.
+  const growth = agent.growth === null || agent.accountingIssue || (agent.untraded && agent.growth === 1) ? []
+    : [[`practice ${growthText(agent.growth)}`, agent.tone === 'flat' ? '' : agent.tone]];
+  const review = agent.accountingIssue ? result : [];
+  if (agent.untraded) return [['no closed trades yet', ''], ...growth, ...review];
+  return [...growth, ...(Number.isSafeInteger(evidence.trades) ? [[plural(evidence.trades, 'trade'), '']] : []), ...review];
+}
+const nextLevel = agent => NEXT_LEVEL[agent.band]?.level ?? null;
+const progressShort = agent => (agent.progress === null ? '' : agent.progress >= 1 ? `ready for Level ${nextLevel(agent)}` : `${Math.floor(agent.progress * 100)}% to Level ${nextLevel(agent)}`);
+// "62% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades": the readout's line under its bar.
+export function progressWords(agent) {
+  if (agent?.progress === null || agent?.progress === undefined) return '';
+  const rule = NEXT_LEVEL[agent.band];
+  const count = Number.isSafeInteger(agent.evidence[rule.count]) ? agent.evidence[rule.count] : 0;
+  const unit = rule.count === 'real_trades' ? 'real trade' : 'trade';
+  const trades = count >= rule.trades ? plural(count, unit) : `${count} of ${rule.trades} ${unit}s`;
+  const below = rule.belowEven && !(numeric(agent.evidence.W_real) && Number(agent.evidence.W_real) >= 1) ? ' · real results below even' : '';
+  return `${capitalized(progressShort(agent))} · evidence ${Number(agent.evidence.E).toFixed(3)} of ${rule.evidence} · ${trades}${below}`;
+}
+// The record behind one dot, in one line: where it sits, its venue, its money, how near the next level.
 export function agentWords(agent) {
   const parts = [agent.retired ? 'Retired' : bandLabel(agent.band)];
-  if (agent.real && agent.stake !== null) parts.push(`${money(agent.stake.toFixed(2), 2)} real stake`);
-  const evidence = agent.evidence;
-  if (evidence) {
-    parts.push(`E ${multipleText(evidence.E)}`, `practice ×${multipleText(evidence.W_paper)}`);
-    if (Number(evidence.real_trades) > 0 || (numeric(evidence.W_real) && Number(evidence.W_real) !== 1)) parts.push(`real ×${multipleText(evidence.W_real)}`);
-    if (Number.isSafeInteger(evidence.trades)) parts.push(plural(evidence.trades, 'trade'));
-  }
-  if (agent.accountingIssue) parts.push('Accounting under review');
-  else if (agent.pnl !== null) parts.push(`${signedMoney(agent.pnl.toFixed(2), 2)} ${agent.live ? 'real' : 'practice'} P&L`);
-  const credits = agent.desk.gate?.evidence?.credits_usd;
-  if (numeric(credits)) parts.push(`${money(credits, 2)} compute credits`);
+  if (!agent.retired && agent.band === 'star') parts.push('top 3 earner');
+  if (agent.venue) parts.push(agent.venue);
+  parts.push(...standing(agent).map(([text]) => text), progressShort(agent));
   return join(...parts);
 }
-const moveWords = move => {
-  const between = move.kind === 'size' ? `stake ${money(move.stake, 2)}`
-    : move.fromBand ? `${bandLabel(move.fromBand)} → ${bandLabel(move.toBand)}` : move.toBand ? `→ ${bandLabel(move.toBand)}` : MOVE_LABEL[move.kind];
-  const stake = move.kind !== 'size' && numeric(move.stake) && REAL_BANDS.includes(move.toBand) ? ` · ${money(move.stake, 0)}` : '';
-  return `${floorName(move.agent)} · ${between}${stake}`;
-};
+// The line a move leaves in the readout: "↑ Level 1 → 2 · 28 min ago · evidence 1.016 on 7 trades".
+function moveRecord(move) {
+  const reason = reasonWords(move);
+  return `${MOVE_MARK[move.kind]} ${capitalized(moveStep(move))} · ${ago(move.at)}${reason ? ` · ${reason}` : ''}`;
+}
+function recordNodes(agent) {
+  const head = element('span', null, 'board-detail-head');
+  head.append(element('strong', agent.name), ...(agent.venue ? [element('span', agent.venue)] : []), ...(agent.tag ? [element('span', agent.tag, 'strategy-tag')] : []));
+  const line = element('span', null, 'board-detail-line');
+  const parts = [[agent.retired ? 'Retired' : bandLabel(agent.band), ''], ...(!agent.retired && agent.band === 'star' ? [['top 3 earner', '']] : []), ...standing(agent)];
+  parts.forEach(([text, tone], index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', text, tone || null)));
+  const nodes = [head, line];
+  if (agent.progress !== null) {
+    const progress = element('span', null, 'board-detail-progress');
+    const bar = element('span', null, 'board-xp');
+    bar.setAttribute('aria-hidden', 'true');
+    place(bar, { '--p': String(agent.progress) });
+    progress.append(bar, element('span', progressWords(agent)));
+    nodes.push(progress);
+  }
+  if (agent.move) nodes.push(element('span', moveRecord(agent.move), `board-detail-move board-detail-${agent.move.kind}`));
+  return nodes;
+}
+function hintText(model) {
+  if (!model.living) return 'No agent is competing yet.';
+  if (model.ready) return `Tap any dot. Ready for Level ${nextLevel(model.ready)}: ${model.ready.name}.`;
+  if (model.closest) return `Tap any dot. Closest to Level 2: ${model.closest.name}.`;
+  return 'Tap any dot to see its agent.';
+}
+// The legend names only what the board is showing.
+function legendNode(model) {
+  const all = model.levels.flatMap(row => row.agents);
+  const keys = [
+    [all.some(agent => agent.tone === 'positive'), 'up', 'Up'],
+    [all.some(agent => agent.tone === 'negative'), 'down', 'Down'],
+    [all.some(agent => agent.untraded), 'open', 'No trades yet'],
+    [all.some(agent => agent.progress !== null && agent.progress >= ARC_MIN), 'arc', 'Toward next level'],
+    [all.some(agent => agent.band === 'star'), 'medal', 'Top 3'],
+  ].filter(([shown]) => shown);
+  if (!keys.length) return null;
+  const legend = element('div', null, 'board-legend');
+  for (const [, kind, text] of keys) {
+    const key = element('span', null, 'board-key');
+    const swatch = element('i', null, `board-swatch board-swatch-${kind}`);
+    swatch.setAttribute('aria-hidden', 'true');
+    key.append(swatch, element('span', text));
+    legend.append(key);
+  }
+  return legend;
+}
+// Arrow keys walk a floor: left and right one dot, Home and End to its ends, up and down a row of
+// `cols`. An answer below 0 leaves for the floor above; one at `count` or more for the floor below.
+export function nextIndex(key, index, count, cols = 1) {
+  const last = count - 1;
+  const step = Math.max(1, Math.round(cols) || 1);
+  if (key === 'ArrowLeft') return Math.max(0, index - 1);
+  if (key === 'ArrowRight') return Math.min(last, index + 1);
+  if (key === 'Home') return 0;
+  if (key === 'End') return last;
+  if (key === 'ArrowUp') return index - step >= 0 ? index - step : -1;
+  if (key === 'ArrowDown') {
+    if (index + step <= last) return index + step;
+    return Math.floor(index / step) < Math.floor(last / step) ? last : count;
+  }
+  return index;
+}
+
 const reducedMotion = () => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-// Where every bar stood before a redraw, so a move can glide from its old lane to its new one.
+const finePointer = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+const EASE = 'cubic-bezier(.2, .7, .2, 1)';
+const centre = box => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+// Where every dot stood before a redraw, and how big it looked, so a move can glide.
 function barPlaces(container) {
   const places = new Map();
   try {
-    for (const node of container?.querySelectorAll?.('[data-agent]') || []) places.set(node.getAttribute('data-agent'), node.getBoundingClientRect());
+    for (const node of container?.querySelectorAll?.('[data-agent]') || []) {
+      places.set(node.getAttribute('data-agent'), { ...centre(node.getBoundingClientRect()), size: Number(node.getAttribute('data-size')) || 12 });
+    }
   } catch { /* no layout here */ }
   return places;
 }
-function glide(container, before) {
-  if (!before.size || reducedMotion()) return;
+// A crossing: from where the dot stood, through the gate between the floors, growing (or
+// shrinking) into what it is now; then a ripple, the gate's flash and, for a coin, its rim sweeping shut.
+function travel(node, from, gate, up, { fade = false } = {}) {
+  const box = node.getBoundingClientRect();
+  const to = centre(box);
+  const size = Number(node.getAttribute('data-size')) || 12;
+  const door = gate ? centre(gate.getBoundingClientRect()) : { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  const start = (from.size || size) / size;
+  const middle = (start + 1) / 2;
+  const at = (point, scale) => `translate(${(point.x - to.x).toFixed(1)}px, ${(point.y - to.y).toFixed(1)}px) scale(${scale.toFixed(3)})`;
+  const duration = fade ? 1300 : 1100;
+  const through = fade ? 0.5 : 0.45;
+  node.animate([
+    { offset: 0, transform: at(from, start), opacity: fade ? 0 : 1, zIndex: 3 },
+    ...(fade ? [{ offset: 0.15, transform: at(from, start), opacity: 1, zIndex: 3 }] : []),
+    { offset: through, transform: at(door, middle), opacity: 1, zIndex: 3 },
+    { offset: 1, transform: 'none', opacity: 1, zIndex: 3 },
+  ], { duration, easing: EASE });
+  if (up && node.className.includes('board-coin')) {
+    node.animate([{ '--rim': '0' }, { offset: duration / (duration + 400), '--rim': '0' }, { '--rim': '1' }], { duration: duration + 400 });
+  }
+  node.classList.add(up ? 'board-arriving' : 'board-arriving-down');
+  node.style.animationDelay = `${duration}ms`;
+  if (gate) {
+    gate.classList.remove('board-gate-flash');
+    gate.style.animationDelay = `${Math.round(duration * through) - 150}ms`;
+    gate.classList.add('board-gate-flash');
+  }
+}
+// Every dot glides from where it stood to where the new roster puts it; a dot that changed level
+// travels through the gate, and a ring that grew fills in.
+function glide(container, before, seen, model) {
+  if (!model || reducedMotion()) return;
   try {
+    const agents = new Map(model.agents.map(agent => [agent.id, agent]));
+    const gates = new Map([...container.querySelectorAll('[data-gate]')].map(gate => [gate.getAttribute('data-gate'), gate]));
     for (const node of container.querySelectorAll('[data-agent]')) {
-      const old = before.get(node.getAttribute('data-agent'));
-      if (!old || typeof node.animate !== 'function') continue;
-      const box = node.getBoundingClientRect();
-      const dx = old.left - box.left;
-      const dy = old.top - box.top;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(old.width - box.width) < 1) continue;
-      node.animate([{ transform: `translate(${dx}px, ${dy}px)`, width: `${old.width}px` }, { transform: 'translate(0, 0)', width: `${box.width}px` }],
-        { duration: Math.abs(dy) > 4 ? 900 : 450, easing: 'cubic-bezier(.2, .7, .2, 1)' });
+      if (typeof node.animate !== 'function') continue;
+      const id = node.getAttribute('data-agent');
+      const agent = agents.get(id);
+      const was = seen.get(id);
+      const old = before.get(id);
+      if (was && agent && was.progress !== null && agent.progress !== null && Math.abs(was.progress - agent.progress) > 0.001) {
+        node.animate([{ '--p': String(was.progress) }, { '--p': String(agent.progress) }], { duration: 800, easing: 'ease-out' });
+      }
+      if (!old) continue;
+      if (was && agent && !was.retired && !agent.retired && was.level !== null && agent.level !== null && was.level !== agent.level) {
+        travel(node, old, gates.get(String(Math.max(was.level, agent.level))), agent.level > was.level);
+        continue;
+      }
+      const to = centre(node.getBoundingClientRect());
+      const scale = old.size / (Number(node.getAttribute('data-size')) || 12);
+      const dx = old.x - to.x;
+      const dy = old.y - to.y;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(scale - 1) < 0.02) continue;
+      node.animate([{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${scale.toFixed(3)})` }, { transform: 'none' }],
+        { duration: Math.abs(dy) > 60 ? 700 : 450, easing: EASE });
     }
   } catch { /* no layout here */ }
 }
+// Replays one crossing: the dot appears in the top row of the floor it left and climbs (or drops)
+// through the gate to where it sits now. For the first view of the ladder and a pressed move.
+function replayMove(container, move) {
+  if (reducedMotion() || !move || !deskId(move.agent)) return false;
+  try {
+    const node = container.querySelector(`[data-agent="${move.agent}"]`);
+    const to = levelOf(move.toBand);
+    const from = levelOf(move.fromBand) ?? (move.kind === 'up' ? to - 1 : to + 1);
+    const floor = container.querySelector(`.board-level-${from} .board-dots`);
+    if (!node || !floor || typeof node.animate !== 'function' || !to || from === to) return false;
+    const box = floor.getBoundingClientRect();
+    travel(node, { x: box.left + box.width / 2, y: box.top + 12, size: 12 }, container.querySelector(`[data-gate="${Math.max(from, to)}"]`), to > from, { fade: true });
+    return true;
+  } catch { return false; }
+}
+
 function boardPanel(checkpoint, state) {
   if (!checkpoint) return [element('p', 'Waiting for the agent roster.', 'empty-state')];
   const model = boardSnapshot(checkpoint, state.ladderEvents);
+  state.ladderModel = model;
+  const seen = state.ladderSeen || new Map();
   const panel = element('div', null, 'board');
   const caption = element('div', null, 'board-caption');
   caption.append(element('span', `${model.living} competing · ${model.real} on real money`), element('span', model.stale ? 'Last known positions · data stale' : 'Updates live', model.stale ? 'negative' : ''));
   panel.append(caption);
+  const legend = legendNode(model);
+  if (legend) panel.append(legend);
   if (model.throttle?.active) {
     panel.append(element('p', `Throttle on: every real stake is halved while the floor is ${signedMoney(model.throttle.floor_pnl_usd, 2)} on ${money(model.throttle.envelope_usd, 0)}.`, 'board-throttle negative'));
   }
-  const detail = element('p', 'Each bar is an agent, as wide as its stake. Tap or hover for its record.', 'board-detail');
+  const detail = element('p', null, 'board-detail');
   detail.setAttribute('role', 'status');
   detail.setAttribute('aria-live', 'polite');
-  const buttons = [];
-  function select(agent, button) {
+  const dots = new Map();
+  const groups = [];
+  // One tab stop per floor: the selected dot when it is on that floor, else the first.
+  const rove = (group, button) => { for (const item of group.buttons) item.setAttribute('tabindex', item === button ? '0' : '-1'); };
+  function select(agent, note = '') {
     state.ladderSelected = agent.id;
-    for (const item of buttons) item.setAttribute('aria-pressed', item === button ? 'true' : 'false');
-    const reason = agent.move ? `${MOVE_MARK[agent.move.kind]} ${MOVE_LABEL[agent.move.kind]} · ${truncate(agent.move.reason, 220).text}` : '';
-    detail.replaceChildren(element('strong', agent.name), element('span', agentWords(agent)), ...(reason ? [element('span', reason, 'board-detail-reason')] : []));
+    const entry = dots.get(agent.id);
+    for (const item of dots.values()) item.button.setAttribute('aria-pressed', item === entry ? 'true' : 'false');
+    if (entry) rove(entry.group, entry.button);
+    detail.replaceChildren(...(note ? [element('span', note, 'board-detail-line')] : recordNodes(agent)));
   }
-  // The first sight of a recent move marks it once: a glow for a crossing, a rise for a birth, a fade for a death.
+  function clear() {
+    state.ladderSelected = null;
+    state.ladderNote = null;
+    for (const item of dots.values()) item.button.setAttribute('aria-pressed', 'false');
+    detail.replaceChildren(element('span', hintText(model), 'board-detail-hint'));
+  }
+  // The first view's replay labels its readout for a few seconds, across redraws; a visitor's own
+  // choice ends it at once.
+  state.ladderSelect = (id, note) => {
+    const entry = dots.get(id);
+    if (!entry) return;
+    state.ladderNote = { id, note, until: Date.now() + 12000 };
+    select(entry.agent, note);
+  };
+  const choose = agent => { state.ladderNote = null; select(agent); };
+  // The first sight of a move marks it once: a rise for a birth, a fade for an exit, a solid ring
+  // for a new agent starting practice, a ripple for a crossing. Live crossings travel instead (glide).
   function motion(agent) {
+    const was = seen.get(agent.id);
+    if (was) {
+      if (!was.retired && agent.retired) return ' board-dying';
+      return was.band === 'replay' && agent.band === 'paper' ? ' board-settling' : '';
+    }
+    if (seen.size) return agent.retired ? '' : ' board-born';
     const move = agent.recent;
     if (!move || state.ladderAnimated.has(move.id)) return '';
     state.ladderAnimated.add(move.id);
-    return move.kind === 'born' ? ' board-born' : move.kind === 'out' ? ' board-dying' : ' board-arriving';
+    if (move.kind === 'born') return ' board-born';
+    if (move.kind === 'out') return ' board-dying';
+    if (sameLevel(move)) return ' board-settling';
+    return move.kind === 'down' ? ' board-arriving-down' : ' board-arriving';
   }
-  function bars(agents, { retired = false } = {}) {
-    const cluster = element('div', null, 'board-bars');
-    for (const agent of agents) {
-      const kind = agent.recent?.kind;
-      const practice = !agent.real && !retired;
-      const button = element('button', null, `board-bar ${retired ? 'board-retired' : agent.tone}${practice ? ' board-bar-practice' : ''}${kind ? ` board-move-${kind}` : ''}${motion(agent)}`);
-      button.type = 'button';
-      button.setAttribute('data-agent', agent.id);
-      button.setAttribute('aria-pressed', 'false');
-      const label = `${agent.name} · ${agentWords(agent)}${kind ? ` · recently ${MOVE_LABEL[kind]}` : ''}`;
-      button.setAttribute('aria-label', label);
-      button.setAttribute('title', label);
-      place(button, { width: `${agent.size}px` });
-      button.append(element('span', agent.name, 'board-bar-name'));
-      button.addEventListener('click', () => select(agent, button));
-      button.addEventListener('mouseenter', () => select(agent, button));
-      button.addEventListener('focus', () => select(agent, button));
-      buttons.push(button);
-      if (state.ladderSelected === agent.id) select(agent, button);
-      cluster.append(button);
+  function dotFor(agent, kind, group) {
+    const coin = kind === 'coin';
+    const classes = [coin ? 'board-coin' : 'board-dot'];
+    if (kind === 'retired') classes.push('board-dot-retired', agent.pnl !== null && agent.pnl <= -0.005 ? 'negative' : 'flat');
+    else if (kind === 'unknown') classes.push('board-dot-unknown', 'flat');
+    else {
+      classes.push(agent.tone);
+      if (agent.band === 'replay') classes.push('board-dot-new');
+      else if (agent.untraded) classes.push('board-dot-untraded');
+      if (agent.band === 'star') classes.push('board-coin-star');
+      if (agent.progress !== null && agent.progress >= ARC_MIN) classes.push('board-arc');
     }
-    return cluster;
-  }
-  // Practice agents follow the Positions switch: off, a lane is one tick per agent, and pressing it
-  // turns the switch on; on, every agent is a bar with its record.
-  function ticks(lane) {
-    const strip = element('button', null, 'board-ticks');
-    strip.type = 'button';
-    strip.setAttribute('aria-label', `Show the ${plural(lane.agents.length, `${lane.name.toLowerCase()} agent`)}`);
-    for (const agent of lane.agents) {
-      const tick = element('span', null, `board-tick ${agent.tone}${motion(agent)}`);
-      tick.setAttribute('data-agent', agent.id);
-      tick.setAttribute('aria-hidden', 'true');
-      strip.append(tick);
+    const recent = agent.recent && !sameLevel(agent.recent) ? agent.recent : null;
+    const marked = recent && recent.kind !== 'out' && kind !== 'retired';
+    if (marked) classes.push(`board-move-${recent.kind}`);
+    const button = element('button', null, classes.join(' ') + motion(agent));
+    button.type = 'button';
+    button.setAttribute('data-agent', agent.id);
+    button.setAttribute('aria-pressed', 'false');
+    const label = `${agent.name} · ${agentWords(agent)}${recent ? ` · recently ${MOVE_LABEL[recent.kind]}` : ''}`;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    const size = coin ? coinSize(agent.stake) : kind === 'retired' ? 8 : 12;
+    button.setAttribute('data-size', String(size));
+    const style = agent.progress === null ? {} : { '--p': String(agent.progress) };
+    if (coin) Object.assign(style, { width: `${size}px`, height: `${size}px`, fontSize: `${Math.max(11, Math.round(size * 0.42))}px` });
+    place(button, style);
+    if (coin) {
+      const glyph = element('span', agent.tone === 'positive' ? '+' : agent.tone === 'negative' ? '−' : '·', 'board-glyph');
+      glyph.setAttribute('aria-hidden', 'true');
+      button.append(glyph);
     }
-    strip.addEventListener('click', () => state.showPractice?.());
-    return strip;
+    button.append(element('span', agent.name, 'board-name'));
+    if (marked) {
+      const mark = element('span', MOVE_MARK[recent.kind], `board-mark board-mark-${recent.kind}`);
+      mark.setAttribute('aria-hidden', 'true');
+      button.append(mark);
+    }
+    button.addEventListener('click', () => choose(agent));
+    button.addEventListener('focus', () => { if (state.ladderSelected !== agent.id || !state.ladderNote) choose(agent); });
+    button.addEventListener('mouseenter', () => { if (finePointer()) choose(agent); });
+    dots.set(agent.id, { agent, button, group });
+    return button;
   }
-  for (const lane of model.lanes) {
-    const row = element('div', null, `board-lane board-lane-${lane.band}${lane.real ? ' board-lane-real' : ''}`);
-    const label = element('div', null, 'board-lane-label');
-    const title = element('div', null, 'board-lane-title');
-    title.append(element('span', lane.name), element('span', String(lane.agents.length), 'board-count'));
-    const note = lane.real && lane.capital > 0 ? join(`${money(lane.capital.toFixed(2), 0)} real`, ...lane.venues) : lane.note;
-    label.append(title, element('span', note, 'board-lane-note'));
-    const collapsed = !lane.real && !state.practice;
-    row.append(label, !lane.agents.length ? element('span', 'No agents yet', 'board-vacant') : collapsed ? ticks(lane) : bars(lane.agents));
-    panel.append(row);
+  // How many dots the floor's first row holds, from the layout; 1 where there is none.
+  function columns(group) {
+    try {
+      const row = centre(group.buttons[0].getBoundingClientRect()).y;
+      let count = 0;
+      for (const button of group.buttons) { if (Math.abs(centre(button.getBoundingClientRect()).y - row) > 2) break; count += 1; }
+      return count || 1;
+    } catch { return 1; }
   }
-  if (model.unranked.length) {
-    const pending = element('div', null, 'board-lane board-exits');
-    pending.append(element('span', 'Rank unreported', 'board-lane-note'), bars(model.unranked));
-    panel.append(pending);
+  function nearest(list, from, index) {
+    try {
+      const origin = centre(from.getBoundingClientRect());
+      let best = null;
+      let distance = Infinity;
+      for (const button of list) {
+        const point = centre(button.getBoundingClientRect());
+        const gap = Math.hypot(point.x - origin.x, point.y - origin.y);
+        if (gap < distance) { best = button; distance = gap; }
+      }
+      if (best) return best;
+    } catch { /* no layout here */ }
+    return list[Math.min(index, list.length - 1)];
   }
-  if (model.retired.length) {
-    const exits = element('div', null, 'board-lane board-exits');
-    const label = element('div', null, 'board-lane-label');
-    label.append(element('span', 'Retired'), element('span', `${model.retired.length} recent exits`, 'board-lane-note'));
-    exits.append(label, bars(model.retired, { retired: true }));
-    panel.append(exits);
+  function keyed(event, group) {
+    if (event.key === 'Escape') { clear(); return; }
+    const index = group.buttons.indexOf(event.target);
+    if (index < 0 || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault?.();
+    const next = nextIndex(event.key, index, group.buttons.length, columns(group));
+    const other = next < 0 ? groups[groups.indexOf(group) - 1] : next >= group.buttons.length ? groups[groups.indexOf(group) + 1] : group;
+    if (!other) return;
+    const target = other === group ? group.buttons[next] : nearest(other.buttons, event.target, index);
+    target?.focus?.();
   }
-  const legend = element('div', null, 'board-legend');
-  legend.append(element('span', '+ Profit', 'positive'), element('span', '− Loss', 'negative'), element('span', 'Width: real stake, or practice growth', 'board-legend-note'));
-  panel.append(legend, detail);
+  function groupNode(members, kind, label) {
+    const node = element('div', null, `board-dots board-dots-${kind}`);
+    node.setAttribute('role', 'group');
+    node.setAttribute('aria-label', label);
+    const group = { node, buttons: [] };
+    for (const agent of members) {
+      const button = dotFor(agent, kind, group);
+      group.buttons.push(button);
+      node.append(button);
+    }
+    if (!members.length) node.append(element('span', 'No one yet', 'board-vacant'));
+    else {
+      groups.push(group);
+      rove(group, group.buttons[0]);
+      node.addEventListener('keydown', event => keyed(event, group));
+    }
+    return node;
+  }
+  const floors = element('div', null, 'board-floors');
+  for (const row of model.levels) {
+    const lane = element('div', null, `board-lane board-level-${row.level}${row.real ? ' board-lane-real' : ''}`);
+    // The gate on a floor's top edge is the way up into the next level.
+    if (row.level < 3) {
+      const gate = element('span', '↑', 'board-gate');
+      gate.setAttribute('aria-hidden', 'true');
+      gate.setAttribute('data-gate', String(row.level + 1));
+      lane.append(gate);
+    }
+    const count = row.agents.length;
+    const capital = row.real && row.capital > 0 ? money(row.capital.toFixed(2), 0) : '';
+    const head = element('div', null, 'board-lane-head');
+    head.append(element('span', `Level ${row.level}`, 'board-level-name'), element('span', row.word, 'board-level-word'),
+      element('span', capital ? `${count} · ${capital} real` : String(count), 'board-level-sum'));
+    lane.append(head, groupNode(row.agents, row.real ? 'coin' : 'dot', `Level ${row.level}, ${row.word}: ${plural(count, 'agent')}${capital ? `, ${capital} real` : ''}`));
+    floors.append(lane);
+  }
+  for (const [members, name, kind] of [[model.retired, 'Retired', 'retired'], [model.unknown, 'Level unknown', 'unknown']]) {
+    if (!members.length) continue;
+    const strip = element('div', null, `board-lane board-exits board-exits-${kind}`);
+    const head = element('div', null, 'board-lane-head');
+    head.append(element('span', name, 'board-level-name'), element('span', String(members.length), 'board-level-sum'));
+    strip.append(head, groupNode(members, kind, `${name}: ${plural(members.length, 'agent')}`));
+    floors.append(strip);
+  }
+  panel.append(floors, detail);
+  const chosen = dots.get(state.ladderSelected);
+  const note = state.ladderNote && state.ladderNote.id === state.ladderSelected && Date.now() < state.ladderNote.until ? state.ladderNote.note : '';
+  if (chosen) select(chosen.agent, note); else clear();
   if (model.moves.length) {
     const trail = element('ol', null, 'board-moves');
     trail.setAttribute('aria-label', 'Latest moves, newest first');
     for (const move of model.moves) {
-      const line = element('li', null, `board-change board-change-${move.kind}`);
-      line.setAttribute('title', move.reason);
-      line.append(element('span', MOVE_MARK[move.kind], 'board-change-mark'), element('span', moveWords(move)), element('time', ago(move.at), 'board-change-time'));
-      trail.append(line);
+      const target = dots.get(move.agent);
+      const change = element(target ? 'button' : 'div', null, `board-change board-change-${move.kind}`);
+      const mark = element('span', MOVE_MARK[move.kind], 'board-change-mark');
+      mark.setAttribute('aria-hidden', 'true');
+      const when = element('time', ago(move.at), 'board-change-time');
+      when.dateTime = move.at;
+      change.append(mark, element('span', moveWords(move), 'board-change-text'), when);
+      if (target) {
+        change.type = 'button';
+        change.setAttribute('data-move', move.id);
+        change.setAttribute('aria-label', `Show ${moveWords(move)}, ${ago(move.at)}`);
+        // Pressing a move shows its agent, and a crossing that still stands plays again.
+        change.addEventListener('click', () => {
+          choose(target.agent);
+          if (levelOf(move.toBand) !== null && levelOf(move.toBand) === target.agent.level && !target.agent.retired) state.replayMove?.(move);
+        });
+      }
+      const item = element('li');
+      item.append(change);
+      trail.append(item);
     }
     panel.append(trail);
   }
@@ -1479,7 +1895,8 @@ async function startFloor(root) {
   const state = {
     checkpoint: null, liveIds: new Set(), desks: new Map(), feed: [], outcomes: [], marks: [], mode: 'loading',
     hero: null, rendered: new Set(), primed: false, expanded: new Set(), open: new Set(), practice: false, more: false, clock: null,
-    ladderEvents: [], ladderSelected: null, ladderAnimated: new Set(),
+    ladderEvents: [], ladderSelected: null, ladderAnimated: new Set(), ladderSeen: new Map(), ladderModel: null,
+    ladderRatio: 0, ladderIntro: false, ladderPings: new Map(), ladderPinging: 0,
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
@@ -1524,23 +1941,63 @@ async function startFloor(root) {
     const byId = new Map([...state.ladderEvents, ...events.filter(event => ladderMove(event))].map(event => [event.id, event]));
     state.ladderEvents = [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (b.seq || 0) - (a.seq || 0)).slice(0, MAX_EVENT_LIMIT);
   };
+  // Once a visit, when the ladder first comes into view, its newest climb plays again, labelled as
+  // a replay so it never reads as something happening now.
+  const introduce = () => {
+    const model = state.ladderModel;
+    if (state.ladderIntro || !state.ladderReady || !model || state.ladderRatio < 0.4 || document.visibilityState === 'hidden') return;
+    state.ladderIntro = true;
+    // A visitor who already chose an agent keeps it: the replay never takes a selection away.
+    if (state.ladderSelected) return;
+    const move = model.latestClimb;
+    if (model.stale || !move || !replayMove(box.improvement, move)) return;
+    state.ladderSelect?.(move.agent, `Latest climb · ${moveWords(move)} · ${ago(move.at)}`);
+  };
   const drawLadder = state.drawLadder = () => {
-    const focused = document.activeElement?.getAttribute?.('data-agent');
-    // Every bar glides from where it stood to where the new roster puts it.
+    const active = document.activeElement;
+    const focused = active?.getAttribute?.('data-agent');
+    const pressed = active?.getAttribute?.('data-move');
+    // Every dot glides from where it stood to where the new roster puts it.
     const before = barPlaces(box.improvement);
+    const seen = state.ladderSeen;
     drawn(box.improvement, boardPanel(state.checkpoint, state));
-    glide(box.improvement, before);
+    glide(box.improvement, before, seen, state.ladderModel);
+    if (state.checkpoint && state.ladderModel) {
+      state.ladderSeen = new Map(state.ladderModel.agents.map(agent => [agent.id, { band: agent.band, level: agent.level, retired: agent.retired, progress: agent.progress }]));
+    }
     // A polling redraw must not strand a keyboard user on the document body.
-    if (deskId(focused)) box.improvement?.querySelector(`[data-agent="${focused}"]`)?.focus({ preventScroll: true });
+    try {
+      if (deskId(focused)) box.improvement?.querySelector(`[data-agent="${focused}"]`)?.focus({ preventScroll: true });
+      else if (pressed) [...(box.improvement?.querySelectorAll?.('[data-move]') || [])].find(node => node.getAttribute('data-move') === pressed)?.focus({ preventScroll: true });
+    } catch { /* no focus here */ }
+    introduce();
   };
-  // The practice lanes' tick strip is the same switch as the one in the Positions heading.
-  state.showPractice = () => {
-    state.practice = true;
-    state.more = false;
-    state.drawPositions();
-    state.drawClosed();
-    drawLadder();
+  state.replayMove = move => replayMove(box.improvement, move);
+  // A thought, a research call or a fill sends one faint ring out from its agent's dot: at most one
+  // per agent every eight seconds and four at once, and none while the ladder is out of sight.
+  state.pingAgent = (id, kind) => {
+    const now = Date.now();
+    if (!deskId(id) || state.ladderRatio <= 0 || document.hidden || reducedMotion() || state.ladderModel?.stale !== false) return;
+    if (now - (state.ladderPings.get(id) || 0) < 8000 || state.ladderPinging >= 4) return;
+    const node = box.improvement?.querySelector?.(`[data-agent="${id}"]`);
+    if (!node || node.className.includes('board-dot-retired')) return;
+    state.ladderPings.set(id, now);
+    state.ladderPinging += 1;
+    const ring = element('span', null, `board-ping board-ping-${kind}`);
+    ring.setAttribute('aria-hidden', 'true');
+    node.append(ring);
+    setTimeout(() => { ring.remove?.(); state.ladderPinging -= 1; }, 750);
   };
+  if (typeof IntersectionObserver === 'function' && box.improvement) {
+    try {
+      const watcher = new IntersectionObserver(entries => {
+        for (const entry of entries) state.ladderRatio = entry.isIntersecting ? entry.intersectionRatio : 0;
+        introduce();
+      }, { threshold: [0, 0.4] });
+      watcher.observe(box.improvement);
+      state.unwatch = () => watcher.disconnect();
+    } catch { /* no observer here */ }
+  }
   async function refresh() {
     try {
       state.checkpoint = await loadCheckpoint();
@@ -1584,6 +2041,10 @@ async function startFloor(root) {
   drawLive();
   drawPortfolio();
   state.drawClosed();
+  // The sections above the ladder have filled in; once the layout has settled, the ladder's first
+  // view can be told apart from a page that was briefly short while it loaded.
+  state.ladderSettle = setTimeout(() => { state.ladderReady = true; introduce(); }, 1200);
+  state.ladderSettle?.unref?.();
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
   // A tab that was hidden asked for nothing meanwhile: it asks the moment it is looked at again,
   // so the status is never read off a checkpoint that is only old because the page was away.
@@ -1605,6 +2066,10 @@ async function startFloor(root) {
       const balance = events.filter(event => event.kind === FLOOR_MARK.kind);
       const changes = events.filter(event => ladderMove(event));
       if (live.length) { keepFeed(live); drawLive(); }
+      for (const event of events) {
+        const kind = PING_KINDS[event.kind];
+        if (kind) state.pingAgent(streamDeskOf(event.stream) || show(event.payload?.desk_id), kind);
+      }
       if (closed.length) { state.outcomes = [...closed, ...state.outcomes].slice(0, MAX_EVENT_LIMIT); state.drawClosed(); }
       if (balance.length) { state.marks = [...state.marks, ...balance]; drawPortfolio(); }
       if (changes.length) {
@@ -1621,7 +2086,7 @@ async function startFloor(root) {
   });
   feed.remember(loaded);
   feed.prime(loaded.reduce((most, event) => Math.max(most, Number(event.seq) || 0), 0));
-  return { ...feed, stop() { clearTimeout(state.followUp); feed.stop(); } };
+  return { ...feed, stop() { clearTimeout(state.followUp); clearTimeout(state.ladderSettle); state.unwatch?.(); feed.stop(); } };
 }
 
 export function startCapital(root = document.querySelector('[data-capital]')) {
