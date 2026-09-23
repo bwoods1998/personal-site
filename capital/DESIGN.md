@@ -9,7 +9,7 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
 
 1. **Live first.** The first screen is the name, one sentence, two numbers, and an agent's thought
    typing out above a feed of what the agents are thinking, researching and trading.
-2. **Five elements, nothing else.** No navigation, no leaderboard, no arena, no partner grid, no
+2. **Five elements, nothing else.** No navigation, no separate leaderboard, no arena, no partner grid, no
    genome detail, no "how it works". If it is not one of the five sections below, it is not here.
 3. **No hyperlinks.** The page contains no `<a>` element, static or drawn: not to the home page,
    the repository or anywhere else. Agent names are plain text. A test enforces it.
@@ -47,12 +47,31 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
 4. **Positions** (`#positions`). **Open**: real money, dust under $0.50 hidden: Agent, Market, Side,
    Value, P&L, Why (first sentence; tap for the full thesis). **Closed**: the record in one line,
    then eight trades, newest first, "N more" for the rest: Agent, Market, Result, P&L, Held, Why.
-5. **Self-improvement** (`#improvement`). One sentence ("Generation 4 agents return +1.2% after
-   costs; generation 1 returned −0.8%.") over one bar per generation, standing on a zero line, the
-   newest generation at full strength. Reads `lab.curve[]`: `generation`,
-   `cost_adjusted_excess_pct` (the bar), `decisions` (a generation counts once above zero),
-   `desks`, `pnl_usd` and `cost_usd` (the tooltip). Without a curve, the desks' return on capital
-   stands in, grouped by `generation`. Nothing yet: "No generations have finished yet."
+5. **The ladder** (`#improvement`), a live capital board (the owner, Sept 23, 2026: an agent's
+   rank is its capital). One lane per band, top first: **Star**, **Swing**, **Bunt** (real money),
+   **Practice**, **Replay**. Each agent is one bar. A real-money bar is as wide as its stake (square
+   root, so a $10 bunt shows beside a star's stake); a practice bar is as wide as its practice
+   wealth multiple W (to the fourth power, so a few percent shows); a replay bar is a dot. Green is
+   profit, red loss (practice reads by W, real money by P&L). Tap, hover or focus a bar for its
+   record: band, stake, E and the two multiples, trades, P&L, credits, and the reason for its last
+   move. Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
+   `real_trades`} and `last_move`, and the checkpoint's `board` {`bands` (count and capital per
+   band per venue: the lane notes), `moves` (the trail), `throttle`, `enabled`}. A checkpoint from
+   before the allocator publishes none of these: the band then follows `gate.evidence.rung` (0
+   Replay, 1 Practice, 2 Bunt, 3 Swing) and a real desk's `capital_usd` stands in for its stake.
+   - **Motion.** A move glides the bar from its old lane to its new one (FLIP with the Web
+     Animations API, measured before and after each redraw); a birth rises into Replay; a death
+     fades into the Retired row. A move seen for the first time within the hour glows once and
+     keeps an arrow over its bar. Nothing moves until the roster agrees with the tape, and a band
+     move on the tape asks for the checkpoint again six seconds later, so a crossing shows within
+     seconds. Reduced motion stills all of it.
+   - **Practice follows the Positions switch.** Off (every visit), the Practice and Replay lanes
+     are one tick per agent, and pressing the ticks turns the switch on; on, every practice agent
+     is a bar with its record.
+   - Under the lanes: the Retired row (the recent exits the checkpoint carries), a two-word legend,
+     the record of the selected bar, and the last five moves ("Mullins VII · Practice → Bunt ·
+     $10"). A throttle that is on says so above the lanes.
+   - The House's word for the practice band is `paper`; the page says Practice, everywhere.
 
 **Footer.** "Blake Woods owns every position. Not investment advice."
 
