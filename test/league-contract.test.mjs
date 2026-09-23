@@ -155,6 +155,13 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
     assert.match(words(portfolio), /\+\$0\.32 balance change − \$0\.00 net deposits = \+\$0\.32 tracked profit\./);
     assert.equal(words(portfolio.withClass('venues')[0]), 'Kalshi $512.21 Alpaca $510.04');
 
+    // Real money only until the Positions switch is pressed; then the practice book follows, tagged.
+    const real = root.querySelector('#floor-positions').find('tbody')[0].find('tr');
+    assert.deepEqual(real.map(row => [row.className, ...row.find('td').slice(0, 5).map(words)]), [
+      ['', 'Crypto Reversion', 'BTC', 'long', '$35.49', '+$0.11'],
+      ['', 'Favorites Maker', 'BTC above $80,999.99 · Sep 19 3am ET', 'YES', '$18.80', '+$0.20'],
+    ]);
+    root.querySelector('#floor-practice').find('button')[0].click();
     const open = root.querySelector('#floor-positions').find('tbody')[0].find('tr');
     assert.deepEqual(open.map(row => [row.className, ...row.find('td').slice(0, 5).map(words)]), [
       ['', 'Crypto Reversion', 'BTC', 'long', '$35.49', '+$0.11'],
