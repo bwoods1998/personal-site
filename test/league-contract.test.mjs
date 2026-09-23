@@ -117,22 +117,22 @@ test('published to a floor and read back, the fixtures fill all five sections', 
   assert.ok(closed[0].short.length > 10, 'the closed trade says why');
   assert.equal(closedRecord(closed), '1 real-money trade · 1 won · +$0.14');
 
-  // 5. The board puts every agent in the band the publisher names (or its rung implies), empty lanes included.
+  // 5. The ladder puts every agent on the level its band (or its rung) implies, empty levels included.
   const ladder = boardSnapshot(board, events, now);
-  assert.deepEqual(ladder.lanes.map(row => [row.name, row.agents.length]), [['Star', 0], ['Swing', 0], ['Bunt', 2], ['Practice', 1], ['Replay', 0]]);
+  assert.deepEqual(ladder.levels.map(row => [row.level, row.agents.length]), [[3, 0], [2, 2], [1, 1]]);
   assert.equal(ladder.living, 3);
   assert.equal(ladder.real, 2);
-  assert.equal(ladder.unranked.length, 0);
-  // When the publisher sends the allocator's fields, the bars are its stakes and its evidence.
+  assert.equal(ladder.unknown.length, 0);
+  // When the publisher sends the allocator's fields, the coins are its stakes and its evidence.
   if (board.desks.some(desk => Object.hasOwn(desk, 'band'))) {
-    const bunt = ladder.lanes.find(row => row.band === 'bunt');
-    assert.deepEqual(bunt.agents.map(agent => [agent.id, agent.stake]), board.desks.filter(desk => desk.band === 'bunt').map(desk => [desk.id, Number(desk.stake_usd)])
+    const live = ladder.levels.find(row => row.level === 2);
+    assert.deepEqual(live.agents.map(agent => [agent.id, agent.stake]), board.desks.filter(desk => desk.band === 'bunt').map(desk => [desk.id, Number(desk.stake_usd)])
       .sort((a, b) => b[1] - a[1]));
-    assert.ok(ladder.lanes.flatMap(row => row.agents).every(agent => agent.evidence === null || Number(agent.evidence.E) > 0));
+    assert.ok(ladder.levels.flatMap(row => row.agents).every(agent => agent.evidence === null || Number(agent.evidence.E) > 0));
   }
   if (board.board) {
     assert.ok(ladder.moves.length > 0, 'the board\'s trail is drawn');
-    assert.equal(ladder.lanes.find(row => row.band === 'bunt').capital,
+    assert.equal(ladder.levels.find(row => row.level === 2).capital,
       Object.values(board.board.bands).reduce((sum, bands) => sum + Number(bands.bunt?.capital_usd || 0), 0));
   }
 });
@@ -159,7 +159,8 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
     assert.match(lines[0], /testing League Replayed 3 variants of crypto-reversion/);
     assert.match(lines[1], /trading Crypto Reversion bought 0\.000437 BTC at \$80,950\.00$/);
     assert.match(lines[2], /trading Favorites Maker closed BTC above \$80,499\.99 · Sep 19 2am ET, settled YES \+\$0\.14$/);
-    assert.doesNotMatch(lines.join(' '), /practice/);
+    assert.match(lines[0], /1 passed the history test and starts on practice\.$/, 'the League speaks in the page\'s words');
+    assert.equal(root.querySelector('#floor-feed').withClass('tag-practice').length, 0, 'every agent here trades real money');
 
     const portfolio = root.querySelector('#floor-portfolio');
     assert.equal(portfolio.find('svg').length, 1);
@@ -188,9 +189,10 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
     assert.match(words(closed.find('tbody')[0].find('tr')[0]), /^Favorites Maker BTC above \$80,499\.99 · Sep 19 2am ET won \+\$0\.14 48m BTC sat \$600 above/);
 
     const improvement = root.querySelector('#floor-improvement');
-    assert.deepEqual(improvement.withClass('board-lane-title').map(words), ['Star 0', 'Swing 0', 'Bunt 2', 'Practice 1', 'Replay 0']);
-    assert.equal(improvement.withClass('board-bar').length, 3, 'the practice switch is on, so the practice agent is a bar too');
-    assert.doesNotMatch(improvement.textContent, /paper/i);
+    assert.deepEqual(improvement.withClass('board-lane-head').map(words).map(text => text.replace(/\$[\d,]+/, '$N')),
+      ['Level 3 Increased capital 0', 'Level 2 Live trading 2 · $N real', 'Level 1 Practice 1']);
+    assert.equal(improvement.withClass('board-coin').length + improvement.withClass('board-dot').length, 3, 'one button per agent, whatever the switch says');
+    assert.doesNotMatch(improvement.textContent, /\b(?:replay|bunt|swing|star|paper|rungs?)\b/i);
     assert.deepEqual(root.find('a'), []);
   });
 });

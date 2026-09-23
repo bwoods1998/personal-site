@@ -14,10 +14,16 @@
   --tone-tool: #9fb8c8;
   --tone-lab: #b9b0e0;
   --tone-evolution: #a8c98a;
+  /* Real money's gold, softened: the top edge and the wash of the two real-money floors. */
+  --real-line: var(--accent);
+  --real-wash: transparent;
   color: var(--ink);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
   font-synthesis: none;
+}
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  :root { --real-line: color-mix(in srgb, var(--accent) 45%, var(--line)); --real-wash: color-mix(in srgb, var(--accent) 5%, transparent); }
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -186,65 +192,152 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .row-practice .agent-name, .row-practice .col-market { color: var(--muted); }
 .record-line { margin: 10px 0 0; font: 12px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
 
-/* 5 — the board: one lane per band, each agent a bar as wide as its stake. */
+/* 5 — the ladder: three floors, one dot per agent; a real stake is a gold coin as big as its dollars. */
+@property --p { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --rim { syntax: '<number>'; inherits: true; initial-value: 1; }
 .board { margin-top: 16px; }
-.board-caption { display: flex; justify-content: space-between; gap: 8px 20px; margin-bottom: 14px; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
+.board-caption { display: flex; justify-content: space-between; gap: 8px 20px; margin-bottom: 8px; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
 .board-caption > :first-child { color: var(--ink); }
+.board-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 0 0 14px; color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; }
+.board-key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.board-swatch { flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: 50%; }
+.board-swatch-up { background: var(--positive); }
+.board-swatch-down { background: var(--negative); }
+.board-swatch-flat { background: var(--muted); opacity: .55; }
+.board-swatch-open { border: 1.5px solid var(--muted); }
+.board-swatch-arc { border: 2px solid var(--line); border-top-color: var(--accent); transform: rotate(45deg); }
+.board-swatch-medal { width: 8px; height: 8px; margin: 1px; background: var(--positive); box-shadow: 0 0 0 1.5px var(--background), 0 0 0 3px var(--accent); }
 .board-throttle { margin: 0 0 12px; font: 11px/1.6 'Courier New', Courier, monospace; }
-.board-lane { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; align-items: center; padding: 14px 0; min-height: 58px; border-top: 1px solid var(--line); }
-.board-lane-star { background: linear-gradient(90deg, transparent, rgba(212,171,114,.06)); border-top-color: #6b5836; }
-.board-lane-swing { background: linear-gradient(90deg, transparent, rgba(191,208,159,.05)); border-top-color: #576349; }
-.board-lane-bunt { background: linear-gradient(90deg, transparent, rgba(191,208,159,.025)); }
-.board-lane-paper { border-top-style: dashed; }
-.board-lane-label { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
-.board-lane-title { display: flex; align-items: baseline; gap: 9px; }
-.board-lane-star .board-lane-title { color: var(--accent); }
-.board-lane-note, .board-count, .board-vacant { color: var(--muted); font: 10px/1.5 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
-.board-count { font-size: 11px; }
-.board-bars { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 4px; min-width: 0; }
-.board-bar { position: relative; flex: none; width: 16px; height: 14px; padding: 0; border: 1px solid var(--line); border-radius: 2px; background: var(--surface); cursor: pointer; }
-.board-lane-real .board-bar { height: 18px; }
-.board-bar.positive { background: rgba(191,208,159,.32); border-color: #69785a; }
-.board-bar.negative { background: rgba(227,162,146,.26); border-color: #7a574c; }
-.board-bar-practice { border-style: dashed; }
-.board-bar-practice.positive { background: rgba(191,208,159,.16); }
-.board-bar-practice.negative { background: rgba(227,162,146,.14); }
-.board-bar:hover, .board-bar[aria-pressed="true"] { border-color: var(--ink); border-style: solid; }
-.board-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.board-bar-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.board-bar::after { position: absolute; left: 50%; top: -14px; transform: translateX(-50%); font: 10px/1 'Courier New', Courier, monospace; }
-.board-move-up::after { content: '↑'; color: var(--positive); }
-.board-move-down::after { content: '↓'; color: var(--negative); }
-.board-move-born::after { content: '✦'; color: var(--tone-tool); }
-.board-move-size::after { content: '±'; color: var(--accent); }
-.board-retired { background: transparent; border-style: dashed; border-color: #664c43; opacity: .45; }
-.board-ticks { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; min-width: 0; min-height: 32px; padding: 0; border: 0; background: none; cursor: pointer; }
-.board-tick { display: block; width: 3px; height: 12px; background: var(--line); }
-.board-tick.positive { background: #7d8c66; }
-.board-tick.negative { background: #9a6a5e; }
-.board-ticks:hover .board-tick { opacity: .75; }
-.board-arriving { animation: board-arrival 1.6s ease-out; }
-.board-born { animation: board-birth 1.2s cubic-bezier(.2, .7, .2, 1); }
-.board-dying { animation: board-death 2.4s ease-out; }
-@keyframes board-arrival { from { box-shadow: 0 0 0 4px rgba(212,171,114,.35); } to { box-shadow: 0 0 0 0 transparent; } }
-@keyframes board-birth { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes board-death { from { opacity: 1; border-color: var(--negative); } to { opacity: .45; } }
-.board-exits { border-top-style: dashed; }
-.board-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 11px 0 14px; border-top: 1px solid var(--line); color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; }
-.board-legend-note { margin-left: auto; }
-.board-detail { min-height: 56px; margin: 0; padding: 4px 0 12px; display: flex; flex-wrap: wrap; align-content: center; gap: 4px 12px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.board-detail strong { font-weight: 400; color: var(--ink); }
-.board-detail-reason { flex-basis: 100%; overflow-wrap: anywhere; }
+
+/* A floor: its name and count on the left, its agents centred on the right, so the counts alone draw the pyramid. */
+.board-lane { --gate-x: calc(166px + (100% - 166px) / 2); position: relative; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
+.board-lane-real { border-top-color: var(--real-line); background: linear-gradient(180deg, var(--real-wash), transparent 80%); }
+.board-exits { padding: 12px 0; border-top-style: dashed; }
+.board-lane-head { display: grid; gap: 2px; align-content: center; min-width: 0; }
+.board-level-name { font: 500 15px/1.3 Arial, Helvetica, sans-serif; letter-spacing: -.1px; color: var(--ink); }
+.board-level-word { font: 10px/1.5 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.board-lane-real .board-level-word { color: var(--accent); }
+.board-level-sum { font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
+.board-exits .board-level-name { font: 10px/1.5 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+/* A gate is a notch in the floor line, the way up into the level above; it is not a control. */
+.board-gate {
+  position: absolute; z-index: 1; top: -6px; left: var(--gate-x); transform: translateX(-50%); padding: 0 5px;
+  background: var(--background); color: var(--real-line); font: 9px/11px Arial, Helvetica, sans-serif; pointer-events: none;
+}
+.board-dots { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0; min-width: 0; min-height: 24px; }
+.board-dots-coin { gap: 12px 14px; padding: 4px 0; }
+.board-vacant { font: 11px/24px 'Courier New', Courier, monospace; color: var(--muted); }
+.board-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Level 1: a 12px disc in a 24px cell, the cell the tap target. Green up, red down, grey flat; a
+   hollow ring has no closed trade yet; a dotted ring is still being tested on history. */
+.board-dot { --dot: var(--muted); position: relative; flex: none; width: 24px; height: 24px; margin: 0; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.board-dot.positive { --dot: var(--positive); }
+.board-dot.negative { --dot: var(--negative); }
+.board-dot::before { content: ''; position: absolute; left: 6px; top: 6px; box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%; background: var(--dot); transition: transform .15s ease-out; }
+.board-dot.flat::before { opacity: .55; }
+.board-dot-untraded::before { background: transparent; border: 1.5px solid var(--dot); }
+.board-dot-untraded.flat::before { opacity: .7; }
+.board-dot-new::before { background: transparent; border: 1px dotted var(--muted); opacity: .6; }
+.board-dot-retired::before { left: 8px; top: 8px; width: 8px; height: 8px; background: transparent; border: 1px solid var(--muted); opacity: .5; }
+.board-dot-retired.negative::before { border-color: var(--negative); }
+.board-dot:hover::before { transform: scale(1.2); }
+.board-dot[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+.board-dot:focus-visible, .board-coin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Levels 2 and 3: a gold-rimmed coin, its fill the real P&L and its glyph the sign, so a loss reads without colour. */
+.board-coin {
+  --fill: var(--muted); position: relative; flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin: 0; padding: 0;
+  border: 2px solid var(--accent); border-radius: 50%; background: var(--fill); color: var(--background);
+  font: 700 11px/1 'Courier New', Courier, monospace; cursor: pointer;
+}
+.board-coin.positive { --fill: var(--positive); }
+.board-coin.negative { --fill: var(--negative); }
+.board-glyph { pointer-events: none; }
+.board-coin-star { box-shadow: 0 0 0 3px var(--background), 0 0 0 4.5px var(--accent); }
+.board-coin:hover { filter: brightness(1.08); }
+.board-coin[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 3px; }
+.board-coin-star[aria-pressed="true"] { outline-offset: 6px; }
+
+/* A recent move keeps its arrow for the hour. */
+.board-mark { position: absolute; z-index: 2; font: 10px/1 'Courier New', Courier, monospace; pointer-events: none; }
+/* Centred over its own disc, so a mark belongs to one dot; over a coin it clears the selection ring and any arc. */
+.board-dot > .board-mark { left: 50%; top: -3px; transform: translateX(-50%); }
+.board-coin > .board-mark { left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); }
+.board-coin.board-arc > .board-mark, .board-coin-star > .board-mark { bottom: calc(100% + 9px); }
+.board-mark-up { color: var(--positive); }
+.board-mark-down { color: var(--negative); }
+.board-mark-born { color: var(--tone-tool); }
+.board-mark-size { color: var(--accent); }
+
+/* The readout: the selected agent's record, right under the floors. */
+.board-detail { display: flex; flex-direction: column; gap: 3px; min-height: 72px; margin: 14px 0 0; padding: 12px 0; border-top: 1px solid var(--line); color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
+.board-detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.board-detail strong { font: 500 13px/1.5 Arial, Helvetica, sans-serif; color: var(--ink); }
+.board-detail .strategy-tag { margin: 0; }
+.board-detail-progress { display: flex; align-items: flex-start; gap: 2px 10px; }
+.board-detail-progress > span:last-child { flex: 1 1 200px; min-width: 0; }
+.board-phrase { white-space: nowrap; }
+.board-xp { position: relative; flex: none; width: 96px; height: 4px; margin-top: 7px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.board-xp::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%); border-radius: 2px; background: var(--accent); }
+.board-detail-up::first-letter, .board-detail-born::first-letter { color: var(--positive); }
+.board-detail-down::first-letter, .board-detail-out::first-letter { color: var(--negative); }
+.board-detail-size::first-letter { color: var(--accent); }
 .board-moves { list-style: none; padding: 8px 0 0; margin: 0; border-top: 1px solid var(--line); }
-.board-change { display: flex; gap: 9px; padding: 4px 0; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
-.board-change-mark { width: 8px; flex: none; }
+.board-change { display: flex; align-items: baseline; gap: 9px; width: 100%; min-width: 0; margin: 0; padding: 4px 0; border: 0; background: none; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; text-align: left; }
+button.board-change { cursor: pointer; }
+button.board-change:hover { color: var(--ink); }
+button.board-change:focus-visible { outline-offset: 2px; }
+.board-change-mark { flex: none; width: 10px; }
+.board-change-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-change-up .board-change-mark, .board-change-born .board-change-mark { color: var(--positive); }
 .board-change-down .board-change-mark, .board-change-out .board-change-mark { color: var(--negative); }
 .board-change-size .board-change-mark { color: var(--accent); }
-.board-change-time { margin-left: auto; white-space: nowrap; }
+.board-change-time { flex: none; margin-left: auto; white-space: nowrap; }
+
+/* Motion: only real events move anything, and each once. */
+.board-arriving { --ripple: var(--accent); animation: board-arrival 1.2s ease-out backwards; }
+.board-arriving-down { --ripple: var(--negative); animation: board-arrival 1.2s ease-out backwards; }
+.board-born { animation: board-birth 1.2s cubic-bezier(.2, .7, .2, 1) both; }
+.board-dying::before { animation: board-death 2.4s ease-out .45s both; }
+.board-settling::before { animation: board-settle .6s ease-out; }
+@keyframes board-arrival { from { box-shadow: 0 0 0 0 var(--ripple); } to { box-shadow: 0 0 0 14px transparent; } }
+@keyframes board-birth { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes board-death { from { opacity: 1; border-color: var(--negative); } }
+@keyframes board-settle { from { transform: scale(.4); opacity: .3; } }
+.board-ping { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border: 1.5px solid currentColor; border-radius: 50%; pointer-events: none; animation: board-ping .7s ease-out both; }
+.board-ping-thought { color: var(--tone-thought); }
+.board-ping-tool { color: var(--tone-tool); }
+.board-ping-fill { color: var(--accent); }
+@keyframes board-ping { from { transform: scale(1); opacity: .5; } to { transform: scale(2.35); opacity: 0; } }
+
+/* The arcs, rim and mixed colours need masks and colour-mix; without them the ladder still reads. */
+@supports (mask: radial-gradient(#000, #000)) or (-webkit-mask: radial-gradient(#000, #000)) {
+  .board-dot.board-arc::after {
+    content: ''; position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--line) 0);
+    -webkit-mask: radial-gradient(circle, transparent 7.6px, #000 8.1px); mask: radial-gradient(circle, transparent 7.6px, #000 8.1px);
+  }
+  .board-coin { --rim: 1; border-color: transparent; }
+  .board-coin::before {
+    content: ''; position: absolute; inset: -2px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(var(--accent) calc(var(--rim) * 1turn), transparent 0);
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  }
+  .board-coin.board-arc::after {
+    content: ''; position: absolute; inset: -9px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--line) 0); opacity: .6;
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  }
+}
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  .board-coin.flat { --fill: color-mix(in srgb, var(--muted) 55%, var(--surface)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse, .line-new, .now-thought::after, .board-bar, .board-tick { animation: none; }
+  .pulse, .line-new, .now-thought::after { animation: none; }
+  .board-dot, .board-coin, .board-gate, .board-ping, .board-dot::before, .board-coin::before { animation: none; transition: none; }
+  .board-ping { display: none; }
 }
 
 @media (max-width: 720px) {
@@ -277,14 +370,13 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .rows .why-toggle { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .rows .why-toggle[aria-expanded="true"] { display: block; }
   .rows .why-empty { display: none; }
-  .board-lane { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 0; }
-  .board-lane-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .board-lane { --gate-x: 50%; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 16px 0 14px; }
+  .board-exits { gap: 6px; padding: 12px 0; }
+  .board-lane-head { display: flex; align-items: baseline; gap: 10px; }
+  .board-level-sum { margin-left: auto; }
   .board-caption { flex-wrap: wrap; gap: 2px 12px; }
-  .board-bars { gap: 6px 5px; }
-  .board-bar { height: 20px; }
-  .board-lane-real .board-bar { height: 24px; }
-  .board-ticks { min-height: 40px; }
   .board-legend { gap: 3px 12px; }
-  .board-legend-note { margin-left: 0; }
   .board-change { font-size: 10px; }
+  .board-detail-progress { flex-wrap: wrap; }
+  .board-detail-progress > span:last-child { flex-basis: 100%; }
 }

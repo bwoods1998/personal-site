@@ -18,7 +18,8 @@ import {
   accountEquity, accountVenues, venueLabel, instrumentLabel, ago, roman, raceName, triggerText, flatLine,
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers,
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
-  closedRecord, ladderMove, boardSnapshot, BOARD_LANES, barSize, agentWords,
+  closedRecord, ladderMove, boardSnapshot, LEVELS, NEXT_LEVEL, levelOf, levelProgress, coinSize, reasonWords, moveWords, nextIndex,
+  agentWords, progressWords, houseWords, settleStakes, replayable,
 } from '../capital/capital.js';
 import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
@@ -86,7 +87,7 @@ test('the ladder parses only real league lifecycle templates, never strategy cla
 const gateOf = (rung, extra = {}) => ({ name: `rung ${rung}`, passed: rung >= 2, evidence: { rung, ...extra } });
 const evidenceOf = (W_paper, overrides = {}) => ({ W_paper, W_real: '1.000000', E: String(Math.sqrt(Number(W_paper)).toFixed(6)), trades: 6, real_trades: 0, ...overrides });
 
-test('the board keeps every living agent in its band, by the allocator or by its rung, and never treats tape lag as a move', () => {
+test('the ladder keeps every living agent on its level, by the allocator or by its rung, and never treats tape lag as a move', () => {
   const now = Date.parse('2026-09-15T15:00:00.000Z');
   const change = ladderEvent('haghani climbs from rung 1 to rung 2: evidence.', { at: '2026-09-15T14:59:00.000Z' });
   const board = checkpoint({ published_at: '2026-09-15T14:58:00.000Z', desks: [
@@ -99,36 +100,134 @@ test('the board keeps every living agent in its band, by the allocator or by its
   ] });
   assert.equal(validCheckpoint(board), true);
   const before = boardSnapshot(board, [change, change], now);
-  assert.deepEqual(before.lanes.map(lane => [lane.name, lane.agents.map(agent => agent.id)]), [
-    ['Star', ['star-agent']], ['Swing', ['winner']], ['Bunt', ['bunter']], ['Practice', ['grower', 'haghani']], ['Replay', ['newcomer']],
+  // Three levels, the top first: the star leads Level 3, and the new agent still on history is last on Level 1.
+  assert.deepEqual(before.levels.map(row => [row.level, row.word, row.agents.map(agent => agent.id)]), [
+    [3, 'Increased capital', ['star-agent', 'winner']], [2, 'Live trading', ['bunter']], [1, 'Practice', ['grower', 'haghani', 'newcomer']],
   ]);
   assert.equal(before.living, 8);
   assert.equal(before.real, 3);
   assert.equal(before.retired.length, 1);
-  assert.deepEqual(before.unranked.map(agent => agent.id), ['legacy', 'broken']);
+  assert.deepEqual(before.unknown.map(agent => agent.id), ['legacy', 'broken']);
   assert.equal(before.moves.filter(move => move.kind === 'up').length, 1, 'socket replay is deduplicated');
-  const lane = name => before.lanes.find(row => row.name === name);
-  assert.equal(lane('Practice').agents[1].recent, null, 'the event arrived before the roster changed');
-  assert.equal(lane('Replay').agents[0].pnl, null, 'replay P&L is not a forward result');
-  // Bars: real money by stake (the largest stake is the widest), practice by growth, replay a dot.
-  assert.deepEqual(before.lanes.flatMap(row => row.agents.map(agent => [agent.id, agent.size])), [
-    ['star-agent', 120], ['winner', 89], ['bunter', 45], ['grower', 41], ['haghani', 16], ['newcomer', 12],
-  ]);
-  assert.equal(lane('Swing').agents[0].stake, 60, 'before the allocator, a real desk\'s capital stands in for its stake');
-  assert.equal(lane('Practice').agents[0].tone, 'positive', 'practice agents read by their growth, not their P&L');
-  assert.equal(lane('Bunt').agents[0].tone, 'negative', 'real money reads by its P&L');
-  assert.equal(lane('Bunt').capital, 10);
+  const level = number => before.levels.find(row => row.level === number);
+  const practice = id => level(1).agents.find(agent => agent.id === id);
+  assert.equal(practice('haghani').recent, null, 'the event arrived before the roster changed');
+  assert.equal(practice('newcomer').pnl, null, 'history-test P&L is not a forward result');
+  // Coins: a real stake by its dollars, on one absolute scale; the rest are dots.
+  assert.deepEqual([...level(3).agents, ...level(2).agents].map(agent => [agent.id, coinSize(agent.stake)]), [['star-agent', 56], ['winner', 46], ['bunter', 19]]);
+  assert.equal(level(3).agents[1].stake, 60, 'before the allocator, a real desk\'s capital stands in for its stake');
+  assert.equal(level(3).capital, 180);
+  assert.equal(level(1).capital, null, 'practice holds no real capital');
+  assert.equal(practice('grower').tone, 'positive', 'practice agents read by their growth, not their P&L');
+  assert.equal(level(2).agents[0].tone, 'negative', 'real money reads by its P&L');
+  assert.equal(level(2).capital, 10);
+  // Without the allocator's board, the page cannot say how near the next level anyone is.
+  assert.ok(before.agents.every(agent => agent.progress === null));
+  assert.equal(before.closest, null);
   board.desks[0].gate = gateOf(2);
   const after = boardSnapshot(board, [change], now);
-  assert.equal(after.lanes[2].agents.find(agent => agent.id === 'haghani').recent.kind, 'up');
+  assert.equal(after.levels[1].agents.find(agent => agent.id === 'haghani').recent.kind, 'up');
   assert.equal(after.stale, false);
-  assert.equal(boardSnapshot(board, [change], now + 7200000).lanes[2].agents.find(agent => agent.id === 'haghani').recent, null, 'old moves do not pulse forever');
+  assert.equal(boardSnapshot(board, [change], now + 7200000).levels[1].agents.find(agent => agent.id === 'haghani').recent, null, 'old moves do not pulse forever');
   assert.equal(boardSnapshot(board, [], now + 7200000).stale, true);
-  assert.deepEqual(boardSnapshot(null).lanes.map(row => row.agents.length), [0, 0, 0, 0, 0]);
-  assert.deepEqual(BOARD_LANES.map(row => row.name), ['Star', 'Swing', 'Bunt', 'Practice', 'Replay']);
-  assert.equal(barSize({ real: true, stake: null }, 10), 14);
-  assert.equal(barSize({ real: false, band: 'paper', growth: 0.5 }, 10), 8);
-  assert.equal(barSize({ real: false, band: 'paper', growth: 3 }, 10), 96);
+  assert.deepEqual(boardSnapshot(null).levels.map(row => row.agents.length), [0, 0, 0]);
+  assert.deepEqual(LEVELS.map(row => [row.level, row.word, row.bands, row.real]), [
+    [3, 'Increased capital', ['star', 'swing'], true], [2, 'Live trading', ['bunt'], true], [1, 'Practice', ['paper', 'replay'], false],
+  ]);
+  assert.deepEqual(['replay', 'paper', 'bunt', 'swing', 'star', 'dead', null].map(levelOf), [1, 1, 2, 3, 3, null, null]);
+  assert.deepEqual([10, 25, 56.11, 27.48, 11.52, 87, 1000, 1, 0, null, NaN].map(coinSize), [19, 30, 45, 31, 20, 56, 56, 18, 18, 18, 18]);
+});
+
+test('progress toward the next level follows the allocator\'s main rule, and only while its board is on', () => {
+  // The constant the arcs read, pinned: league/constitution.py is the source.
+  assert.deepEqual(NEXT_LEVEL, {
+    paper: { level: 2, evidence: 1.01, trades: 5, count: 'trades' },
+    bunt: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
+  });
+  const agent = (band, evidence, extra = {}) => ({ band, evidence: { W_paper: '1.000000', W_real: '1.000000', trades: 0, real_trades: 0, ...evidence }, retired: false, accountingIssue: false, ...extra });
+  const progress = (band, evidence, extra, enabled = true) => levelProgress(agent(band, evidence, extra), enabled);
+  assert.equal(progress('paper', { E: '1.006000', trades: 4 }), 0.6, 'the weaker of evidence and trades');
+  assert.equal(progress('paper', { E: '1.010000', trades: 7 }), 1, 'both met: ready');
+  assert.equal(progress('paper', { E: '1.030000', trades: 2 }), 0.4);
+  assert.equal(progress('paper', { E: '0.990000', trades: 9 }), 0, 'evidence below even is no progress');
+  assert.equal(progress('bunt', { E: '1.114366', W_real: '1.095627', real_trades: 4 }), 0.2287);
+  assert.equal(progress('bunt', { E: '1.900000', W_real: '0.990000', real_trades: 9 }), 0.95, 'real results below even never read as ready');
+  assert.equal(progress('bunt', { E: '1.600000', W_real: '1.010000', real_trades: 8 }), 1);
+  for (const [band, extra, enabled, why] of [['paper', {}, false, 'the board is off'], ['paper', {}, null, 'no board at all'],
+    ['swing', {}, true, 'Level 3 has no next level'], ['replay', {}, true, 'not trading yet'], ['paper', { retired: true }, true, 'retired'],
+    ['paper', { accountingIssue: true }, true, 'accounting under review']]) {
+    assert.equal(progress(band, { E: '1.010000', trades: 7 }, extra, enabled), null, why);
+  }
+  assert.equal(levelProgress({ band: 'paper', evidence: null }, true), null, 'no evidence');
+  const words = progressWords({ band: 'paper', progress: 0.6, evidence: { E: '1.006000', trades: 4 } });
+  assert.equal(words, '60% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades');
+  assert.equal(progressWords({ band: 'paper', progress: 1, evidence: { E: '1.012000', trades: 6 } }), 'Ready for Level 2 · evidence 1.012 of 1.01 · 6 trades');
+  assert.equal(progressWords({ band: 'bunt', progress: 0.2287, evidence: { E: '1.114366', W_real: '0.980000', real_trades: 4 } }),
+    '22% to Level 3 · evidence 1.114 of 1.5 · 4 of 8 real trades · real results below even');
+  assert.equal(progressWords({ band: 'paper', progress: null, evidence: null }), '');
+});
+
+test('moves and reasons read as levels, rebuilt from fixed phrasings, never the House\'s own text', () => {
+  const move = (kind, fromBand, toBand, extra = {}) => ({ id: 'm', agent: 'huang-h427345', at: '2026-09-15T14:30:00.000Z', kind, fromBand, toBand, stake: null, reason: '', ...extra });
+  assert.equal(moveWords(move('up', 'paper', 'bunt', { stake: '10.00' })), 'Huang · Level 1 → 2 · $10');
+  assert.equal(moveWords(move('up', null, 'bunt')), 'Huang · → Level 2');
+  assert.equal(moveWords({ ...move('down', 'bunt', 'paper'), agent: 'hawkins-19' }), 'Hawkins XIX · Level 2 → 1');
+  assert.equal(moveWords({ ...move('born', null, null), agent: 'haghani-56' }), 'Haghani LVI · born');
+  assert.equal(moveWords(move('out', null, null)), 'Huang · retired');
+  assert.equal(moveWords({ ...move('size', 'bunt', 'bunt', { stake: '56.11' }), agent: 'mullins-2' }), 'Mullins II · stake $56');
+  assert.equal(moveWords(move('up', 'swing', 'star')), 'Huang · joined the top 3');
+  for (const [reason, words] of [
+    ['bunt: E 1.0162 is at or above 1.01 on 7 closed trades', 'evidence 1.016 on 7 trades'],
+    ['it cleared the screen: 3 active hour blocks, 3 closed trades, growth above zero; the frontier audit follows on the micro rung', 'passed the practice screen'],
+    ['the frontier Audit vetoed it: thin evidence', 'the audit vetoed it'],
+    ['E 0.8510 fell below the floor', 'evidence fell to 0.851'],
+    ['it lost 35% of its real stake.', 'lost 35% of its real stake'],
+    ['passed deep replay and the sealed holdout', 'passed its history test'],
+    ['displaced', ''], ['bunt stake follows the evidence', ''],
+  ]) assert.equal(reasonWords(move('up', 'paper', 'bunt', { reason })), words, reason);
+  assert.equal(reasonWords({ ...move('born', null, null), parent: 'haghani-40' }), 'child of Haghani XL');
+  assert.equal(reasonWords({ ...move('born', null, null), founder: true }), 'founding agent');
+  // The tape's own births name the parent or say the agent founds its line.
+  const child = ladderMove(ladderEvent('huang-l23cdb7 is born (a child of huang-h6d3302, generation 2, niche kalshi/hour/prior-window-fade-loose-). an Alpha Lab graduate.'));
+  assert.deepEqual([child.kind, child.parent, reasonWords(child)], ['born', 'huang-h6d3302', 'child of Huang']);
+  const seed = ladderMove(ladderEvent('haghani-56 is born (a founding seed, generation 1, niche alpaca/hour/maker-reversion). Merton, as architect.'));
+  assert.equal(reasonWords(seed), 'founding agent');
+  // Numerals past thirty-nine: a desk's fifty-sixth agent is LVI, not XXXXXVI.
+  assert.deepEqual([40, 49, 56, 90, 100, 399, 1994].map(roman), ['XL', 'XLIX', 'LVI', 'XC', 'C', 'CCCXCIX', 'MCMXCIV']);
+});
+
+test('the League\'s lines in the live feed speak in levels, and the House\'s band words never reach the page', () => {
+  const line = message => feedLine(ladderEvent(message)).text;
+  assert.equal(line('huang-h427345 climbs from Practice to Bunt with a $10.00 real stake: bunt: E 1.0162 is at or above 1.01 on 7 closed trades.'),
+    'Huang climbs to Level 2 with $10 real: evidence 1.016 on 7 trades');
+  assert.equal(line('mullins-7 drops from Swing to Practice: it lost 35% of its real stake.'), 'Mullins VII drops to Level 1: lost 35% of its real stake');
+  assert.equal(line("mullins-2's real stake is now $14.20 (Bunt): bunt stake follows the evidence (E 1.42)."), "Mullins II's real stake is now $14");
+  assert.equal(line('haghani-55 climbs from rung 0 to rung 1: passed deep replay and the sealed holdout.'), 'Haghani LV starts practice: passed its history test');
+  assert.equal(line('haghani-37 climbs from rung 1 to rung 2: it cleared the screen: 3 active hour blocks.'), 'Haghani XXXVII climbs to Level 2: passed the practice screen');
+  assert.equal(line('mullins-7 climbs from Swing to Star with a $1,240.50 real stake: the top real P&L.'), 'Mullins VII joins the top 3');
+  assert.equal(line('meriwether-35 died of displaced. meriwether-35 (family sports-favorites) died on rung 1 of displaced.'), 'Meriwether XXXV retired');
+  assert.equal(line('haghani-56 is born (a founding seed, generation 1, niche alpaca/hour/maker-reversion). Merton, as architect.'), 'Haghani LVI is born: founding agent');
+  // Any other league line keeps its words, with the band words swapped for the page's.
+  assert.equal(line('The evidence ended huang-h51fdd3: down 19.1% on paper after 6 active blocks; paper keeps no agent down 10%'),
+    'The evidence ended huang-h51fdd3: down 19.1% on practice after 6 active blocks; practice keeps no agent down 10%');
+  assert.equal(line('haghani-40 passed replay: trial 3 for the maker family, 24 trades, deflated Sharpe 1.2'), 'haghani-40 passed its history test: trial 3 for the maker family, 24 trades, deflated Sharpe 1.2');
+  assert.equal(houseWords('Replay, then Bunt and Swing, a Star; E 1.0100 on the micro rung, starting at rung 0.'),
+    'History test, then Level 2 and Level 3, a top 3; evidence 1.0100 on the micro level, starting at the history test.');
+  assert.equal(houseWords('down 19.1% on paper. Paper keeps no agent on rung 2 down 10%'), 'down 19.1% on practice. Practice keeps no agent on Level 2 down 10%');
+  assert.equal(line('Replayed 3 variants of crypto-reversion'), 'Replayed 3 variants of crypto-reversion', 'ordinary English is untouched');
+});
+
+test('arrow keys walk a floor a dot or a row at a time and leave it at its edges', () => {
+  // A floor of 30 dots, 14 to a row: rows 0–13, 14–27, 28–29.
+  assert.deepEqual(['ArrowLeft', 'ArrowRight', 'Home', 'End'].map(key => nextIndex(key, 15, 30, 14)), [14, 16, 0, 29]);
+  assert.deepEqual([nextIndex('ArrowLeft', 0, 30, 14), nextIndex('ArrowRight', 29, 30, 14)], [0, 29], 'the ends hold');
+  assert.equal(nextIndex('ArrowUp', 15, 30, 14), 1);
+  assert.equal(nextIndex('ArrowUp', 3, 30, 14), -1, 'the top row leaves for the floor above');
+  assert.equal(nextIndex('ArrowDown', 3, 30, 14), 17);
+  assert.equal(nextIndex('ArrowDown', 20, 30, 14), 29, 'a short last row is still a row');
+  assert.equal(nextIndex('ArrowDown', 29, 30, 14), 30, 'the last row leaves for the floor below');
+  assert.deepEqual([nextIndex('ArrowUp', 0, 5, 1), nextIndex('ArrowDown', 4, 5, 1), nextIndex('ArrowDown', 2, 5)], [-1, 5, 3], 'without layout a row is one dot');
+  assert.equal(nextIndex('Tab', 4, 5, 1), 4);
 });
 
 test('the board reads the allocator\'s own summary, trail and throttle, and tells one move once', () => {
@@ -142,23 +241,66 @@ test('the board reads the allocator\'s own summary, trail and throttle, and tell
     enabled: true,
     bands: { kalshi: { bunt: { count: 2, capital_usd: '20.00' }, paper: { count: 40, capital_usd: '0' } }, alpaca: { bunt: { count: 1, capital_usd: '15.00' }, swing: { count: 1, capital_usd: '42.50' } } },
     moves: [{ id: 'le-1', at: moveAt, agent: 'bunter', venue: 'kalshi', from_band: 'paper', to_band: 'bunt', stake_usd: '10.00', reason: 'E crossed 1.03 after 6 trades' },
-      { id: 'le-2', at: '2026-09-15T14:50:00.000Z', agent: 'crypto', venue: 'alpaca', from_band: 'swing', to_band: 'swing', stake_usd: '42.50', reason: 'E rose to 2.1' }],
+      { id: 'le-2', at: '2026-09-15T14:50:00.000Z', agent: 'crypto', venue: 'alpaca', from_band: 'swing', to_band: 'swing', stake_usd: '42.50', reason: 'E rose to 2.1' },
+      { id: 'le-3', at: '2026-09-15T14:40:00.000Z', agent: 'newbie', venue: 'alpaca', from_band: 'replay', to_band: 'paper', stake_usd: null, reason: 'passed deep replay' }],
     throttle: { active: true, floor_pnl_usd: '-320.00', envelope_usd: '1017.75' },
   } });
   assert.equal(validCheckpoint(board), true);
   const tape = ladderEvent('bunter climbs from Practice to Bunt with a $10.00 real stake: E crossed 1.03 after 6 trades.', { id: 'le-1', at: moveAt });
   const model = boardSnapshot(board, [tape], now);
-  assert.deepEqual(model.moves.map(move => [move.id, move.kind, move.venue]), [['le-1', 'up', 'kalshi'], ['le-2', 'size', 'alpaca']], 'the board, the desk and the tape tell one move once');
-  const bunt = model.lanes.find(lane => lane.band === 'bunt');
-  assert.equal(bunt.capital, 35);
-  assert.deepEqual(bunt.venues, ['Kalshi 2', 'Alpaca 1']);
-  assert.equal(bunt.agents[0].recent.id, 'le-1');
+  assert.deepEqual(model.moves.map(move => [move.id, move.kind, move.venue]), [['le-1', 'up', 'kalshi'], ['le-2', 'size', 'alpaca']],
+    'the board, the desk and the tape tell one move once, and a new agent starting practice is no crossing');
+  const [three, two] = model.levels;
+  assert.equal(two.capital, 35, 'Level 2 holds the bunt capital across both venues');
+  assert.equal(three.capital, 42.5);
+  assert.equal(two.agents[0].recent.id, 'le-1');
   assert.equal(model.throttle.active, true);
   assert.equal(model.enabled, true);
-  assert.equal(agentWords(bunt.agents[0]), 'Bunt · $10.00 real stake · E 1.041 · practice ×1.083 · 6 trades · +$0.40 real P&L');
+  assert.equal(two.agents[0].progress, 0, 'no real trade yet');
+  assert.equal(agentWords(two.agents[0]), 'Level 2 · Kalshi · $10.00 stake · +$0.40 real · 0 real trades · 0% to Level 3');
+  assert.equal(agentWords(three.agents[0]), 'Level 3 · Alpaca · $42.50 stake · +$250.25 real', 'no evidence: no progress and no invented trades');
+  assert.equal(model.latestClimb.id, 'le-1', 'the first view replays the newest climb that still stands');
 });
 
-test('the live board redraws after socket moves, keeps selection, folds practice into ticks until asked, and never says paper', async () => {
+test('a restake that changes nothing is no move, one the checkpoint does not bear out keeps no amount, and neither replays', () => {
+  const now = Date.parse('2026-09-23T15:18:00.000Z');
+  const real = (id, stake, E, realTrades) => desk(id, { gate: gateOf(2), band: 'bunt', mode: 'live', venues: ['kalshi'], stake_usd: stake,
+    evidence: evidenceOf('1.030000', { E, W_real: '1.100000', real_trades: realTrades }) });
+  const board = checkpoint({ published_at: '2026-09-23T15:17:00.000Z', desks: [real('mullins-2', '5.11', '1.179821', 10), real('mullins-6', '10.00', '1.056406', 2)],
+    board: { enabled: true, bands: {}, moves: [], throttle: { active: false, floor_pnl_usd: '-2.10', envelope_usd: '1017.75' } } });
+  assert.equal(validCheckpoint(board), true);
+  // The live tape of Sept 23: Mullins II restaked to $10 twice, while its coin is published at $5.11.
+  const tape = [
+    ladderEvent("mullins-2's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.1798).", { id: 'r-3', seq: 303, at: '2026-09-23T14:35:55.153Z' }),
+    ladderEvent("mullins-6's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.0564).", { id: 'r-2', seq: 302, at: '2026-09-23T14:35:55.155Z' }),
+    ladderEvent("mullins-2's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.1580).", { id: 'r-1', seq: 301, at: '2026-09-23T14:14:20.638Z' }),
+  ];
+  const model = boardSnapshot(board, tape, now);
+  assert.deepEqual(model.moves.map(move => [move.id, moveWords(move)]), [['r-2', 'Mullins VI · stake $10'], ['r-1', 'Mullins II · restaked']],
+    'the second $10 changed nothing; the first says no amount the coin contradicts');
+  const [mullins2, mullins6] = ['mullins-2', 'mullins-6'].map(id => model.agents.find(agent => agent.id === id));
+  assert.deepEqual([mullins2.move.id, mullins2.move.stake, mullins2.recent], ['r-1', null, null], 'the readout tells the same restake, past the hour');
+  assert.equal(mullins6.recent.id, 'r-2');
+  // Pressing a restake selects its coin and plays nothing: only a crossing to where the agent sits replays.
+  for (const agent of [mullins2, mullins6]) assert.equal(replayable(agent.move, agent), false);
+  assert.equal(replayable({ kind: 'up', fromBand: 'paper', toBand: 'bunt' }, mullins6), true);
+  assert.equal(replayable({ kind: 'up', fromBand: null, toBand: 'bunt' }, mullins6), true, 'a climb from an unknown level still came from below');
+  assert.equal(replayable({ kind: 'down', fromBand: 'bunt', toBand: 'paper' }, mullins6), false, 'not where the agent sits now');
+  assert.equal(replayable({ kind: 'up', fromBand: 'swing', toBand: 'star' }, { level: 3, retired: false }), false, 'no level crossed');
+  for (const kind of ['size', 'born', 'out']) assert.equal(replayable({ kind, fromBand: null, toBand: 'bunt' }, mullins6), false, kind);
+  // A crossing sets the stake a restake is measured against; an exit forgets it.
+  const at = minutes => new Date(now - minutes * 60000).toISOString();
+  const kept = settleStakes([
+    { id: 'c', agent: 'a', kind: 'size', toBand: 'bunt', stake: '10.00', at: at(1) },
+    { id: 'b', agent: 'a', kind: 'up', fromBand: 'paper', toBand: 'bunt', stake: '10.00', at: at(2) },
+    { id: 'z', agent: 'b', kind: 'size', toBand: 'bunt', stake: '12.00', at: at(3) },
+  ], new Map([['b', 12]]));
+  assert.deepEqual(kept.map(move => [move.id, move.stake]), [['b', '10.00'], ['z', '12.00']]);
+});
+
+// The House's band words, and the other words the page never shows on the ladder or in the feed.
+const HOUSE_JARGON = /\b(?:replay|bunt|swing|star|paper|rungs?)\b|\bE (?=\d)/i;
+test('the live ladder redraws after socket moves, keeps selection, draws every agent as a dot, and never says a band', async () => {
   const root = stubPage('floor', FLOOR_IDS);
   const credits = { credits_usd: '12.50' };
   let board = checkpoint({ published_at: new Date().toISOString(), desks: [
@@ -181,18 +323,22 @@ test('the live board redraws after socket moves, keeps selection, folds practice
     const feed = await startCapital(root);
     try {
       const read = () => root.querySelector('#floor-improvement');
-      assert.deepEqual(read().withClass('board-lane-title').map(words), ['Star 0', 'Swing 0', 'Bunt 1', 'Practice 1', 'Replay 0']);
-      assert.equal(read().withClass('board-retired').length, 1);
-      // Off on arrival: the practice lane is one tick per agent, and the tick strip is the switch.
-      assert.equal(read().withClass('board-tick').length, 1);
-      assert.equal(read().withClass('board-bar').length, 2, 'the bunt and the exit are bars; practice is a tick');
-      assert.equal(read().withClass('board-ticks')[0].getAttribute('aria-label'), 'Show the 1 practice agent');
-      read().withClass('board-ticks')[0].click();
-      assert.equal(read().withClass('board-tick').length, 0);
-      assert.equal(read().withClass('board-bar').length, 3);
-      const practice = read().withClass('board-lane-paper')[0].withClass('board-bar')[0];
+      assert.deepEqual(read().withClass('board-lane-head').map(words), ['Level 3 Increased capital 0', 'Level 2 Live trading 1 · $10 real', 'Level 1 Practice 1', 'Retired 1']);
+      assert.deepEqual(read().withClass('board-dots').map(group => group.getAttribute('aria-label')),
+        ['Level 3, Increased capital: 0 agents', 'Level 2, Live trading: 1 agent, $10 real', 'Level 1, Practice: 1 agent', 'Retired: 1 agent']);
+      assert.equal(words(read().withClass('board-level-3')[0].withClass('board-vacant')[0]), 'No one yet', 'an empty level keeps its place');
+      // Every agent is one button, whatever the Positions switch says: a dot, a coin or a retired ring.
+      assert.equal(read().withClass('board-dot').length + read().withClass('board-coin').length, 3);
+      assert.equal(read().withClass('board-dot-retired').length, 1);
+      assert.equal(read().withClass('board-gate').length, 2, 'one gate into each level above practice');
+      assert.deepEqual(read().withClass('board-gate').map(gate => [gate.getAttribute('data-gate'), gate.getAttribute('aria-hidden')]), [['3', 'true'], ['2', 'true']]);
+      // One tab stop per floor.
+      assert.deepEqual(read().withClass('board-dots').map(group => group.find('button').filter(button => button.getAttribute('tabindex') === '0').length), [0, 1, 1, 1]);
+      assert.equal(words(read().withClass('board-detail')[0]), 'Tap any dot to see its agent.');
+      const practice = read().withClass('board-level-1')[0].withClass('board-dot')[0];
+      assert.equal(practice.getAttribute('aria-label'), 'Haghani · Level 1 · Alpaca · practice +8.3% · 6 trades');
       practice.click();
-      assert.equal(words(read().withClass('board-detail')[0]), 'Haghani Practice · E 1.041 · practice ×1.083 · 6 trades · +$3.00 practice P&L · $12.50 compute credits');
+      assert.equal(words(read().withClass('board-detail')[0]), 'Haghani Alpaca Level 1 · practice +8.3% · 6 trades');
       for (const [seq, band, message] of [[301, 'bunt', 'haghani climbs from Practice to Bunt with a $10.00 real stake: E crossed 1.03.'],
         [302, 'paper', 'haghani drops from Bunt to Practice: it lost 35% of its real stake.']]) {
         const real = band === 'bunt';
@@ -200,16 +346,94 @@ test('the live board redraws after socket moves, keeps selection, folds practice
         const event = ladderEvent(message, { seq, id: `ladder:${seq}`, at: new Date().toISOString() });
         socket.listeners.message({ data: JSON.stringify(event) });
         for (let i = 0; i < 30; i += 1) await new Promise(resolve => setImmediate(resolve));
-        const lane = read().withClass(`board-lane-${band}`)[0];
-        assert.ok(lane.withClass('board-bar').some(bar => bar.getAttribute('data-agent') === 'haghani'), `haghani sits in ${band}`);
-        assert.match(words(read().withClass('board-detail')[0]), real ? /^Haghani Bunt · \$10\.00 real stake · E 1\.041/ : /^Haghani Practice · E 1\.041/);
-        assert.equal(words(read().withClass('board-detail-reason')[0]), real ? '↑ promoted · E crossed 1.03.' : '↓ demoted · it lost 35% of its real stake.');
-        assert.equal(read().withClass('board-bar').find(bar => bar.getAttribute('data-agent') === 'haghani').getAttribute('aria-pressed'), 'true');
-        assert.match(words(read().withClass('board-moves')[0]), real ? /Haghani · Practice → Bunt · \$10/ : /Haghani · Bunt → Practice/);
-        assert.doesNotMatch(read().textContent, /paper/i);
-        for (const bar of read().withClass('board-bar')) assert.doesNotMatch(bar.getAttribute('aria-label'), /paper/i);
+        const floor = read().withClass(real ? 'board-level-2' : 'board-level-1')[0];
+        const mine = floor.find('button').find(button => button.getAttribute('data-agent') === 'haghani');
+        assert.ok(mine, `haghani sits on ${real ? 'Level 2' : 'Level 1'}`);
+        assert.equal(mine.className.split(' ')[0], real ? 'board-coin' : 'board-dot', 'a real stake is a coin, practice a dot');
+        assert.equal(mine.getAttribute('aria-pressed'), 'true', 'the selection follows the agent across the redraw');
+        assert.equal(mine.getAttribute('tabindex'), '0');
+        assert.match(words(read().withClass('board-detail')[0]), real ? /^Haghani Alpaca Level 2 · \$10\.00 stake · \+\$3\.00 real · 0 real trades ↑ Level 1 → 2 · just now$/ : /^Haghani Alpaca Level 1 · practice \+8\.3% · 6 trades ↓ Level 2 → 1 · just now · lost 35% of its real stake$/);
+        assert.equal(words(mine.withClass('board-mark')[0]), real ? '↑' : '↓', 'the arrow stays for the hour');
+        assert.match(mine.getAttribute('aria-label'), real ? /· recently promoted$/ : /· recently demoted$/);
+        const moves = read().withClass('board-moves')[0];
+        assert.equal(moves.getAttribute('aria-label'), 'Latest moves, newest first');
+        assert.match(words(moves), real ? /Haghani · Level 1 → 2 · \$10/ : /Haghani · Level 2 → 1/);
+        const row = moves.withClass('board-change')[0];
+        assert.equal(row.tag, 'button', 'a move whose agent has a dot selects it');
+        assert.match(row.getAttribute('aria-label'), /^Show Haghani · Level \d → \d/);
+        assert.doesNotMatch(read().textContent, HOUSE_JARGON);
+        for (const node of read().descendants()) {
+          for (const name of ['aria-label', 'title']) if (node.getAttribute(name)) assert.doesNotMatch(node.getAttribute(name), HOUSE_JARGON, node.getAttribute(name));
+        }
       }
+      // The feed's League lines say the same moves in the same words.
+      assert.doesNotMatch(root.querySelector('#floor-feed').textContent, HOUSE_JARGON);
+      assert.match(words(root.querySelector('#floor-feed')), /Haghani drops to Level 1: lost 35% of its real stake/);
+      assert.match(words(root.querySelector('#floor-feed')), /Haghani climbs to Level 2 with \$10 real/);
+      // Pressing a move selects its agent; the retired agent's own ring is a button too.
+      read().withClass('board-dot-retired')[0].click();
+      assert.equal(words(read().withClass('board-detail')[0]), 'Haghani II Alpaca Retired');
+      read().withClass('board-moves')[0].withClass('board-change')[0].click();
+      assert.match(words(read().withClass('board-detail')[0]), /^Haghani Alpaca Level 1/);
+      assert.deepEqual(root.find('a'), [], 'no links');
     } finally { feed.stop(); }
+  });
+});
+
+test('the ladder\'s edge states: a board on or off, a throttle, a star, accounting under review, an empty roster, stale data', async () => {
+  const now = Date.now();
+  const at = new Date(now - 60000).toISOString();
+  const draw = (checkpointBody, look) => withBrowser('', path => {
+    if (path.includes('/checkpoint')) return checkpointBody;
+    if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+    return { schema_version: 1, latest_seq: 0, events: [] };
+  }, async () => {
+    const root = stubPage('floor', FLOOR_IDS);
+    const feed = await startCapital(root);
+    feed.stop();
+    const ladder = root.querySelector('#floor-improvement');
+    assert.doesNotMatch(ladder.textContent, HOUSE_JARGON);
+    await look(ladder);
+  });
+  const summary = { enabled: true, bands: {}, moves: [], throttle: { active: true, floor_pnl_usd: '-5.84', envelope_usd: '1017.75' } };
+  const roster = [
+    desk('mullins-13', { family: 'weather-favorites', venues: ['kalshi'], gate: gateOf(1), band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000', { E: '1.006000', trades: 4 }) }),
+    desk('scholes-20', { family: 'equity-trend', gate: gateOf(1), band: 'paper', stake_usd: null, evidence: evidenceOf('1.000000', { trades: 0 }) }),
+    desk('krasker-4', { gate: gateOf(1, { accounting_ok: false }), band: 'paper', pnl_usd: '40.00', stake_usd: null, evidence: evidenceOf('1.200000') }),
+    desk('hilibrand-3', { gate: gateOf(3), band: 'star', mode: 'live', venues: ['kalshi'], stake_usd: '240.00', pnl_usd: '-2.10', evidence: evidenceOf('1.3', { E: '1.700000', W_real: '1.2', real_trades: 20 }) }),
+  ];
+  await draw(checkpoint({ published_at: at, desks: roster, board: summary }), on => {
+  assert.match(words(on), /^4 competing · 1 on real money Updates live Up Down Flat No trades yet Toward next level Top 3 Throttle on: every real stake is halved while the floor is −\$5\.84 on \$1,018\./);
+  assert.equal(words(on.withClass('board-detail')[0]), 'Tap any dot. Closest to Level 2: Mullins XIII.');
+  const dot = id => on.descendants().find(node => node.getAttribute('data-agent') === id);
+  assert.match(dot('mullins-13').className, /\bboard-arc\b/);
+  assert.match(dot('scholes-20').className, /\bboard-dot-untraded\b/);
+  assert.match(dot('hilibrand-3').className, /\bboard-coin-star\b/);
+  assert.equal(words(dot('hilibrand-3').withClass('board-glyph')[0]), '−', 'a loss reads without colour');
+  dot('mullins-13').click();
+  assert.equal(words(on.withClass('board-detail')[0]), 'Mullins XIII Kalshi weather favorites Level 1 · practice +1.2% · 4 trades 60% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades');
+  dot('scholes-20').click();
+  assert.equal(words(on.withClass('board-detail')[0]), 'Scholes XX Alpaca equity trend Level 1 · no closed trades yet 0% to Level 2 · evidence 1.000 of 1.01 · 0 of 5 trades');
+  dot('krasker-4').click();
+  assert.equal(words(on.withClass('board-detail')[0]), 'Krasker IV Alpaca Level 1 · 6 trades · accounting under review', 'no growth, no arc, no P&L while the accounts are in question');
+  assert.doesNotMatch(dot('krasker-4').className, /board-arc|positive/);
+  dot('hilibrand-3').click();
+  assert.equal(words(on.withClass('board-detail')[0]), 'Hilibrand III Kalshi Level 3 · top 3 earner · $240.00 stake · −$2.10 real · 20 real trades');
+  });
+  // The board switched off: bands as published, and no claim about how near anyone is.
+  await draw(checkpoint({ published_at: at, desks: roster, board: { ...summary, enabled: false, throttle: { ...summary.throttle, active: false } } }), off => {
+    assert.equal(off.withClass('board-arc').length, 0);
+    assert.doesNotMatch(words(off), /Toward next level|Throttle/);
+    assert.equal(words(off.withClass('board-detail')[0]), 'Tap any dot to see its agent.');
+  });
+  // Nobody yet: three empty floors, and the retired still shown.
+  await draw(checkpoint({ published_at: at, desks: [desk('haghani-2', { gate: gateOf(1), status: 'retired', pnl_usd: '-3.00' })] }), empty => {
+    assert.match(words(empty), /^0 competing · 0 on real money Updates live Level 3 Increased capital 0 No one yet ▲ Level 2 Live trading 0 No one yet ▲ Level 1 Practice 0 No one yet Retired 1 Haghani II No agent is competing yet\.$/);
+    assert.match(empty.withClass('board-dot-retired')[0].className, /\bnegative\b/, 'a ring tinted by how the agent ended');
+  });
+  // Stale: the last known positions, said plainly.
+  await draw(checkpoint({ published_at: '2026-09-15T14:05:00.000Z', desks: roster, board: summary }), stale => {
+    assert.match(words(stale), /^4 competing · 1 on real money Last known positions · data stale/);
   });
 });
 
@@ -221,7 +445,7 @@ test('checkpoint lifecycle survives a quiet or truncated tape and contaminated a
   } } })] });
   const snapshot = boardSnapshot(board, [], now);
   assert.equal(snapshot.moves[0].kind, 'down');
-  const practice = snapshot.lanes.find(lane => lane.band === 'paper').agents[0];
+  const practice = snapshot.levels.find(row => row.level === 1).agents[0];
   assert.equal(practice.pnl, null);
   assert.equal(practice.tone, 'flat');
   assert.equal(practice.accountingIssue, true);
@@ -790,7 +1014,7 @@ test('the floor page mounts the two numbers, the partner thinking now, and a liv
     assert.match(quiet.querySelector('#floor-feed').textContent, /Quiet for now\./);
     assert.match(quiet.querySelector('#floor-positions').textContent, /No real-money position open\./);
     assert.match(quiet.querySelector('#floor-closed').textContent, /No trade has closed yet\./);
-    assert.match(words(quiet.querySelector('#floor-improvement')), /1 competing.*Rank unreported.*Rosenfeld/, 'legacy desks do not acquire an invented rung');
+    assert.match(words(quiet.querySelector('#floor-improvement')), /1 competing.*Level unknown 1 Rosenfeld/, 'legacy desks do not acquire an invented level');
     assert.deepEqual(quiet.find('a'), []);
   });
 });
@@ -1467,10 +1691,10 @@ test('positions list open (real money, then practice, tagged) and closed real-mo
 
     const improvement = root.querySelector('#floor-improvement');
     assert.equal(improvement.getAttribute('aria-busy'), 'false');
-    assert.equal(improvement.withClass('board-lane').length, 6, 'five bands and the unreported');
-    assert.equal(improvement.withClass('board-bar').length, 4);
+    assert.equal(improvement.withClass('board-lane').length, 4, 'three levels and the unknown');
+    assert.equal(improvement.withClass('board-dot-unknown').length, 4);
     assert.match(words(improvement), /4 competing · 0 on real money/);
-    assert.match(words(improvement), /Rank unreported/, 'mode alone cannot prove an earned rung');
+    assert.match(words(improvement), /Level unknown 4/, 'mode alone cannot prove an earned level');
     assert.equal(improvement.find('table').length, 0, 'a ladder, not another table');
     assert.deepEqual(root.find('a'), [], 'nothing on the page is a link');
   });
@@ -1518,12 +1742,12 @@ test('when practice trades are all there is, the Positions switch shows them in 
     assert.equal(toggle().length, 1, 'a single switch');
     assert.equal(toggle()[0].textContent, 'show practice trades');
     assert.equal(toggle()[0].getAttribute('aria-pressed'), 'false');
-    assert.equal(toggle()[0].getAttribute('aria-controls'), 'floor-positions floor-closed floor-improvement');
+    assert.equal(toggle()[0].getAttribute('aria-controls'), 'floor-positions floor-closed', 'the ladder shows every agent whatever the switch says');
     toggle()[0].click();
     assert.match(words(closed().find('tbody')[0].find('tr')[0]), /^Haghani II practice NYC high 81–82°F · Sep 15 won \+\$5\.00 20h/);
     assert.equal(toggle()[0].getAttribute('aria-pressed'), 'true');
     assert.equal(toggle()[0].textContent, 'hide practice trades');
-    assert.match(words(root.querySelector('#floor-improvement')), /1 competing.*Rank unreported.*Haghani II/);
+    assert.match(words(root.querySelector('#floor-improvement')), /1 competing.*Level unknown 1 Haghani II/);
     // An all-practice book, shown: the flat line says what the real accounts hold and announces the
     // practice rows under it; each row is tagged, and there is nothing mixed to count.
     assert.equal(words(open().withClass('empty-state')[0]), 'No real-money position open. $980 in cash across Kalshi and Coinbase. 1 practice position below.');
