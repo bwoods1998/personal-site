@@ -67,10 +67,12 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
      trades, live trading to increased capital at 1.5 over eight real trades with real results at or
      above even (capped at 95% until they are). It is the allocator's main rule only: Kalshi's
      three-settlement route and the evaluator's screen are not published, so a closed ring is a
-     floor, never a promise. The copy says "Ready", never "next", and the readout's last move shows
+     floor, never a promise. An arc is drawn over a faint full-circle track, so how far is left
+     shows at a glance. The copy says "Ready", never "next", and the readout's last move shows
      which route a climb took. With no `board`, `board.enabled` false, an accounting issue or no
      evidence there is no arc and no claim.
-   - **Gates.** A ↑ circle on the top edge of Levels 1 and 2 is the way up. A crossing travels
+   - **Gates.** A small ▲ notch in the top line of Levels 1 and 2 is the way up; it has no border
+     and no circle, so it never looks like a button. A crossing travels
      through it (FLIP with the Web Animations API, measured before and after each redraw): the dot
      grows into its coin, the rim sweeps shut, one ripple, the gate flashes; a drop runs back through
      it in red. Once a visit, when 40% of the ladder is first in view, the newest climb of the last
@@ -83,12 +85,19 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
      level and money ("Level 1 · practice +1.2% · 4 trades", "Level 2 · $56.11 stake · +$1.29 real ·
      4 real trades"); an XP bar ("62% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades"); and its
      last move, with the reason rebuilt from fixed phrasings (`reasonWords`), never the House's
-     text. Arrow keys walk a floor (one tab stop each), Esc clears. With nothing chosen it names the
-     agent closest to Level 2.
-   - Above the floors: the caption, a legend of only what is on the board, and a throttle that is
-     on. Below: Retired (rings tinted by how each ended), "Level unknown" when a desk has no band,
-     the readout, and the last five moves as buttons ("Huang · Level 1 → 2 · $10"; a new agent
-     starting practice is not a crossing and is not listed).
+     text. Arrow keys walk a floor (one tab stop each), Esc clears; a redraw puts focus back but
+     never changes what the visitor chose. With nothing chosen it names the agent closest to
+     Level 2. Lines break only between their phrases. Dots carry no `title`: hover already fills
+     the readout, and a tooltip would cover the neighbouring dots.
+   - Above the floors: the caption, a legend of only what is on the board (Up, Down, Flat, No
+     trades yet, Toward next level, Top 3), and a throttle that is on. Below: Retired (rings tinted
+     by how each ended), "Level unknown" when a desk has no band, the readout, and the last five
+     moves as buttons ("Huang · Level 1 → 2 · $10"; a new agent starting practice is not a
+     crossing and is not listed). Only a level crossing replays when pressed; a restake, birth or
+     exit only selects its agent. Restakes (`settleStakes`): one that repeats the previous stake
+     is dropped, an agent keeps only its newest, and when the tape's amount disagrees with the
+     checkpoint's stake (the one the coin is drawn at) the line says "restaked" with no amount, so
+     the page never states two stakes for one coin.
    - Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
      `real_trades`} and `last_move`, and the checkpoint's `board` {`bands`, `moves`, `throttle`,
      `enabled`}. A checkpoint from before the allocator publishes none of these: the level then

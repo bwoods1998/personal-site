@@ -203,8 +203,9 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .board-swatch { flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: 50%; }
 .board-swatch-up { background: var(--positive); }
 .board-swatch-down { background: var(--negative); }
+.board-swatch-flat { background: var(--muted); opacity: .55; }
 .board-swatch-open { border: 1.5px solid var(--muted); }
-.board-swatch-arc { border: 2px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); transform: rotate(-20deg); }
+.board-swatch-arc { border: 2px solid var(--line); border-top-color: var(--accent); transform: rotate(45deg); }
 .board-swatch-medal { width: 8px; height: 8px; margin: 1px; background: var(--positive); box-shadow: 0 0 0 1.5px var(--background), 0 0 0 3px var(--accent); }
 .board-throttle { margin: 0 0 12px; font: 11px/1.6 'Courier New', Courier, monospace; }
 
@@ -218,14 +219,11 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .board-lane-real .board-level-word { color: var(--accent); }
 .board-level-sum { font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .board-exits .board-level-name { font: 10px/1.5 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+/* A gate is a notch in the floor line, the way up into the level above; it is not a control. */
 .board-gate {
-  position: absolute; z-index: 1; top: -11px; left: var(--gate-x); transform: translateX(-50%); width: 20px; height: 20px;
-  border: 1px solid var(--line); border-radius: 50%; background: var(--background); color: var(--accent);
-  font: 11px/18px 'Courier New', Courier, monospace; text-align: center; pointer-events: none;
+  position: absolute; z-index: 1; top: -6px; left: var(--gate-x); transform: translateX(-50%); padding: 0 5px;
+  background: var(--background); color: var(--real-line); font: 9px/11px Arial, Helvetica, sans-serif; pointer-events: none;
 }
-.board-level-2 > .board-gate { border-color: var(--real-line); }
-.board-gate-flash { animation: board-gate-flash .6s ease-out; }
-@keyframes board-gate-flash { 25% { background: var(--accent); border-color: var(--accent); color: var(--background); } }
 .board-dots { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0; min-width: 0; min-height: 24px; }
 .board-dots-coin { gap: 12px 14px; padding: 4px 0; }
 .board-vacant { font: 11px/24px 'Courier New', Courier, monospace; color: var(--muted); }
@@ -263,8 +261,10 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 
 /* A recent move keeps its arrow for the hour. */
 .board-mark { position: absolute; z-index: 2; font: 10px/1 'Courier New', Courier, monospace; pointer-events: none; }
-.board-dot > .board-mark { left: -1px; top: -2px; }
-.board-coin > .board-mark { right: calc(100% - 3px); bottom: calc(100% - 3px); }
+/* Centred over its own disc, so a mark belongs to one dot; over a coin it clears the selection ring and any arc. */
+.board-dot > .board-mark { left: 50%; top: -3px; transform: translateX(-50%); }
+.board-coin > .board-mark { left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); }
+.board-coin.board-arc > .board-mark, .board-coin-star > .board-mark { bottom: calc(100% + 9px); }
 .board-mark-up { color: var(--positive); }
 .board-mark-down { color: var(--negative); }
 .board-mark-born { color: var(--tone-tool); }
@@ -277,6 +277,7 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .board-detail .strategy-tag { margin: 0; }
 .board-detail-progress { display: flex; align-items: flex-start; gap: 2px 10px; }
 .board-detail-progress > span:last-child { flex: 1 1 200px; min-width: 0; }
+.board-phrase { white-space: nowrap; }
 .board-xp { position: relative; flex: none; width: 96px; height: 4px; margin-top: 7px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .board-xp::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%); border-radius: 2px; background: var(--accent); }
 .board-detail-up::first-letter, .board-detail-born::first-letter { color: var(--positive); }
@@ -295,8 +296,8 @@ button.board-change:focus-visible { outline-offset: 2px; }
 .board-change-time { flex: none; margin-left: auto; white-space: nowrap; }
 
 /* Motion: only real events move anything, and each once. */
-.board-arriving { --ripple: var(--accent); animation: board-arrival 1.2s ease-out both; }
-.board-arriving-down { --ripple: var(--negative); animation: board-arrival 1.2s ease-out both; }
+.board-arriving { --ripple: var(--accent); animation: board-arrival 1.2s ease-out backwards; }
+.board-arriving-down { --ripple: var(--negative); animation: board-arrival 1.2s ease-out backwards; }
 .board-born { animation: board-birth 1.2s cubic-bezier(.2, .7, .2, 1) both; }
 .board-dying::before { animation: board-death 2.4s ease-out .45s both; }
 .board-settling::before { animation: board-settle .6s ease-out; }
@@ -314,7 +315,7 @@ button.board-change:focus-visible { outline-offset: 2px; }
 @supports (mask: radial-gradient(#000, #000)) or (-webkit-mask: radial-gradient(#000, #000)) {
   .board-dot.board-arc::after {
     content: ''; position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; border-radius: 50%; pointer-events: none;
-    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), transparent 0);
+    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--line) 0);
     -webkit-mask: radial-gradient(circle, transparent 7.6px, #000 8.1px); mask: radial-gradient(circle, transparent 7.6px, #000 8.1px);
   }
   .board-coin { --rim: 1; border-color: transparent; }
@@ -325,7 +326,7 @@ button.board-change:focus-visible { outline-offset: 2px; }
   }
   .board-coin.board-arc::after {
     content: ''; position: absolute; inset: -9px; border-radius: 50%; pointer-events: none;
-    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), transparent 0); opacity: .6;
+    background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--line) 0); opacity: .6;
     -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
   }
 }
@@ -376,4 +377,6 @@ button.board-change:focus-visible { outline-offset: 2px; }
   .board-caption { flex-wrap: wrap; gap: 2px 12px; }
   .board-legend { gap: 3px 12px; }
   .board-change { font-size: 10px; }
+  .board-detail-progress { flex-wrap: wrap; }
+  .board-detail-progress > span:last-child { flex-basis: 100%; }
 }

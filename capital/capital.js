@@ -1335,7 +1335,8 @@ export function reasonWords(move) {
 function moveStep(move) {
   if (move.kind === 'born') return 'born';
   if (move.kind === 'out') return 'retired';
-  if (move.kind === 'size') return `stake ${money(move.stake, 0)}`;
+  // A restake whose amount the checkpoint does not bear out keeps no amount (see settleStakes).
+  if (move.kind === 'size') return numeric(move.stake) ? `stake ${money(move.stake, 0)}` : 'restaked';
   const from = levelOf(move.fromBand);
   const to = levelOf(move.toBand);
   if (to === null) return move.kind === 'up' ? 'promoted' : 'demoted';
@@ -1350,6 +1351,39 @@ export function moveWords(move) {
 const capitalized = text => (text ? text[0].toUpperCase() + text.slice(1) : text);
 
 const moneyNumber = value => (numeric(value) ? Number(value) : null);
+// Off real money the stake is null; before the allocator published one, the capital a real desk holds stands in.
+const deskStake = desk => (REAL_BANDS.includes(deskBand(desk)) ? moneyNumber(desk.stake_usd) ?? moneyNumber(desk.capital_usd) : null);
+// A restake that changed nothing is no move, and an agent's restakes are one line, its newest. The
+// tape's amount can disagree with the checkpoint's stake, the one its coin is drawn at: that line
+// then keeps no amount ("restaked"), so the page never states two stakes for one coin. `moves` is
+// newest first; `stakes` maps an agent to its published stake.
+export function settleStakes(moves, stakes = new Map()) {
+  const last = new Map();
+  const changed = new Set();
+  for (const move of [...moves].reverse()) {
+    if (move.kind === 'size') {
+      const stake = moneyNumber(move.stake);
+      const before = last.get(move.agent);
+      if (stake !== null && before !== undefined && before !== null && Math.abs(before - stake) < 0.005) continue;
+      changed.add(move);
+      if (stake !== null) last.set(move.agent, stake);
+    } else if (move.kind === 'up' || move.kind === 'down') {
+      last.set(move.agent, REAL_BANDS.includes(move.toBand) ? moneyNumber(move.stake) : null);
+    } else if (move.kind === 'out') last.delete(move.agent);
+  }
+  const sized = new Set();
+  return moves.filter(move => {
+    if (move.kind !== 'size') return true;
+    if (!changed.has(move) || sized.has(move.agent)) return false;
+    sized.add(move.agent);
+    return true;
+  }).map(move => {
+    if (move.kind !== 'size') return move;
+    const now = stakes.get(move.agent);
+    const stake = moneyNumber(move.stake);
+    return stake !== null && now !== undefined && now !== null && Math.abs(now - stake) > 0.01 ? { ...move, stake: null } : move;
+  });
+}
 export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && deskId(desk.id));
   const board = checkpoint?.board && typeof checkpoint.board === 'object' && !Array.isArray(checkpoint.board) ? checkpoint.board : null;
@@ -1381,9 +1415,9 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
     if (life.born_at) recorded.push({ id: `born:${desk.id}`, agent: desk.id, at: life.born_at, kind: 'born', from: null, to: null, fromBand: null, toBand: null, stake: null, parent, founder: !desk.parent_id, reason: '', seq: 0 });
     if (life.died_at && desk.status === 'retired') recorded.push({ id: `died:${desk.id}`, agent: desk.id, at: life.died_at, kind: 'out', from: null, to: null, fromBand: null, toBand: null, stake: null, reason: show(life.cause), seq: 0 });
   }
-  const moves = distinctMoves([...recorded, ...(Array.isArray(events) ? events : []).map(ladderMove).filter(Boolean)])
+  const moves = settleStakes(distinctMoves([...recorded, ...(Array.isArray(events) ? events : []).map(ladderMove).filter(Boolean)])
     .filter(move => Date.parse(move.at) <= now + 60000)
-    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || b.seq - a.seq);
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || b.seq - a.seq), new Map(desks.map(desk => [desk.id, deskStake(desk)])));
   const agents = desks.map(desk => {
     const band = deskBand(desk);
     const retired = desk.status === 'retired';
@@ -1391,8 +1425,7 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
     const accountingIssue = desk.gate?.evidence?.accounting_ok === false;
     const evidence = desk.evidence && typeof desk.evidence === 'object' && numeric(desk.evidence.E) ? desk.evidence : null;
     const growth = evidence && numeric(evidence.W_paper) ? Number(evidence.W_paper) : null;
-    // Off real money the stake is null; before the allocator published one, the capital a real desk holds stands in.
-    const stake = real ? moneyNumber(desk.stake_usd) ?? moneyNumber(desk.capital_usd) : null;
+    const stake = deskStake(desk);
     const pnl = !accountingIssue && band !== null && band !== 'replay' ? deskPnl(desk) : null;
     const move = moves.find(item => item.agent === desk.id) || null;
     // A tape message can precede its checkpoint. Do not move the dot until the roster agrees.
@@ -1517,22 +1550,28 @@ function moveRecord(move) {
   const reason = reasonWords(move);
   return `${MOVE_MARK[move.kind]} ${capitalized(moveStep(move))} · ${ago(move.at)}${reason ? ` · ${reason}` : ''}`;
 }
+// A readout line that breaks only between its phrases, never inside "of 1.01", "4 of 5 trades" or "2 h ago".
+function phrases(text, className = null) {
+  const line = element('span', null, className);
+  text.split(' · ').forEach((part, index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', part, 'board-phrase')));
+  return line;
+}
 function recordNodes(agent) {
   const head = element('span', null, 'board-detail-head');
   head.append(element('strong', agent.name), ...(agent.venue ? [element('span', agent.venue)] : []), ...(agent.tag ? [element('span', agent.tag, 'strategy-tag')] : []));
   const line = element('span', null, 'board-detail-line');
   const parts = [[agent.retired ? 'Retired' : bandLabel(agent.band), ''], ...(!agent.retired && agent.band === 'star' ? [['top 3 earner', '']] : []), ...standing(agent)];
-  parts.forEach(([text, tone], index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', text, tone || null)));
+  parts.forEach(([text, tone], index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', text, tone ? `${tone} board-phrase` : 'board-phrase')));
   const nodes = [head, line];
   if (agent.progress !== null) {
     const progress = element('span', null, 'board-detail-progress');
     const bar = element('span', null, 'board-xp');
     bar.setAttribute('aria-hidden', 'true');
     place(bar, { '--p': String(agent.progress) });
-    progress.append(bar, element('span', progressWords(agent)));
+    progress.append(bar, phrases(progressWords(agent)));
     nodes.push(progress);
   }
-  if (agent.move) nodes.push(element('span', moveRecord(agent.move), `board-detail-move board-detail-${agent.move.kind}`));
+  if (agent.move) nodes.push(phrases(moveRecord(agent.move), `board-detail-move board-detail-${agent.move.kind}`));
   return nodes;
 }
 function hintText(model) {
@@ -1547,6 +1586,8 @@ function legendNode(model) {
   const keys = [
     [all.some(agent => agent.tone === 'positive'), 'up', 'Up'],
     [all.some(agent => agent.tone === 'negative'), 'down', 'Down'],
+    // A grey disc (or coin) is an agent that has traded and stands level, or whose accounts are under review.
+    [all.some(agent => agent.tone === 'flat' && agent.band !== 'replay' && !agent.untraded), 'flat', 'Flat'],
     [all.some(agent => agent.untraded), 'open', 'No trades yet'],
     [all.some(agent => agent.progress !== null && agent.progress >= ARC_MIN), 'arc', 'Toward next level'],
     [all.some(agent => agent.band === 'star'), 'medal', 'Top 3'],
@@ -1583,6 +1624,8 @@ const reducedMotion = () => typeof window === 'undefined' || typeof window.match
 const finePointer = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
 const EASE = 'cubic-bezier(.2, .7, .2, 1)';
 const centre = box => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+// A colour token as the Web Animations API needs it: resolved, not a var().
+const token = (node, name) => { try { return getComputedStyle(node).getPropertyValue(name).trim() || 'currentColor'; } catch { return 'currentColor'; } };
 // Where every dot stood before a redraw, and how big it looked, so a move can glide.
 function barPlaces(container) {
   const places = new Map();
@@ -1614,12 +1657,14 @@ function travel(node, from, gate, up, { fade = false } = {}) {
   if (up && node.className.includes('board-coin')) {
     node.animate([{ '--rim': '0' }, { offset: duration / (duration + 400), '--rim': '0' }, { '--rim': '1' }], { duration: duration + 400 });
   }
-  node.classList.add(up ? 'board-arriving' : 'board-arriving-down');
-  node.style.animationDelay = `${duration}ms`;
-  if (gate) {
-    gate.classList.remove('board-gate-flash');
-    gate.style.animationDelay = `${Math.round(duration * through) - 150}ms`;
-    gate.classList.add('board-gate-flash');
+  // The ripple and the gate's flash are animations, not classes: each press plays them again, and
+  // nothing is held once they end (a held ripple would hide the selection ring and the medal).
+  node.animate([{ boxShadow: `0 0 0 0 ${token(node, up ? '--accent' : '--negative')}` }, { boxShadow: '0 0 0 14px transparent' }],
+    { duration: 1200, delay: duration, easing: 'ease-out' });
+  if (gate && typeof gate.animate === 'function') {
+    const rest = { color: token(gate, '--real-line'), transform: 'translateX(-50%) scale(1)' };
+    gate.animate([rest, { offset: 0.25, color: token(gate, '--accent'), transform: 'translateX(-50%) scale(1.7)' }, rest],
+      { duration: 600, delay: Math.max(0, Math.round(duration * through) - 150), easing: 'ease-out' });
   }
 }
 // Every dot glides from where it stood to where the new roster puts it; a dot that changed level
@@ -1653,10 +1698,17 @@ function glide(container, before, seen, model) {
     }
   } catch { /* no layout here */ }
 }
+// Only a level crossing replays, and only while its agent still sits on the level it reached: a
+// restake, a birth or an exit has no floor to come from, and must never be drawn as a drop.
+export function replayable(move, agent) {
+  if (!move || !agent || agent.retired || (move.kind !== 'up' && move.kind !== 'down')) return false;
+  const to = levelOf(move.toBand);
+  return to !== null && to === agent.level && levelOf(move.fromBand) !== to;
+}
 // Replays one crossing: the dot appears in the top row of the floor it left and climbs (or drops)
 // through the gate to where it sits now. For the first view of the ladder and a pressed move.
 function replayMove(container, move) {
-  if (reducedMotion() || !move || !deskId(move.agent)) return false;
+  if (reducedMotion() || !move || !deskId(move.agent) || (move.kind !== 'up' && move.kind !== 'down')) return false;
   try {
     const node = container.querySelector(`[data-agent="${move.agent}"]`);
     const to = levelOf(move.toBand);
@@ -1695,7 +1747,7 @@ function boardPanel(checkpoint, state) {
     const entry = dots.get(agent.id);
     for (const item of dots.values()) item.button.setAttribute('aria-pressed', item === entry ? 'true' : 'false');
     if (entry) rove(entry.group, entry.button);
-    detail.replaceChildren(...(note ? [element('span', note, 'board-detail-line')] : recordNodes(agent)));
+    detail.replaceChildren(...(note ? [phrases(note, 'board-detail-line')] : recordNodes(agent)));
   }
   function clear() {
     state.ladderSelected = null;
@@ -1749,8 +1801,8 @@ function boardPanel(checkpoint, state) {
     button.setAttribute('data-agent', agent.id);
     button.setAttribute('aria-pressed', 'false');
     const label = `${agent.name} · ${agentWords(agent)}${recent ? ` · recently ${MOVE_LABEL[recent.kind]}` : ''}`;
+    // No title: hover already fills the readout, and a tooltip would cover the neighbouring dots.
     button.setAttribute('aria-label', label);
-    button.setAttribute('title', label);
     const size = coin ? coinSize(agent.stake) : kind === 'retired' ? 8 : 12;
     button.setAttribute('data-size', String(size));
     const style = agent.progress === null ? {} : { '--p': String(agent.progress) };
@@ -1768,7 +1820,11 @@ function boardPanel(checkpoint, state) {
       button.append(mark);
     }
     button.addEventListener('click', () => choose(agent));
-    button.addEventListener('focus', () => { if (state.ladderSelected !== agent.id || !state.ladderNote) choose(agent); });
+    // A redraw puts focus back where it was; that is not a visitor choosing, so it selects nothing.
+    button.addEventListener('focus', () => {
+      if (state.ladderRefocusing) { rove(group, button); return; }
+      if (state.ladderSelected !== agent.id || !state.ladderNote) choose(agent);
+    });
     button.addEventListener('mouseenter', () => { if (finePointer()) choose(agent); });
     dots.set(agent.id, { agent, button, group });
     return button;
@@ -1830,7 +1886,8 @@ function boardPanel(checkpoint, state) {
     const lane = element('div', null, `board-lane board-level-${row.level}${row.real ? ' board-lane-real' : ''}`);
     // The gate on a floor's top edge is the way up into the next level.
     if (row.level < 3) {
-      const gate = element('span', '↑', 'board-gate');
+      // A notch in the floor line, not a circle: it marks the way up and is not a control.
+      const gate = element('span', '▲', 'board-gate');
       gate.setAttribute('aria-hidden', 'true');
       gate.setAttribute('data-gate', String(row.level + 1));
       lane.append(gate);
@@ -1873,7 +1930,7 @@ function boardPanel(checkpoint, state) {
         // Pressing a move shows its agent, and a crossing that still stands plays again.
         change.addEventListener('click', () => {
           choose(target.agent);
-          if (levelOf(move.toBand) !== null && levelOf(move.toBand) === target.agent.level && !target.agent.retired) state.replayMove?.(move);
+          if (replayable(move, target.agent)) state.replayMove?.(move);
         });
       }
       const item = element('li');
@@ -1965,11 +2022,12 @@ async function startFloor(root) {
     if (state.checkpoint && state.ladderModel) {
       state.ladderSeen = new Map(state.ladderModel.agents.map(agent => [agent.id, { band: agent.band, level: agent.level, retired: agent.retired, progress: agent.progress }]));
     }
-    // A polling redraw must not strand a keyboard user on the document body.
+    // A polling redraw must not strand a keyboard user on the document body, nor change what they chose.
+    state.ladderRefocusing = true;
     try {
       if (deskId(focused)) box.improvement?.querySelector(`[data-agent="${focused}"]`)?.focus({ preventScroll: true });
       else if (pressed) [...(box.improvement?.querySelectorAll?.('[data-move]') || [])].find(node => node.getAttribute('data-move') === pressed)?.focus({ preventScroll: true });
-    } catch { /* no focus here */ }
+    } catch { /* no focus here */ } finally { state.ladderRefocusing = false; }
     introduce();
   };
   state.replayMove = move => replayMove(box.improvement, move);

@@ -19,7 +19,7 @@ import {
   marketTitle, seriesTitle, quantityText, centsText, heldText, thesisParts, selfImprovingParts, mastheadNumbers,
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
   closedRecord, ladderMove, boardSnapshot, LEVELS, NEXT_LEVEL, levelOf, levelProgress, coinSize, reasonWords, moveWords, nextIndex,
-  agentWords, progressWords, houseWords,
+  agentWords, progressWords, houseWords, settleStakes, replayable,
 } from '../capital/capital.js';
 import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
@@ -262,6 +262,42 @@ test('the board reads the allocator\'s own summary, trail and throttle, and tell
   assert.equal(model.latestClimb.id, 'le-1', 'the first view replays the newest climb that still stands');
 });
 
+test('a restake that changes nothing is no move, one the checkpoint does not bear out keeps no amount, and neither replays', () => {
+  const now = Date.parse('2026-09-23T15:18:00.000Z');
+  const real = (id, stake, E, realTrades) => desk(id, { gate: gateOf(2), band: 'bunt', mode: 'live', venues: ['kalshi'], stake_usd: stake,
+    evidence: evidenceOf('1.030000', { E, W_real: '1.100000', real_trades: realTrades }) });
+  const board = checkpoint({ published_at: '2026-09-23T15:17:00.000Z', desks: [real('mullins-2', '5.11', '1.179821', 10), real('mullins-6', '10.00', '1.056406', 2)],
+    board: { enabled: true, bands: {}, moves: [], throttle: { active: false, floor_pnl_usd: '-2.10', envelope_usd: '1017.75' } } });
+  assert.equal(validCheckpoint(board), true);
+  // The live tape of Sept 23: Mullins II restaked to $10 twice, while its coin is published at $5.11.
+  const tape = [
+    ladderEvent("mullins-2's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.1798).", { id: 'r-3', seq: 303, at: '2026-09-23T14:35:55.153Z' }),
+    ladderEvent("mullins-6's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.0564).", { id: 'r-2', seq: 302, at: '2026-09-23T14:35:55.155Z' }),
+    ladderEvent("mullins-2's real stake is now $10.00 (Bunt): bunt stake follows the evidence (E 1.1580).", { id: 'r-1', seq: 301, at: '2026-09-23T14:14:20.638Z' }),
+  ];
+  const model = boardSnapshot(board, tape, now);
+  assert.deepEqual(model.moves.map(move => [move.id, moveWords(move)]), [['r-2', 'Mullins VI · stake $10'], ['r-1', 'Mullins II · restaked']],
+    'the second $10 changed nothing; the first says no amount the coin contradicts');
+  const [mullins2, mullins6] = ['mullins-2', 'mullins-6'].map(id => model.agents.find(agent => agent.id === id));
+  assert.deepEqual([mullins2.move.id, mullins2.move.stake, mullins2.recent], ['r-1', null, null], 'the readout tells the same restake, past the hour');
+  assert.equal(mullins6.recent.id, 'r-2');
+  // Pressing a restake selects its coin and plays nothing: only a crossing to where the agent sits replays.
+  for (const agent of [mullins2, mullins6]) assert.equal(replayable(agent.move, agent), false);
+  assert.equal(replayable({ kind: 'up', fromBand: 'paper', toBand: 'bunt' }, mullins6), true);
+  assert.equal(replayable({ kind: 'up', fromBand: null, toBand: 'bunt' }, mullins6), true, 'a climb from an unknown level still came from below');
+  assert.equal(replayable({ kind: 'down', fromBand: 'bunt', toBand: 'paper' }, mullins6), false, 'not where the agent sits now');
+  assert.equal(replayable({ kind: 'up', fromBand: 'swing', toBand: 'star' }, { level: 3, retired: false }), false, 'no level crossed');
+  for (const kind of ['size', 'born', 'out']) assert.equal(replayable({ kind, fromBand: null, toBand: 'bunt' }, mullins6), false, kind);
+  // A crossing sets the stake a restake is measured against; an exit forgets it.
+  const at = minutes => new Date(now - minutes * 60000).toISOString();
+  const kept = settleStakes([
+    { id: 'c', agent: 'a', kind: 'size', toBand: 'bunt', stake: '10.00', at: at(1) },
+    { id: 'b', agent: 'a', kind: 'up', fromBand: 'paper', toBand: 'bunt', stake: '10.00', at: at(2) },
+    { id: 'z', agent: 'b', kind: 'size', toBand: 'bunt', stake: '12.00', at: at(3) },
+  ], new Map([['b', 12]]));
+  assert.deepEqual(kept.map(move => [move.id, move.stake]), [['b', '10.00'], ['z', '12.00']]);
+});
+
 // The House's band words, and the other words the page never shows on the ladder or in the feed.
 const HOUSE_JARGON = /\b(?:replay|bunt|swing|star|paper|rungs?)\b|\bE (?=\d)/i;
 test('the live ladder redraws after socket moves, keeps selection, draws every agent as a dot, and never says a band', async () => {
@@ -367,7 +403,7 @@ test('the ladder\'s edge states: a board on or off, a throttle, a star, accounti
     desk('hilibrand-3', { gate: gateOf(3), band: 'star', mode: 'live', venues: ['kalshi'], stake_usd: '240.00', pnl_usd: '-2.10', evidence: evidenceOf('1.3', { E: '1.700000', W_real: '1.2', real_trades: 20 }) }),
   ];
   await draw(checkpoint({ published_at: at, desks: roster, board: summary }), on => {
-  assert.match(words(on), /^4 competing · 1 on real money Updates live Up Down No trades yet Toward next level Top 3 Throttle on: every real stake is halved while the floor is −\$5\.84 on \$1,018\./);
+  assert.match(words(on), /^4 competing · 1 on real money Updates live Up Down Flat No trades yet Toward next level Top 3 Throttle on: every real stake is halved while the floor is −\$5\.84 on \$1,018\./);
   assert.equal(words(on.withClass('board-detail')[0]), 'Tap any dot. Closest to Level 2: Mullins XIII.');
   const dot = id => on.descendants().find(node => node.getAttribute('data-agent') === id);
   assert.match(dot('mullins-13').className, /\bboard-arc\b/);
@@ -392,7 +428,7 @@ test('the ladder\'s edge states: a board on or off, a throttle, a star, accounti
   });
   // Nobody yet: three empty floors, and the retired still shown.
   await draw(checkpoint({ published_at: at, desks: [desk('haghani-2', { gate: gateOf(1), status: 'retired', pnl_usd: '-3.00' })] }), empty => {
-    assert.match(words(empty), /^0 competing · 0 on real money Updates live Level 3 Increased capital 0 No one yet ↑ Level 2 Live trading 0 No one yet ↑ Level 1 Practice 0 No one yet Retired 1 Haghani II No agent is competing yet\.$/);
+    assert.match(words(empty), /^0 competing · 0 on real money Updates live Level 3 Increased capital 0 No one yet ▲ Level 2 Live trading 0 No one yet ▲ Level 1 Practice 0 No one yet Retired 1 Haghani II No agent is competing yet\.$/);
     assert.match(empty.withClass('board-dot-retired')[0].className, /\bnegative\b/, 'a ring tinted by how the agent ended');
   });
   // Stale: the last known positions, said plainly.
