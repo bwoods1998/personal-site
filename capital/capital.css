@@ -47,6 +47,7 @@ section { min-width: 0; }
 .chip-on { color: var(--background); background: var(--accent); border-color: var(--accent); }
 .chip-on:hover { color: var(--background); }
 .more, .empty-state + .chip { margin-top: 10px; }
+.practice-switch:empty { display: none; }
 
 .pulse { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
 @keyframes pulse {

@@ -1075,12 +1075,15 @@ function agentCell(name, live) {
   if (live === false) cell.append(tagNode('practice', 'practice'));
   return cell;
 }
+// Practice rows are listed only while the Positions switch is on (the owner, Sept 23, 2026: the
+// agents now explore on the practice books at scale, and real money is the story).
 function positionsPanel(checkpoint, state) {
   const book = openPositionRows(checkpoint);
-  const { rows } = book;
+  const practice = Boolean(state?.practice);
+  const rows = practice ? book.rows : book.rows.filter(row => row.live);
   const nodes = [];
-  if (!book.real) nodes.push(element('p', flatLine(checkpoint, book.practice), 'empty-state'));
-  const counts = positionCounts(book);
+  if (!book.real) nodes.push(element('p', flatLine(checkpoint, practice ? book.practice : 0), 'empty-state'));
+  const counts = practice ? positionCounts(book) : '';
   if (counts) nodes.push(element('p', counts, 'record-line'));
   if (rows.length) {
     const table = element('table', null, 'rows rows-book');
@@ -1098,19 +1101,15 @@ function positionsPanel(checkpoint, state) {
   }
   return nodes;
 }
-// Real-money trades. Practice trades are offered, behind one quiet button, only while they are
-// all there is to show.
+// Real-money trades, and the practice ones too while the Positions switch is on.
 function closedPanel(state) {
   const rows = closedRows(state.outcomes, state.checkpoint, { limit: MAX_EVENT_LIMIT });
   const real = rows.filter(row => row.live);
-  const shown = real.length ? real : state.practice ? rows : [];
+  const shown = state.practice ? rows : real;
   const nodes = [];
   const record = closedRecord(rows);
   if (record) nodes.push(element('p', record, 'record-line'));
-  if (!real.length) {
-    nodes.push(element('p', rows.length ? 'No real-money trade has closed yet.' : 'No trade has closed yet.', 'empty-state'));
-    if (rows.length) nodes.push(practiceToggle(state));
-  }
+  if (!real.length) nodes.push(element('p', rows.length ? 'No real-money trade has closed yet.' : 'No trade has closed yet.', 'empty-state'));
   if (!shown.length) return nodes;
   const table = element('table', null, 'rows rows-trades');
   table.append(headRow([['Agent', 'col-agent'], ['Market', 'col-market'], ['Result', 'col-result'], ['P&L', 'col-num'], ['Held', 'col-held'], ['Why', 'col-why']]));
@@ -1134,12 +1133,21 @@ function closedPanel(state) {
   }
   return nodes;
 }
-function practiceToggle(state) {
+// One switch over both tables, open and closed, off on every visit: practice positions and trades
+// are there to be looked at, not to crowd the real ones. Nothing practice to show, no switch.
+export function practiceCount(checkpoint, outcomes = []) {
+  const open = openPositionRows(checkpoint).practice;
+  const closed = closedRows(outcomes, checkpoint, { limit: MAX_EVENT_LIMIT }).filter(row => !row.live).length;
+  return open + closed;
+}
+function practiceSwitch(state) {
+  if (!state.practice && !practiceCount(state.checkpoint, state.outcomes)) return [];
   const button = element('button', state.practice ? 'hide practice trades' : 'show practice trades', state.practice ? 'chip chip-on' : 'chip');
   button.type = 'button';
   button.setAttribute('aria-pressed', state.practice ? 'true' : 'false');
-  button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawClosed(); });
-  return button;
+  button.setAttribute('aria-controls', 'floor-positions floor-closed');
+  button.addEventListener('click', () => { state.practice = !state.practice; state.more = false; state.drawPositions(); state.drawClosed(); state.focusSwitch(); });
+  return [button];
 }
 export const GAME_RUNGS = [
   { rung: 3, name: 'Scaled', note: 'More real capital' },
@@ -1298,7 +1306,7 @@ async function startFloor(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
     numbers: find('floor-numbers'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
-    portfolio: find('floor-portfolio'), positions: find('floor-positions'), closed: find('floor-closed'),
+    portfolio: find('floor-portfolio'), practiceSwitch: find('floor-practice'), positions: find('floor-positions'), closed: find('floor-closed'),
     improvement: find('floor-improvement'),
   };
   const state = {
@@ -1324,7 +1332,18 @@ async function startFloor(root) {
   };
   state.drawFeed = () => { if (box.feed) { drawFeedInto(box.feed, state); ready(box.feed); } };
   const drawLive = () => { if (box.now) { drawHeroInto(box.now, state); ready(box.now); } state.drawFeed(); };
-  state.drawClosed = () => { if (state.checkpoint) drawn(box.closed, closedPanel(state)); };
+  // The switch counts what both tables hold, so it is drawn again with either of them.
+  const drawSwitch = () => {
+    const node = box.practiceSwitch;
+    if (!node || !state.checkpoint) return;
+    const focused = Boolean(document.activeElement && node.contains?.(document.activeElement));
+    drawn(node, practiceSwitch(state));
+    if (focused) state.focusSwitch();
+  };
+  // A keyboard user who pressed the switch keeps their place on it after both tables redraw.
+  state.focusSwitch = () => { try { box.practiceSwitch?.querySelector?.('button')?.focus?.({ preventScroll: true }); } catch { /* no focus here */ } };
+  state.drawPositions = () => { if (state.checkpoint) { drawn(box.positions, positionsPanel(state.checkpoint, state)); drawSwitch(); } };
+  state.drawClosed = () => { if (state.checkpoint) { drawn(box.closed, closedPanel(state)); drawSwitch(); } };
   const drawPortfolio = () => {
     if (!state.checkpoint) return;
     drawn(box.portfolio, portfolioPanel(state.checkpoint, state.marks));
@@ -1352,7 +1371,7 @@ async function startFloor(root) {
       state.desks = new Map(desks.map(desk => [show(desk.id), desk]));
       state.liveIds = new Set(desks.filter(isLive).map(desk => show(desk.id)));
       drawPortfolio();
-      drawn(box.positions, positionsPanel(state.checkpoint, state));
+      state.drawPositions();
       drawLadder();
       state.drawClosed();
       if (state.primed) drawLive();

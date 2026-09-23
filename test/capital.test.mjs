@@ -505,9 +505,11 @@ test('the page carries five sections in order, two numbers, the disclosure, no l
   assert.match(floorHtml, /<h2 id="improvement-title">The ladder<\/h2><span>Performance earns the next rung\.<\/span>/);
   assert.deepEqual([...floorHtml.matchAll(/<h3 [^>]*>([^<]+)<\/h3>/g)].map(match => match[1]), ['Open', 'Closed']);
   const order = FLOOR_IDS.map(id => floorHtml.indexOf(`id="${id}"`));
-  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, the live status and stream, the chart, open then closed positions, improvement');
+  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, the live status and stream, the chart, the practice switch, open then closed positions, improvement');
+  // One switch in the Positions heading governs both tables.
+  assert.match(floorHtml, /<div class="section-heading"><h2 id="positions-title">Positions<\/h2><div id="floor-practice" class="practice-switch"><\/div><\/div>/);
   for (const [id, section] of [['floor-status', 'live'], ['floor-numbers', 'masthead'], ['floor-now', 'live'], ['floor-feed', 'live'], ['floor-portfolio', 'performance'],
-    ['floor-positions', 'positions'], ['floor-closed', 'positions'], ['floor-improvement', 'improvement']]) {
+    ['floor-practice', 'positions'], ['floor-positions', 'positions'], ['floor-closed', 'positions'], ['floor-improvement', 'improvement']]) {
     const start = floorHtml.indexOf(`<section id="${section}"`);
     const inside = floorHtml.slice(start, floorHtml.indexOf('</section>', start));
     assert.ok(inside.includes(`id="${id}"`), `${id} sits in ${section}`);
@@ -1284,6 +1286,15 @@ test('positions list open (real money, then practice, tagged) and closed real-mo
     const feed = await startCapital(root);
     feed.stop();
     const positions = root.querySelector('#floor-positions');
+    // Off on arrival: real money only, and nothing practice to count.
+    assert.deepEqual(positions.find('tbody')[0].find('tr').map(row => row.find('td').slice(0, 5).map(words)), [
+      ['Hilibrand', 'BTC', 'long', '$772.10', '+$4.10'],
+      ['Haghani', 'Austin high 100–101°F · Sep 16', 'NO', '$10.01', '+$0.12'],
+    ]);
+    assert.equal(positions.withClass('record-line').length, 0);
+    const toggle = () => root.querySelector('#floor-practice').find('button')[0];
+    assert.equal(toggle().textContent, 'show practice trades');
+    toggle().click();
     const rows = positions.find('tbody')[0].find('tr');
     assert.equal(rows.length, 4, 'real money first, then the practice books, dust left out');
     assert.deepEqual(rows.map(row => row.find('td').slice(0, 5).map(words)), [
@@ -1307,6 +1318,10 @@ test('positions list open (real money, then practice, tagged) and closed real-mo
     assert.match(words(rows[2].withClass('col-why')[0]), /^Shadow copy\.$/, 'a practice position says why as well');
 
     const closed = root.querySelector('#floor-closed');
+    // The same switch shows the practice trades that closed, the newest first among the real ones.
+    assert.match(words(closed.find('tbody')[0].find('tr')[0]), /^Haghani II practice NYC high 81–82°F · Sep 15 won \+\$5\.00/);
+    toggle().click();
+    assert.equal(toggle().getAttribute('aria-pressed'), 'false');
     assert.match(closed.withClass('record-line')[0].textContent, /9 real-money trades · 4 won · −\$6\.00/);
     assert.equal(closed.find('tbody')[0].find('tr').length, 8, 'eight rows by default');
     assert.doesNotMatch(closed.textContent, /Haghani II|practice/, 'real money only: no practice row and no toggle');
@@ -1347,7 +1362,7 @@ test('a floor that has published nothing says so in every section and keeps its 
   });
 });
 
-test('when practice trades are all there is, one quiet button offers them', async () => {
+test('when practice trades are all there is, the Positions switch shows them in both tables, off until asked', async () => {
   const root = stubPage('floor', FLOOR_IDS);
   const board = checkpoint({ floor: accountFloor(), desks: [desk('haghani-2', { name: 'Haghani II', family: 'weather', generation: 2, parent_id: 'haghani', mode: 'shadow', venues: ['kalshi'], orders: 0, gate: null,
     positions: [position({ thesis: 'Practice book. Watching the trend.' }), position({ market_value: '0.20' })] })] });
@@ -1360,22 +1375,33 @@ test('when practice trades are all there is, one quiet button offers them', asyn
     const feed = await startCapital(root);
     feed.stop();
     const closed = () => root.querySelector('#floor-closed');
+    const open = () => root.querySelector('#floor-positions');
+    const toggle = () => root.querySelector('#floor-practice').find('button');
+    // Off on arrival: neither table lists a practice row, and neither table carries a button.
     assert.match(closed().textContent, /No real-money trade has closed yet\./);
     assert.equal(closed().find('table').length, 0);
-    const buttons = closed().find('button');
-    assert.equal(buttons.length, 1, 'a single toggle');
-    assert.equal(buttons[0].textContent, 'show practice trades');
-    buttons[0].click();
+    assert.equal(open().find('table').length, 0);
+    assert.equal(words(open().withClass('empty-state')[0]), 'No real-money position open. $980 in cash across Kalshi and Coinbase.');
+    assert.equal(closed().find('button').length + open().find('button').length, 0, 'the switch lives in the heading');
+    assert.equal(toggle().length, 1, 'a single switch');
+    assert.equal(toggle()[0].textContent, 'show practice trades');
+    assert.equal(toggle()[0].getAttribute('aria-pressed'), 'false');
+    assert.equal(toggle()[0].getAttribute('aria-controls'), 'floor-positions floor-closed');
+    toggle()[0].click();
     assert.match(words(closed().find('tbody')[0].find('tr')[0]), /^Haghani II practice NYC high 81–82°F · Sep 15 won \+\$5\.00 20h/);
-    assert.equal(closed().find('button')[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(toggle()[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(toggle()[0].textContent, 'hide practice trades');
     assert.match(words(root.querySelector('#floor-improvement')), /1 competing.*Rank unreported.*Haghani II/);
-    // An all-practice book: the flat line says what the real accounts hold and announces the
+    // An all-practice book, shown: the flat line says what the real accounts hold and announces the
     // practice rows under it; each row is tagged, and there is nothing mixed to count.
-    const open = root.querySelector('#floor-positions');
-    assert.equal(words(open.withClass('empty-state')[0]), 'No real-money position open. $980 in cash across Kalshi and Coinbase. 1 practice position below.');
-    const held = open.find('tbody')[0].find('tr');
+    assert.equal(words(open().withClass('empty-state')[0]), 'No real-money position open. $980 in cash across Kalshi and Coinbase. 1 practice position below.');
+    const held = open().find('tbody')[0].find('tr');
     assert.deepEqual(held.map(row => [row.className, ...row.find('td').slice(0, 5).map(words)]), [['row-practice', 'Haghani II practice', 'BTC', 'long', '$772.10', '+$4.10']]);
-    assert.equal(open.withClass('record-line').length, 0);
+    assert.equal(open().withClass('record-line').length, 0);
+    // And off again, from either table's point of view.
+    toggle()[0].click();
+    assert.equal(open().find('table').length + closed().find('table').length, 0);
+    assert.equal(toggle()[0].getAttribute('aria-pressed'), 'false');
   });
 });
 

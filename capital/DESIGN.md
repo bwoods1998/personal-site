@@ -13,8 +13,9 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
    genome detail, no "how it works". If it is not one of the five sections below, it is not here.
 3. **No hyperlinks.** The page contains no `<a>` element, static or drawn: not to the home page,
    the repository or anywhere else. Agent names are plain text. A test enforces it.
-4. **Real money is the story.** Positions list real money only. Practice trades are offered behind
-   one quiet button, and only while no real-money trade has closed.
+4. **Real money is the story.** Both position tables, open and closed, list real money only. One
+   quiet switch in the Positions heading shows the practice positions and trades in both, tagged,
+   and it is off on every visit (the owner, Sept 23, 2026, as the agents' practice books filled).
 5. **Honest when losing.** Losses are red and first-class. Total profit is a dash until both
    account balances and the funding history are verified; the run's own P&L claim never stands in.
 6. **Words people use.** Tickers become markets ("Austin high 100–101°F · Sep 16"); tool calls
