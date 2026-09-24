@@ -82,6 +82,13 @@ test('the ladder parses only real league lifecycle templates, never strategy cla
     ['down', 'swing', 'paper', null, 'it lost 35% of its real stake.']);
   assert.deepEqual(pick(ladderMove(ladderEvent("mullins-7's real stake is now $14.20 (Bunt): E 1.42."))), ['size', null, 'bunt', '14.20', 'E 1.42.']);
   assert.deepEqual(pick(ladderMove(ladderEvent('haghani climbs from rung 1 to rung 2: evidence.'))), ['up', 'paper', 'bunt', null, 'evidence.']);
+  // A probe (Sept 24, 2026): the first real stake of an agent whose family has not proven its edge.
+  assert.deepEqual(pick(ladderMove(ladderEvent('huang-9 climbs from Practice to Probe with a $10.00 real stake: E 1.02 on 5 settlements.'))),
+    ['up', 'paper', 'probe', '10.00', 'E 1.02 on 5 settlements.']);
+  assert.deepEqual(pick(ladderMove(ladderEvent('huang-9 climbs from Probe to Bunt with a $30.00 real stake: its family proved its edge.'))),
+    ['up', 'probe', 'bunt', '30.00', 'its family proved its edge.']);
+  assert.deepEqual(pick(ladderMove(ladderEvent("huang-9's real stake is now $10.40 (Probe): E 1.04."))), ['size', null, 'probe', '10.40', 'E 1.04.']);
+  assert.equal(ladderMove(ladderEvent('huang-9 climbs from Bunt to Probe: malformed.')), null);
 });
 
 const gateOf = (rung, extra = {}) => ({ name: `rung ${rung}`, passed: rung >= 2, evidence: { rung, ...extra } });
@@ -132,9 +139,9 @@ test('the ladder keeps every living agent on its level, by the allocator or by i
   assert.equal(boardSnapshot(board, [], now + 7200000).stale, true);
   assert.deepEqual(boardSnapshot(null).levels.map(row => row.agents.length), [0, 0, 0]);
   assert.deepEqual(LEVELS.map(row => [row.level, row.word, row.bands, row.real]), [
-    [3, 'Increased capital', ['star', 'swing'], true], [2, 'Live trading', ['bunt'], true], [1, 'Practice', ['paper', 'replay'], false],
+    [3, 'Increased capital', ['star', 'swing'], true], [2, 'Live trading', ['bunt', 'probe'], true], [1, 'Practice', ['paper', 'replay'], false],
   ]);
-  assert.deepEqual(['replay', 'paper', 'bunt', 'swing', 'star', 'dead', null].map(levelOf), [1, 1, 2, 3, 3, null, null]);
+  assert.deepEqual(['replay', 'paper', 'probe', 'bunt', 'swing', 'star', 'dead', null].map(levelOf), [1, 1, 2, 2, 3, 3, null, null]);
   assert.deepEqual([10, 25, 56.11, 27.48, 11.52, 87, 1000, 1, 0, null, NaN].map(coinSize), [19, 30, 45, 31, 20, 56, 56, 18, 18, 18, 18]);
 });
 
@@ -143,6 +150,7 @@ test('progress toward the next level follows the allocator\'s main rule, and onl
   assert.deepEqual(NEXT_LEVEL, {
     paper: { level: 2, evidence: 1.01, trades: 5, count: 'trades' },
     bunt: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
+    probe: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
   });
   const agent = (band, evidence, extra = {}) => ({ band, evidence: { W_paper: '1.000000', W_real: '1.000000', trades: 0, real_trades: 0, ...evidence }, retired: false, accountingIssue: false, ...extra });
   const progress = (band, evidence, extra, enabled = true) => levelProgress(agent(band, evidence, extra), enabled);
@@ -464,9 +472,12 @@ test('the checkpoint carries the capital board: bands, stakes, evidence and move
   assert.equal(validCheckpoint(checkpoint()), true, 'a checkpoint without the board still validates');
   assert.equal(validDesk(row(), at), true);
   assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary() })), true);
+  assert.equal(validCheckpoint(checkpoint({ desks: [row({ band: 'probe' })], board: summary({ bands: { kalshi: { probe: { count: 1, capital_usd: '10.00' } } },
+    moves: [{ ...summary().moves[0], to_band: 'probe' }] }) })), true, 'a probe on the board and its move');
   for (const [why, value] of [['no evidence yet', row({ evidence: null, last_move: null, stake_usd: null })], ['no real trades field', row({ evidence: evidenceOf('0.9', { real_trades: undefined }) })],
     ['a first seat has no band to come from', row({ last_move: { at: '2026-09-15T14:00:00.000Z', from_band: null, to_band: 'replay', reason: '' } })],
-    ['every band', row({ band: 'star' })], ['a big multiple', row({ evidence: evidenceOf('12.5', { E: '40.123456' }) })]]) {
+    ['every band', row({ band: 'star' })], ['a big multiple', row({ evidence: evidenceOf('12.5', { E: '40.123456' }) })],
+    ['a probe (Sept 24, 2026)', row({ band: 'probe', last_move: { at: '2026-09-15T14:00:00.000Z', from_band: 'paper', to_band: 'probe', reason: 'E crossed 1.01' } })]]) {
     const clean = JSON.parse(JSON.stringify(value));
     assert.equal(validDesk(clean, at), true, why);
   }

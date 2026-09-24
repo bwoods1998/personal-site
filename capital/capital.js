@@ -621,6 +621,7 @@ const HOUSE_WORDS = [
   [/\breplay-passing\b/gi, () => 'history-tested'],
   [/\breplay\b/gi, () => 'history test'],
   [/\bbunt\b/gi, () => 'Level 2'],
+  [/\bprobe\b/gi, () => 'Level 2'],
   [/\bswing\b/gi, () => 'Level 3'],
   [/\bstar\b/gi, () => 'top 3'],
   [/\bpaper\b/gi, () => 'practice'],
@@ -1206,15 +1207,16 @@ function practiceSwitch(state) {
 // wear a medal. The House calls the practice band "paper", and the page never does.
 export const LEVELS = [
   { level: 3, word: 'Increased capital', bands: ['star', 'swing'], real: true },
-  { level: 2, word: 'Live trading', bands: ['bunt'], real: true },
+  { level: 2, word: 'Live trading', bands: ['bunt', 'probe'], real: true },
   { level: 1, word: 'Practice', bands: ['paper', 'replay'], real: false },
 ];
-const BAND_LEVEL = { replay: 1, paper: 1, bunt: 2, swing: 3, star: 3 };
+const BAND_LEVEL = { replay: 1, paper: 1, probe: 2, bunt: 2, swing: 3, star: 3 };
 export const levelOf = band => BAND_LEVEL[band] ?? null;
-const BAND_RANK = { replay: 0, paper: 1, bunt: 2, swing: 3, star: 4 };
+// A probe and a bunt share Level 2; a probe's family proving its edge moves it up to a bunt's stake.
+const BAND_RANK = { replay: 0, paper: 1, probe: 2, bunt: 2.5, swing: 3, star: 4 };
 // The House's own words for its bands, as its league lines print them. Only the tape parser reads
 // these; the page's words are the levels above, so a band move still parses whatever the page says.
-const HOUSE_BAND_WORDS = { Replay: 'replay', Practice: 'paper', Bunt: 'bunt', Swing: 'swing', Star: 'star' };
+const HOUSE_BAND_WORDS = { Replay: 'replay', Practice: 'paper', Probe: 'probe', Bunt: 'bunt', Swing: 'swing', Star: 'star' };
 // Before the allocator a desk published only its rung: 0 replay, 1 practice, 2 and 3 real money.
 const RUNG_BANDS = ['replay', 'paper', 'bunt', 'swing'];
 export const bandLabel = band => (levelOf(band) ? `Level ${levelOf(band)}` : 'Level unknown');
@@ -1235,6 +1237,7 @@ const bandUp = (from, to) => (bandName(from) ? BAND_RANK[to] > BAND_RANK[from] :
 export const NEXT_LEVEL = {
   paper: { level: 2, evidence: 1.01, trades: 5, count: 'trades' },
   bunt: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
+  probe: { level: 3, evidence: 1.5, trades: 8, count: 'real_trades', belowEven: 0.95 },
 };
 const clamp01 = value => Math.min(1, Math.max(0, value));
 // How far an agent has come toward the next level, 0 to 1, or null when the page cannot honestly say.
@@ -1258,7 +1261,7 @@ export const coinSize = stake => (Number.isFinite(stake) && stake > 0 ? Math.min
 const BAND_WORD = `(${Object.keys(HOUSE_BAND_WORDS).join('|')})`;
 const AMOUNT = '(\\d[\\d,]*(?:\\.\\d+)?)';
 const BAND_MOVED = new RegExp(`^([a-z0-9-]{1,40}) (climbs|drops) from ${BAND_WORD} to ${BAND_WORD}(?: with a \\$${AMOUNT} real stake)?: (.+)$`, 's');
-const RESIZED = new RegExp(`^([a-z0-9-]{1,40})'s real stake is now \\$${AMOUNT}(?: \\((Bunt|Swing|Star)\\))?: (.+)$`, 's');
+const RESIZED = new RegExp(`^([a-z0-9-]{1,40})'s real stake is now \\$${AMOUNT}(?: \\((Probe|Bunt|Swing|Star)\\))?: (.+)$`, 's');
 export function ladderMove(event) {
   if (event?.kind !== 'lab.progress' || event.payload?.component !== 'league' || !Number.isFinite(Date.parse(event.at))) return null;
   const text = event.payload.message;
