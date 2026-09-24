@@ -11,7 +11,7 @@ import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
-  EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
+  validFamilyRow, validFamilies, validLabReading, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
 } from '../capital/schema.js';
 import {
   orderDesks, partnerOf, partnerName, truncate, money, percent, signedMoney, streamUrl, startCapital, PARTNERS, PARTNER_ORDER,
@@ -500,6 +500,77 @@ test('the checkpoint carries the capital board: bands, stakes, evidence and move
     ['an enabled string', summary({ enabled: 'yes' })], ['no moves', (({ moves, ...rest }) => rest)(summary())],
   ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: value })), false, why);
   assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ moves: Array.from({ length: 50 }, (_, n) => ({ ...move, id: `le-${n}` })) }) })), true, 'fifty moves');
+});
+
+// The mechanism ledger (Sept 24, 2026, the close-the-gaps run): what the House publishes about families.
+const familyRow = (overrides = {}) => ({ family: 'sports-central-run-under', venue: 'kalshi', state: 'proven', n: 11, real_n: 2, bound: '0.142300',
+  stake_usd: '30.00', members_real: 1, capacity_usd_per_day: '56.65', ...overrides });
+const familiesBlock = (overrides = {}) => ({ unproven: 44, rows: [
+  familyRow({ family: 'weather-favorites', state: 'swing', n: 40, real_n: 32, bound: '0.031000', stake_usd: '120.00', members_real: 2, capacity_usd_per_day: '14.20' }),
+  familyRow(),
+], ...overrides });
+const labReading = (overrides = {}) => ({ at: '2026-09-15T14:00:00.000Z', tested_last_hour: 84, graduates_waiting: 3, ...overrides });
+test('the checkpoint carries the mechanism ledger: a desk\'s family, the proven families and the lab, typed, and old checkpoints still pass', () => {
+  const at = '2026-09-15T14:05:00.000Z';
+  const row = (overrides = {}) => desk('mullins-13', { family: 'weather-favorites', band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000'), last_move: null,
+    family_state: 'unproven', family_n: 16, ...overrides });
+  const summary = (overrides = {}) => ({ enabled: true, bands: {}, moves: [], families: familiesBlock(), lab: labReading(), ...overrides });
+  // Before the House publishes any of it: every earlier checkpoint shape still passes.
+  const { family_state, family_n, ...before } = row();
+  assert.equal(validDesk(before, at), true, 'a desk without its family\'s record');
+  const { families, lab, ...older } = summary();
+  assert.equal(validCheckpoint(checkpoint({ desks: [before], board: older })), true, 'a board without families or the lab');
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary() })), true);
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: { ...older, families } })), true, 'families without the lab');
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: { ...older, lab } })), true, 'the lab without families');
+  for (const [why, value] of [['proven', row({ family_state: 'proven', family_n: 11 })], ['compounding (the House\'s swing)', row({ family_state: 'swing', family_n: 40 })],
+    ['no settlement yet', row({ family_n: 0 })], ['the most settlements', row({ family_n: 1000000 })]]) {
+    assert.equal(validDesk(value, at), true, why);
+  }
+  for (const [why, value] of [
+    ['an unknown state', row({ family_state: 'compounding' })], ['a capitalised state', row({ family_state: 'Proven' })], ['a null state', row({ family_state: null })],
+    ['a string count', row({ family_n: '16' })], ['a float count', row({ family_n: 1.5 })], ['a negative count', row({ family_n: -1 })],
+    ['too many settlements', row({ family_n: 1000001 })], ['a null count', row({ family_n: null })],
+    ['a state without its count', (({ family_n: _, ...rest }) => rest)(row())], ['a count without its state', (({ family_state: _, ...rest }) => rest)(row())],
+    ['the House\'s bound on the desk', row({ family_bound: '0.1' })], ['the House\'s capacity on the desk', row({ capacity: { usd_per_day: 1, binds: false } })],
+  ]) assert.equal(validDesk(value, at), false, why);
+  assert.equal(validFamilyRow(familyRow()), true);
+  assert.equal(validFamilies(familiesBlock()), true);
+  assert.equal(validLabReading(labReading(), at), true);
+  for (const [why, value] of [
+    ['none proven yet', familiesBlock({ rows: [] })], ['nothing followed', { unproven: 0, rows: [] }],
+    ['a negative bound on a proven row', familiesBlock({ rows: [familyRow({ bound: '-0.000100' })] })], ['no stake', familiesBlock({ rows: [familyRow({ stake_usd: null })] })],
+    ['no capacity measured', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: null })] })], ['a negative capacity', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: '-3.10' })] })],
+    ['no agent on real money', familiesBlock({ rows: [familyRow({ members_real: 0, real_n: 0 })] })],
+    ['one family on two venues', familiesBlock({ rows: [familyRow(), familyRow({ venue: 'alpaca' })] })],
+    ['eight rows', familiesBlock({ rows: Array.from({ length: 8 }, (_, n) => familyRow({ family: `family-${n}` })) })],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ families: value }) })), true, why);
+  for (const [why, value] of [
+    ['an unknown key', familiesBlock({ proven: 2 })], ['no rows', { unproven: 44 }], ['no unproven count', { rows: [] }], ['a string count', familiesBlock({ unproven: '44' })],
+    ['too many unproven', familiesBlock({ unproven: 100001 })], ['rows as an object', familiesBlock({ rows: { a: familyRow() } })],
+    ['nine rows', familiesBlock({ rows: Array.from({ length: 9 }, (_, n) => familyRow({ family: `family-${n}` })) })],
+    ['a duplicate row', familiesBlock({ rows: [familyRow(), familyRow()] })],
+    ['an unproven row: the unproven are a count', familiesBlock({ rows: [familyRow({ state: 'unproven' })] })], ['the page\'s word as a state', familiesBlock({ rows: [familyRow({ state: 'compounding' })] })],
+    ['a family that is not an id', familiesBlock({ rows: [familyRow({ family: 'Weather Favorites' })] })], ['a family with a slash', familiesBlock({ rows: [familyRow({ family: 'crypto/usd' })] })],
+    ['a bad venue', familiesBlock({ rows: [familyRow({ venue: 'Kalshi!' })] })],
+    ['a numeric bound', familiesBlock({ rows: [familyRow({ bound: 0.1423 })] })], ['seven places', familiesBlock({ rows: [familyRow({ bound: '0.1423001' })] })],
+    ['a null bound', familiesBlock({ rows: [familyRow({ bound: null })] })], ['a plus sign', familiesBlock({ rows: [familyRow({ bound: '+0.14' })] })],
+    ['a numeric stake', familiesBlock({ rows: [familyRow({ stake_usd: 30 })] })], ['a negative stake', familiesBlock({ rows: [familyRow({ stake_usd: '-30.00' })] })],
+    ['a numeric capacity', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: 56.65 })] })], ['an exponent', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: '1E+2' })] })],
+    ['more real settlements than settlements', familiesBlock({ rows: [familyRow({ n: 2, real_n: 3 })] })], ['a float count', familiesBlock({ rows: [familyRow({ n: 11.5 })] })],
+    ['too many settlements', familiesBlock({ rows: [familyRow({ n: 1000001, real_n: 0 })] })], ['too many members', familiesBlock({ rows: [familyRow({ members_real: 161 })] })],
+    ['an extra key on a row', familiesBlock({ rows: [familyRow({ since: at })] })], ['a missing key on a row', familiesBlock({ rows: [(({ members_real: _, ...rest }) => rest)(familyRow())] })],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ families: value }) })), false, why);
+  for (const [why, value] of [['a minute of clock skew', labReading({ at: '2026-09-15T14:06:00.000Z' })], ['nothing tested', labReading({ tested_last_hour: 0, graduates_waiting: 0 })],
+    ['the most tested', labReading({ tested_last_hour: 1000000 })]]) {
+    assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), true, why);
+  }
+  for (const [why, value] of [
+    ['a reading after the checkpoint', labReading({ at: '2026-09-15T14:06:01.000Z' })], ['Python\'s isoformat', labReading({ at: '2026-09-15T14:00:00+00:00' })],
+    ['a string count', labReading({ tested_last_hour: '84' })], ['a negative count', labReading({ graduates_waiting: -1 })], ['a float count', labReading({ tested_last_hour: 8.4 })],
+    ['too many tested', labReading({ tested_last_hour: 1000001 })], ['too many waiting', labReading({ graduates_waiting: 100001 })],
+    ['an extra key', labReading({ batches_last_hour: 63 })], ['a missing key', (({ graduates_waiting: _, ...rest }) => rest)(labReading())], ['null', null],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), false, why);
 });
 
 test('the roster holds 160 desks and the checkpoint half a megabyte, and no more', async () => {
