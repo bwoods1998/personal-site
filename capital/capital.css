@@ -295,6 +295,19 @@ button.board-change:focus-visible { outline-offset: 2px; }
 .board-change-size .board-change-mark { color: var(--accent); }
 .board-change-time { flex: none; margin-left: auto; white-space: nowrap; }
 
+/* A family (Sept 24, 2026): its strategy tag, then its state in colour, then its evidence. Proven reads
+   green, compounding gold like the real-money floors; unproven stays quiet. */
+.board-detail-family .strategy-tag, .board-family-line .strategy-tag { margin: 0 8px 0 0; }
+.board-state-proven { color: var(--positive); }
+.board-state-swing { color: var(--accent); }
+/* The proven edges and the lab's line, under the moves: quiet, one line each, wrapping only between phrases. */
+.board-families { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
+.board-families-name, .board-lab-name { margin-right: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+.board-family-list { list-style: none; margin: 4px 0; padding: 0; }
+.board-family { padding: 3px 0; }
+.board-family-rest { display: block; padding: 3px 0 0; }
+.board-lab { margin: 10px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--line); color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
+
 /* Motion: only real events move anything, and each once. */
 .board-arriving { --ripple: var(--accent); animation: board-arrival 1.2s ease-out backwards; }
 .board-arriving-down { --ripple: var(--negative); animation: board-arrival 1.2s ease-out backwards; }

@@ -135,6 +135,16 @@ test('published to a floor and read back, the fixtures fill all five sections', 
     assert.equal(ladder.levels.find(row => row.level === 2).capital,
       Object.values(board.board.bands).reduce((sum, bands) => sum + Number(bands.bunt?.capital_usd || 0), 0));
   }
+  // The mechanism ledger (Sept 24, 2026): each desk's family, the proven families and the lab's reading.
+  for (const desk of board.desks.filter(row => Object.hasOwn(row, 'family_state'))) {
+    const agent = ladder.agents.find(row => row.id === desk.id);
+    assert.deepEqual([agent.familyState, agent.familyN], [desk.family_state, desk.family_n], desk.id);
+  }
+  if (board.board?.families) {
+    assert.deepEqual(ladder.families.rows.map(row => [row.family, row.state, row.n]), board.board.families.rows.map(row => [row.family, row.state, row.n]));
+    assert.equal(ladder.families.unproven, board.board.families.unproven);
+  }
+  if (board.board?.lab) assert.deepEqual(ladder.lab, { tested: board.board.lab.tested_last_hour, waiting: board.board.lab.graduates_waiting });
 });
 
 test('the page itself, mounted on that floor, draws every section from the fixtures', { skip }, async () => {
@@ -193,6 +203,8 @@ test('the page itself, mounted on that floor, draws every section from the fixtu
       ['Level 3 Increased capital 0', 'Level 2 Live trading 2 · $N real', 'Level 1 Practice 1']);
     assert.equal(improvement.withClass('board-coin').length + improvement.withClass('board-dot').length, 3, 'one button per agent, whatever the switch says');
     assert.doesNotMatch(improvement.textContent, /\b(?:replay|bunt|swing|star|paper|rungs?)\b/i);
+    if (checkpoint.board?.families) assert.match(words(improvement.withClass('board-families')[0]), /^(?:Proven edges |No proven edge yet)/);
+    if (checkpoint.board?.lab) assert.match(words(improvement.withClass('board-lab')[0]), /^Lab (?:\d+ strateg|No strategy)/);
     assert.deepEqual(root.find('a'), []);
   });
 });

@@ -1,4 +1,6 @@
-import { MAX_EVENT_LIMIT, REAL_BANDS, bandName, deskId, isLive, validCheckpoint, validPublicEvent, socketMatches, tapeName } from './schema.js';
+import {
+  MAX_EVENT_LIMIT, REAL_BANDS, PROVEN_STATES, bandName, deskId, familyState, isLive, validCheckpoint, validPublicEvent, socketMatches, tapeName,
+} from './schema.js';
 
 // Long-Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
 // fills and marks; the page never contacts a quote vendor and never starts work on a desk.
@@ -1294,18 +1296,24 @@ export function ladderMove(event) {
   return { ...base, kind: 'out', reason: text.slice(text.indexOf(' died of ') + 9) };
 }
 // One move told three ways (the board's trail, the desk's own record, the tape) is one move: the
-// same id, or the same agent making the same kind of move to the same band within two minutes.
+// same id, or the same agent making the same kind of move to the same band within two minutes. The
+// first telling stands; a later one only fills in a reason it did not carry (a desk's record knows
+// when its agent was born, the tape also how: Sept 24, 2026).
 function distinctMoves(moves) {
   const kept = [];
-  const ids = new Set();
+  const ids = new Map();
   const recent = new Map();
   for (const move of moves) {
-    if (!move?.id || !deskId(move.agent) || !Number.isFinite(Date.parse(move.at)) || ids.has(move.id)) continue;
+    if (!move?.id || !deskId(move.agent) || !Number.isFinite(Date.parse(move.at))) continue;
     const key = `${move.agent}|${move.kind}|${move.toBand || ''}`;
     const at = Date.parse(move.at);
-    if ((recent.get(key) || []).some(other => Math.abs(other - at) <= 120000)) continue;
-    ids.add(move.id);
-    recent.set(key, [...(recent.get(key) || []), at]);
+    const twin = ids.get(move.id) || (recent.get(key) || []).find(other => Math.abs(Date.parse(other.at) - at) <= 120000);
+    if (twin) {
+      if (twin.kind === move.kind && !show(twin.reason) && show(move.reason)) twin.reason = move.reason;
+      continue;
+    }
+    ids.set(move.id, move);
+    recent.set(key, [...(recent.get(key) || []), move]);
     kept.push(move);
   }
   return kept;
@@ -1324,10 +1332,27 @@ const REASONS = [
   [/lost (\d+)% of its real/, match => `lost ${match[1]}% of its real stake`],
   [/passed (?:deep )?replay/, () => 'passed its history test'],
 ];
+// How an agent left, from the House's causes of death (league/house.py `kill`), each in the page's
+// words (Sept 24, 2026). A cause not listed says nothing.
+const EXITS = [
+  [/^displaced\b/, 'lost its seat'],
+  [/^evidence\b/, 'lost too much'],
+  [/^superseded\b/, 'replaced by its fix'],
+  [/^redundant\b/, 'a duplicate'],
+  [/^credits\b/, 'out of credits'],
+  [/^never qualified\b/, 'never passed its history test'],
+  [/^stuck\b/, 'idle too long'],
+];
 export function reasonWords(move) {
   if (!move) return '';
-  if (move.kind === 'born') return move.parent ? `child of ${floorName(move.parent)}` : move.founder ? 'founding agent' : '';
   const text = show(move.reason);
+  if (move.kind === 'born') {
+    // Where it came from: the lab's search, a tweak of its parent's settings, its parent's research, or nothing before it.
+    if (/\ban Alpha Lab graduate\b/.test(text)) return 'lab graduate';
+    if (!move.parent) return move.founder ? 'founding agent' : '';
+    return `${/\ba parameter mutation of its parent\b/.test(text) ? 'tweak' : 'child'} of ${floorName(move.parent)}`;
+  }
+  if (move.kind === 'out') return EXITS.find(([pattern]) => pattern.test(text))?.[1] || '';
   for (const [pattern, words] of REASONS) {
     const match = pattern.exec(text);
     if (match) return words(match);
@@ -1349,7 +1374,9 @@ function moveStep(move) {
 export function moveWords(move) {
   const crossed = (move.kind === 'up' || move.kind === 'down') && levelOf(move.toBand) !== levelOf(move.fromBand);
   const stake = crossed && numeric(move.stake) && REAL_BANDS.includes(move.toBand) ? ` · ${money(move.stake, 0)}` : '';
-  return `${floorName(move.agent)} · ${moveStep(move)}${stake}`;
+  // A birth or an exit says why (Sept 24, 2026): "Mullins XXVI · born · lab graduate", "Hawkins XX · retired · lost its seat".
+  const cause = move.kind === 'born' || move.kind === 'out' ? reasonWords(move) : '';
+  return `${floorName(move.agent)} · ${moveStep(move)}${stake}${cause ? ` · ${cause}` : ''}`;
 }
 const capitalized = text => (text ? text[0].toUpperCase() + text.slice(1) : text);
 
@@ -1386,6 +1413,62 @@ export function settleStakes(moves, stakes = new Map()) {
     const stake = moneyNumber(move.stake);
     return stake !== null && now !== undefined && now !== null && Math.abs(now - stake) > 0.01 ? { ...move, stake: null } : move;
   });
+}
+
+// ---- the mechanism ledger (Sept 24, 2026, the close-the-gaps run)
+// A family is one mechanism on one venue: every agent ever born with it, living or dead, proven or not
+// by its pooled record over independent settlements. Its states in the page's words: the House calls
+// a proven family whose stakes compound a "swing", and the page never does.
+export const FAMILY_WORDS = { unproven: 'unproven', proven: 'proven', swing: 'compounding' };
+// The lab's hourly reading is drawn while it is at most half an hour older than its checkpoint.
+export const LAB_STALE_MS = 30 * 60 * 1000;
+const settlementsText = count => (count === 0 ? 'no settlements yet' : plural(count, 'settlement'));
+const strategiesText = count => `${count} ${count === 1 ? 'strategy' : 'strategies'}`;
+// The board's proven and compounding families as the strip draws them, and how many are unproven;
+// null before the House publishes its mechanism ledger.
+export function familyStrip(board) {
+  const block = board?.families;
+  if (!block || typeof block !== 'object' || !Array.isArray(block.rows) || !Number.isSafeInteger(block.unproven)) return null;
+  const rows = block.rows.filter(row => row && PROVEN_STATES.includes(row.state) && deskId(row.family) && numeric(row.bound) && Number.isSafeInteger(row.n))
+    .map(row => ({
+      family: row.family, name: humanize(row.family.replace(/-/g, ' ')), state: row.state, n: row.n, realN: Number.isSafeInteger(row.real_n) ? row.real_n : 0,
+      bound: row.bound, stake: numeric(row.stake_usd) ? row.stake_usd : null, members: Number.isSafeInteger(row.members_real) ? row.members_real : 0,
+      capacity: numeric(row.capacity_usd_per_day) ? row.capacity_usd_per_day : null,
+    }));
+  return { rows, unproven: block.unproven };
+}
+// The lab's hourly reading while it is fresh beside its checkpoint, else null.
+export function labLine(board, publishedAt) {
+  const lab = board?.lab;
+  if (!lab || typeof lab !== 'object' || !Number.isSafeInteger(lab.tested_last_hour) || !Number.isSafeInteger(lab.graduates_waiting)) return null;
+  const age = Date.parse(publishedAt) - Date.parse(lab.at);
+  return Number.isFinite(age) && age <= LAB_STALE_MS ? { tested: lab.tested_last_hour, waiting: lab.graduates_waiting } : null;
+}
+// One family on the strip, after its name: "proven · 11 settlements, 2 real · lower bound +14.2% · 1
+// agent at $30 · capacity $57/day". The bound is on its growth a settlement; its capacity (what the
+// edge earns a day at that stake) is said only once it is measured above nothing.
+export function familyWords(row) {
+  const counted = row.realN > 0 ? `${settlementsText(row.n)}, ${row.realN} real` : settlementsText(row.n);
+  const staked = row.stake === null ? '' : row.members > 0 ? `${plural(row.members, 'agent')} at ${money(row.stake, 0)}` : `${money(row.stake, 0)} stake`;
+  const capacity = row.capacity !== null && Number(row.capacity) > 0 ? `capacity ${money(row.capacity, Number(row.capacity) >= 10 ? 0 : 2)}/day` : '';
+  return join(FAMILY_WORDS[row.state], counted, `lower bound ${percentText(Number(row.bound) * 100)}`, staked, capacity);
+}
+// "44 strategies still unproven"; with nothing proven, "No proven edge yet · 45 strategies unproven".
+export function unprovenWords(strip) {
+  if (strip.rows.length) return strip.unproven ? `${strategiesText(strip.unproven)} still unproven` : '';
+  return join('No proven edge yet', strip.unproven ? `${strategiesText(strip.unproven)} unproven` : '');
+}
+// The lab's one quiet line: "84 strategies tested in the last hour · 3 graduates waiting for a seat".
+export function labWords(lab) {
+  return join(lab.tested ? `${strategiesText(lab.tested)} tested in the last hour` : 'No strategy tested in the last hour',
+    lab.waiting ? `${plural(lab.waiting, 'graduate')} waiting for a seat` : '');
+}
+// The readout's family line after the agent's strategy tag: "proven · 16 settlements" (without a tag,
+// "Proven family · 16 settlements"), or nothing before the House publishes the family's record.
+export function familyLine(agent) {
+  if (!agent?.familyState) return '';
+  const state = FAMILY_WORDS[agent.familyState];
+  return join(agent.tag ? state : `${capitalized(state)} family`, settlementsText(agent.familyN));
 }
 export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
   const desks = orderDesks(checkpoint?.desks).filter(desk => desk && deskId(desk.id));
@@ -1446,6 +1529,9 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
       venue: venueLabel(Array.isArray(desk.venues) ? show(desk.venues[0]) : ''),
       // The strategy it runs, as a small tag: what tells five agents called Huang apart.
       tag: family && !PARTNERS[family] && family !== desk.id ? humanize(family.replace(/-/g, ' ')) : '',
+      // Its family in the mechanism ledger (Sept 24, 2026): the state and the independent settlements behind it.
+      familyState: familyState(desk.family_state) && Number.isSafeInteger(desk.family_n) ? desk.family_state : null,
+      familyN: familyState(desk.family_state) && Number.isSafeInteger(desk.family_n) ? desk.family_n : null,
       progress: null,
     };
     agent.progress = levelProgress(agent, enabled);
@@ -1493,6 +1579,7 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
     living: living.length, real: living.filter(agent => agent.real).length, levels, agents,
     unknown: living.filter(agent => agent.band === null), retired: agents.filter(agent => agent.retired),
     moves: moves.filter(move => !sameLevel(move)).slice(0, 5), throttle, enabled, latestClimb,
+    families: familyStrip(board), lab: labLine(board, checkpoint?.published_at),
     ready: living.filter(agent => agent.progress !== null && agent.progress >= 1).sort((a, b) => b.level - a.level)[0] || null,
     closest: practice.reduce((best, agent) => (agent.progress !== null && agent.progress >= ARC_MIN && (!best || agent.progress > best.progress) ? agent : best), null),
     publishedAt: checkpoint?.published_at || null, stale: !floorRunning(checkpoint, now),
@@ -1501,12 +1588,13 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
 
 const MOVE_MARK = { up: '↑', down: '↓', born: '✦', out: '×', size: '±' };
 const MOVE_LABEL = { up: 'promoted', down: 'demoted', born: 'born', out: 'retired', size: 'restaked' };
-// "+1.2%", "−0.16%": practice growth, the number that colours the dot.
-const growthText = value => {
-  const change = (value - 1) * 100;
+// "+1.2%", "−0.16%": a change in percent, to a tenth, or a hundredth when it is under a tenth.
+const percentText = change => {
   const size = Math.abs(change);
   return `${change > 0 ? '+' : change < 0 ? '−' : ''}${size >= 0.1 || size === 0 ? size.toFixed(1) : size.toFixed(2)}%`;
 };
+// Practice growth, the number that colours the dot.
+const growthText = value => percentText((value - 1) * 100);
 // Where an agent stands, as parts: [text, tone]. The readout colours the money; a label reads it.
 function standing(agent) {
   const pnl = agent.pnl === null ? null : signedMoney(agent.pnl.toFixed(2), 2);
@@ -1559,13 +1647,24 @@ function phrases(text, className = null) {
   text.split(' · ').forEach((part, index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', part, 'board-phrase')));
   return line;
 }
+// A family as the page names it: its strategy tag, then its state in its colour, then its evidence.
+function familyNode(tag, words, state, className) {
+  const line = element('span', null, className);
+  if (tag) line.append(element('span', tag, 'strategy-tag'));
+  words.split(' · ').forEach((part, index) => line.append(...(index ? [element('span', ' · ')] : []),
+    element('span', part, index ? 'board-phrase' : `board-phrase board-state-${state}`)));
+  return line;
+}
 function recordNodes(agent) {
   const head = element('span', null, 'board-detail-head');
-  head.append(element('strong', agent.name), ...(agent.venue ? [element('span', agent.venue)] : []), ...(agent.tag ? [element('span', agent.tag, 'strategy-tag')] : []));
+  // With its family's record published, the strategy tag leads the family line instead of the head.
+  const family = familyLine(agent);
+  head.append(element('strong', agent.name), ...(agent.venue ? [element('span', agent.venue)] : []), ...(agent.tag && !family ? [element('span', agent.tag, 'strategy-tag')] : []));
   const line = element('span', null, 'board-detail-line');
   const parts = [[agent.retired ? 'Retired' : bandLabel(agent.band), ''], ...(!agent.retired && agent.band === 'star' ? [['top 3 earner', '']] : []), ...standing(agent)];
   parts.forEach(([text, tone], index) => line.append(...(index ? [element('span', ' · ')] : []), element('span', text, tone ? `${tone} board-phrase` : 'board-phrase')));
   const nodes = [head, line];
+  if (family) nodes.push(familyNode(agent.tag, family, agent.familyState, 'board-detail-family'));
   if (agent.progress !== null) {
     const progress = element('span', null, 'board-detail-progress');
     const bar = element('span', null, 'board-xp');
@@ -1941,6 +2040,32 @@ function boardPanel(checkpoint, state) {
       trail.append(item);
     }
     panel.append(trail);
+  }
+  // Below the moves (Sept 24, 2026): the proven edges, then the lab's one quiet line.
+  const families = model.families;
+  const unproven = families ? unprovenWords(families) : '';
+  if (families && (families.rows.length || unproven)) {
+    const strip = element('div', null, 'board-families');
+    if (families.rows.length) {
+      const list = element('ul', null, 'board-family-list');
+      list.setAttribute('aria-label', 'Proven edges');
+      for (const row of families.rows) {
+        const item = element('li', null, 'board-family');
+        item.append(familyNode(row.name, familyWords(row), row.state, 'board-family-line'));
+        list.append(item);
+      }
+      // The list names itself to a screen reader; the label is for the eye.
+      const name = element('span', 'Proven edges', 'board-families-name');
+      name.setAttribute('aria-hidden', 'true');
+      strip.append(name, list);
+    }
+    if (unproven) strip.append(phrases(unproven, 'board-family-rest'));
+    panel.append(strip);
+  }
+  if (model.lab) {
+    const lab = element('p', null, 'board-lab');
+    lab.append(element('span', 'Lab', 'board-lab-name'), phrases(labWords(model.lab)));
+    panel.append(lab);
   }
   return [panel];
 }

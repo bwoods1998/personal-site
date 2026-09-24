@@ -83,12 +83,22 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
      asks for the checkpoint again six seconds later. Reduced motion stills all of it.
    - **Readout.** Tap, hover (fine pointers), or focus a dot: name, venue and strategy tag; its
      level and money ("Level 1 · practice +1.2% · 4 trades", "Level 2 · $56.11 stake · +$1.29 real ·
-     4 real trades"); an XP bar ("62% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades"); and its
-     last move, with the reason rebuilt from fixed phrasings (`reasonWords`), never the House's
-     text. Arrow keys walk a floor (one tab stop each), Esc clears; a redraw puts focus back but
-     never changes what the visitor chose. With nothing chosen it names the agent closest to
-     Level 2. Lines break only between their phrases. Dots carry no `title`: hover already fills
-     the readout, and a tooltip would cover the neighbouring dots.
+     4 real trades"); its family line (below); an XP bar ("62% to Level 2 · evidence 1.006 of 1.01 ·
+     4 of 5 trades"); and its last move, with the reason rebuilt from fixed phrasings
+     (`reasonWords`), never the House's text. Arrow keys walk a floor (one tab stop each), Esc
+     clears; a redraw puts focus back but never changes what the visitor chose. With nothing
+     chosen it names the agent closest to Level 2. Lines break only between their phrases. Dots
+     carry no `title`: hover already fills the readout, and a tooltip would cover the
+     neighbouring dots.
+   - **Families** (Sept 24, 2026, the House's mechanism ledger). A family is one mechanism on one
+     venue: every agent ever born with it, living or dead. Its pooled record over independent
+     settlements, practice and real, is what moves real money: "unproven" (a first real stake is
+     pocket change), "proven" (its lower bound is above zero: full stakes), "compounding" (the
+     House's family swing: its real stakes double as its real record holds). The readout's family
+     line is the strategy tag, the state and the evidence ("weather favorites · proven · 16
+     settlements"): proven in green, compounding in gold, unproven quiet. With it the tag leads
+     that line and leaves the head; without a tag the line says "Proven family · 16 settlements";
+     before the House publishes the record there is no line.
    - Above the floors: the caption, a legend of only what is on the board (Up, Down, Flat, No
      trades yet, Toward next level, Top 3), and a throttle that is on. Below: Retired (rings tinted
      by how each ended), "Level unknown" when a desk has no band, the readout, and the last five
@@ -98,15 +108,37 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
      is dropped, an agent keeps only its newest, and when the tape's amount disagrees with the
      checkpoint's stake (the one the coin is drawn at) the line says "restaked" with no amount, so
      the page never states two stakes for one coin.
+   - **Births and exits say why** (Sept 24, 2026), in the moves list ("Mullins XXVI · born · lab
+     graduate", "Hawkins XX · retired · lost its seat"), the readout's move line and the feed, from
+     fixed phrasings only. A birth: "lab graduate", "tweak of <parent>" (its parent's settings
+     nudged), "child of <parent>" (its parent's own research), "founding agent". An exit, from the
+     House's cause: displaced "lost its seat", evidence "lost too much", superseded "replaced by
+     its fix", redundant "a duplicate", credits "out of credits", never qualified "never passed its
+     history test", stuck "idle too long"; any other cause says nothing. A desk's own record knows
+     when an agent was born and the tape also how: the tape's telling fills in the reason.
+   - **Proven edges** (Sept 24, 2026). Under the moves, one line per proven or compounding family,
+     at most eight, compounding first and then by settlements: its tag, its state, its
+     settlements (real money's among them), its lower bound on growth a settlement, the agents on
+     real money and each one's stake, and its capacity (what the edge earns a day at that stake,
+     said only once it is measured above nothing): "sports central run under · proven · 11
+     settlements, 2 real · lower bound +14.2% · 1 agent at $30 · capacity $57/day". Then the
+     unproven count ("44 strategies still unproven"), or with none proven "No proven edge yet ·
+     45 strategies unproven". Nothing here is a button.
+   - **Lab** (Sept 24, 2026). One quiet line last, headed Lab: "84 strategies tested in the last
+     hour · 3 graduates waiting for a seat" (no graduate waiting says nothing). The lab's reading is
+     drawn only while it is at most half an hour older than its checkpoint (`LAB_STALE_MS`).
    - Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
-     `real_trades`} and `last_move`, and the checkpoint's `board` {`bands`, `moves`, `throttle`,
-     `enabled`}. A checkpoint from before the allocator publishes none of these: the level then
-     follows `gate.evidence.rung` (0 and 1 Level 1, 2 Level 2, 3 Level 3) and a real desk's
-     `capital_usd` stands in for its stake.
+     `real_trades`}, `last_move`, and `family_state` with `family_n` (together or not at all), and
+     the checkpoint's `board` {`bands`, `moves`, `throttle`, `enabled`, `families` {`unproven`,
+     `rows`}, `lab` {`at`, `tested_last_hour`, `graduates_waiting`}}. A checkpoint from before the
+     allocator publishes none of these: the level then follows `gate.evidence.rung` (0 and 1 Level
+     1, 2 Level 2, 3 Level 3) and a real desk's `capital_usd` stands in for its stake; one from
+     before the mechanism ledger draws no family line, no proven edges and no lab line.
    - The Positions switch does not touch the ladder: every agent is always a dot.
    - The League's lines in the live feed speak the same way ("Huang climbs to Level 2 with $10
-     real"), and any other league line has the House's band words swapped for the page's. The
-     House's word for the practice band is `paper`; the page says practice, everywhere.
+     real", "Hawkins XX retired: lost its seat"), and any other league line has the House's band
+     words swapped for the page's. The House's word for the practice band is `paper`, and for a
+     compounding family `swing`; the page says practice and compounding, everywhere.
 
 **Footer.** "Blake Woods owns every position. Not investment advice."
 
