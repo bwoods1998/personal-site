@@ -49,7 +49,7 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
    then eight trades, newest first, "N more" for the rest: Agent, Market, Result, P&L, Held, Why.
 5. **The ladder** (`#improvement`), three floors and one dot per agent (the owner, Sept 23, 2026:
    "level 1, 2, 3 with very limited text", and dots, not bars). Top first: **Level 3** · Increased
-   capital (the House's `swing` and `star` bands), **Level 2** · Live trading (`bunt`), **Level 1** ·
+   capital (the House's `swing` and `star` bands), **Level 2** · Live trading (`bunt`, and since Sept 24, 2026 `probe`: a first real stake at pocket-change size for an agent whose family has not proven its edge), **Level 1** ·
    Practice (`paper`, and `replay` agents still being tested on history). The level number is the
    headline and the word is a small tag; the House's band names never appear, and `LEVELS` in
    `capital.js` is the one table that maps them. Every row is centred, so the counts alone draw the
