@@ -11,7 +11,7 @@ import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
-  EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
+  validFamilyRow, validFamilies, validLabReading, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
 } from '../capital/schema.js';
 import {
   orderDesks, partnerOf, partnerName, truncate, money, percent, signedMoney, streamUrl, startCapital, PARTNERS, PARTNER_ORDER,
@@ -20,6 +20,7 @@ import {
   RESEARCH, FEED_KINDS, floorName, plainThought, feedLine, feedLines, heroThought, balanceSeries, performanceSeries, portfolioPerformance, PERFORMANCE_START_AT, openPositionRows,
   closedRecord, ladderMove, boardSnapshot, LEVELS, NEXT_LEVEL, levelOf, levelProgress, coinSize, reasonWords, moveWords, nextIndex,
   agentWords, progressWords, houseWords, settleStakes, replayable,
+  FAMILY_WORDS, LAB_STALE_MS, familyStrip, labLine, familyWords, unprovenWords, labWords, familyLine,
 } from '../capital/capital.js';
 import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
@@ -195,11 +196,26 @@ test('moves and reasons read as levels, rebuilt from fixed phrasings, never the 
   ]) assert.equal(reasonWords(move('up', 'paper', 'bunt', { reason })), words, reason);
   assert.equal(reasonWords({ ...move('born', null, null), parent: 'haghani-40' }), 'child of Haghani XL');
   assert.equal(reasonWords({ ...move('born', null, null), founder: true }), 'founding agent');
-  // The tape's own births name the parent or say the agent founds its line.
-  const child = ladderMove(ladderEvent('huang-l23cdb7 is born (a child of huang-h6d3302, generation 2, niche kalshi/hour/prior-window-fade-loose-). an Alpha Lab graduate.'));
-  assert.deepEqual([child.kind, child.parent, reasonWords(child)], ['born', 'huang-h6d3302', 'child of Huang']);
+  // The tape's own births say where the agent came from (Sept 24, 2026): the lab's search, a tweak of
+  // its parent's settings, its parent's own research, or nothing before it.
+  const child = ladderMove(ladderEvent('huang-l23cdb7 is born (a child of huang-h6d3302, generation 2, niche kalshi/hour/prior-window-fade-loose-). an Alpha Lab graduate (param, by house, lineage agent:huang-h6d3302): a parameter mutation of 0a77b052.'));
+  assert.deepEqual([child.kind, child.parent, reasonWords(child)], ['born', 'huang-h6d3302', 'lab graduate']);
+  const tweak = ladderMove(ladderEvent('mullins-25 is born (a child of mullins-12, generation 6, niche kalshi/day/favorites-no-temperature). a parameter mutation of its parent'));
+  assert.equal(reasonWords(tweak), 'tweak of Mullins XII');
+  const research = ladderMove(ladderEvent('hawkins-27 is born (a child of hawkins-15, generation 3, niche kalshi/day/gold-favorites-3-to-12h). Test the gold-only 3–12-hour entry window.'));
+  assert.equal(reasonWords(research), 'child of Hawkins XV');
   const seed = ladderMove(ladderEvent('haghani-56 is born (a founding seed, generation 1, niche alpaca/hour/maker-reversion). Merton, as architect.'));
   assert.equal(reasonWords(seed), 'founding agent');
+  assert.equal(moveWords(tweak), 'Mullins XXV · born · tweak of Mullins XII', 'a birth in the moves list says where it came from');
+  // How each agent left, from the House's causes of death, told by the tape or by the desk's own record.
+  for (const [cause, words] of [['displaced', 'lost its seat'], ['evidence', 'lost too much'], ['superseded', 'replaced by its fix'], ['redundant', 'a duplicate'],
+    ['credits', 'out of credits'], ['never qualified', 'never passed its history test'], ['stuck', 'idle too long'], ['a cause the page does not know', '']]) {
+    const exit = ladderMove(ladderEvent(`hawkins-20 died of ${cause}. hawkins-20 (family prices-favorites, niche kalshi-prices, generation 2) died on rung 1 of ${cause}.`));
+    assert.deepEqual([exit.kind, reasonWords(exit)], ['out', words], cause);
+    assert.equal(reasonWords(move('out', null, null, { reason: cause })), words, `${cause}, from a desk's record`);
+    assert.equal(moveWords(exit), words ? `Hawkins XX · retired · ${words}` : 'Hawkins XX · retired');
+  }
+  assert.equal(reasonWords(move('out', null, null, { reason: 'the evidence ended it: displaced' })), '', 'a cause is read from the start of the House\'s words only');
   // Numerals past thirty-nine: a desk's fifty-sixth agent is LVI, not XXXXXVI.
   assert.deepEqual([40, 49, 56, 90, 100, 399, 1994].map(roman), ['XL', 'XLIX', 'LVI', 'XC', 'C', 'CCCXCIX', 'MCMXCIV']);
 });
@@ -213,7 +229,9 @@ test('the League\'s lines in the live feed speak in levels, and the House\'s ban
   assert.equal(line('haghani-55 climbs from rung 0 to rung 1: passed deep replay and the sealed holdout.'), 'Haghani LV starts practice: passed its history test');
   assert.equal(line('haghani-37 climbs from rung 1 to rung 2: it cleared the screen: 3 active hour blocks.'), 'Haghani XXXVII climbs to Level 2: passed the practice screen');
   assert.equal(line('mullins-7 climbs from Swing to Star with a $1,240.50 real stake: the top real P&L.'), 'Mullins VII joins the top 3');
-  assert.equal(line('meriwether-35 died of displaced. meriwether-35 (family sports-favorites) died on rung 1 of displaced.'), 'Meriwether XXXV retired');
+  assert.equal(line('meriwether-35 died of displaced. meriwether-35 (family sports-favorites) died on rung 1 of displaced.'), 'Meriwether XXXV retired: lost its seat');
+  assert.equal(line('mullins-25 is born (a child of mullins-12, generation 6, niche kalshi/day/favorites-no-temperature). a parameter mutation of its parent'),
+    'Mullins XXV is born: tweak of Mullins XII');
   assert.equal(line('haghani-56 is born (a founding seed, generation 1, niche alpaca/hour/maker-reversion). Merton, as architect.'), 'Haghani LVI is born: founding agent');
   // Any other league line keeps its words, with the band words swapped for the page's.
   assert.equal(line('The evidence ended huang-h51fdd3: down 19.1% on paper after 6 active blocks; paper keeps no agent down 10%'),
@@ -445,6 +463,151 @@ test('the ladder\'s edge states: a board on or off, a throttle, a star, accounti
   });
 });
 
+// The mechanism ledger (Sept 24, 2026, the close-the-gaps run): what the House publishes about families.
+const familyRow = (overrides = {}) => ({ family: 'sports-central-run-under', venue: 'kalshi', state: 'proven', n: 11, real_n: 2, bound: '0.142300',
+  stake_usd: '30.00', members_real: 1, capacity_usd_per_day: '56.65', ...overrides });
+const familiesBlock = (overrides = {}) => ({ unproven: 44, rows: [
+  familyRow({ family: 'weather-favorites', state: 'swing', n: 40, real_n: 32, bound: '0.031000', stake_usd: '120.00', members_real: 2, capacity_usd_per_day: '14.20' }),
+  familyRow(),
+], ...overrides });
+const labReading = (overrides = {}) => ({ at: '2026-09-15T14:00:00.000Z', tested_last_hour: 84, graduates_waiting: 3, ...overrides });
+test('a family reads as its state and its evidence, the proven edges as their proof, stake and capacity, and the lab in one line', () => {
+  const row = (overrides = {}) => familyStrip({ families: { unproven: 0, rows: [familyRow(overrides)] } }).rows[0];
+  assert.deepEqual(FAMILY_WORDS, { unproven: 'unproven', proven: 'proven', swing: 'compounding' });
+  assert.equal(familyWords(row()), 'proven · 11 settlements, 2 real · lower bound +14.2% · 1 agent at $30 · capacity $57/day');
+  assert.equal(familyWords(row({ state: 'swing', n: 40, real_n: 32, bound: '0.031000', stake_usd: '120.00', members_real: 2, capacity_usd_per_day: '14.20' })),
+    'compounding · 40 settlements, 32 real · lower bound +3.1% · 2 agents at $120 · capacity $14/day');
+  assert.equal(familyWords(row({ n: 1, real_n: 0, bound: '0.000400', members_real: 0, capacity_usd_per_day: '7.81' })),
+    'proven · 1 settlement · lower bound +0.04% · $30 stake · capacity $7.81/day', 'no agent on real money yet: the stake one would be lent');
+  for (const capacity of [null, '0.00', '-3.10']) {
+    assert.equal(familyWords(row({ capacity_usd_per_day: capacity, stake_usd: null })), 'proven · 11 settlements, 2 real · lower bound +14.2%', `capacity ${capacity}`);
+  }
+  assert.equal(familyWords(row({ bound: '-0.008000' })).split(' · ')[2], 'lower bound −0.8%');
+  assert.equal(unprovenWords({ rows: [row()], unproven: 44 }), '44 strategies still unproven');
+  assert.equal(unprovenWords({ rows: [row()], unproven: 1 }), '1 strategy still unproven');
+  assert.equal(unprovenWords({ rows: [row()], unproven: 0 }), '');
+  assert.equal(unprovenWords({ rows: [], unproven: 45 }), 'No proven edge yet · 45 strategies unproven');
+  assert.equal(unprovenWords({ rows: [], unproven: 0 }), 'No proven edge yet');
+  // Only proven and compounding families are rows; the page draws nothing from a board without the block.
+  assert.equal(familyStrip({ bands: {}, moves: [] }), null);
+  assert.equal(familyStrip(null), null);
+  assert.deepEqual(familyStrip({ families: { unproven: 3, rows: [familyRow({ state: 'unproven' }), familyRow({ family: 'Not An Id' })] } }), { rows: [], unproven: 3 });
+  assert.equal(labWords({ tested: 84, waiting: 3 }), '84 strategies tested in the last hour · 3 graduates waiting for a seat');
+  assert.equal(labWords({ tested: 1, waiting: 1 }), '1 strategy tested in the last hour · 1 graduate waiting for a seat');
+  assert.equal(labWords({ tested: 0, waiting: 0 }), 'No strategy tested in the last hour', 'no graduate waiting says nothing');
+  const board = at => ({ lab: labReading({ at }) });
+  const published = '2026-09-15T14:05:00.000Z';
+  assert.deepEqual(labLine(board('2026-09-15T14:00:00.000Z'), published), { tested: 84, waiting: 3 });
+  assert.deepEqual(labLine(board(new Date(Date.parse(published) - LAB_STALE_MS).toISOString()), published), { tested: 84, waiting: 3 }, 'half an hour old');
+  assert.equal(labLine(board(new Date(Date.parse(published) - LAB_STALE_MS - 1000).toISOString()), published), null, 'older than its checkpoint by more than half an hour');
+  assert.equal(labLine({ bands: {}, moves: [] }, published), null);
+  assert.equal(labLine(board('2026-09-15T14:00:00.000Z'), null), null, 'no checkpoint to measure it against');
+  // The readout's family line: the strategy tag leads it, and without one the line says whose state it is.
+  assert.equal(familyLine({ tag: 'weather favorites', familyState: 'unproven', familyN: 16 }), 'unproven · 16 settlements');
+  assert.equal(familyLine({ tag: '', familyState: 'swing', familyN: 40 }), 'Compounding family · 40 settlements');
+  assert.equal(familyLine({ tag: 'weather favorites', familyState: 'proven', familyN: 0 }), 'proven · no settlements yet');
+  assert.equal(familyLine({ tag: 'weather favorites', familyState: null, familyN: null }), '');
+  // The snapshot reads a desk's family only as the pair the schema allows.
+  const snapshot = desks => boardSnapshot(checkpoint({ desks }), [], Date.parse('2026-09-15T14:06:00.000Z')).agents.map(agent => [agent.id, agent.familyState, agent.familyN]);
+  assert.deepEqual(snapshot([desk('a', { family_state: 'proven', family_n: 11 }), desk('b'), desk('c', { family_state: 'proven' }), desk('d', { family_state: 'lucky', family_n: 3 })]),
+    [['a', 'proven', 11], ['b', null, null], ['c', null, null], ['d', null, null]]);
+});
+
+test('the ladder names each agent\'s family, lists the proven edges and the lab, and says why agents were born and retired', async () => {
+  const now = Date.now();
+  const at = new Date(now - 60000).toISOString();
+  const bornAt = new Date(now - 30 * 60000).toISOString();
+  const diedAt = new Date(now - 20 * 60000).toISOString();
+  const life = (extra = {}) => ({ lifecycle: { born_at: new Date(now - 86400000).toISOString(), died_at: null, cause: null, last_move: null, ...extra } });
+  const roster = [
+    desk('mullins-13', { family: 'weather-favorites', venues: ['kalshi'], gate: gateOf(1), band: 'paper', stake_usd: null,
+      evidence: evidenceOf('1.012000', { E: '1.006000', trades: 4 }), family_state: 'unproven', family_n: 16 }),
+    desk('meriwether-h2d625d', { family: 'sports-central-run-under', venues: ['kalshi'], gate: gateOf(2), band: 'bunt', mode: 'live', stake_usd: '30.00', pnl_usd: '19.47',
+      evidence: evidenceOf('1.200000', { E: '1.288000', W_real: '1.400000', real_trades: 5 }), family_state: 'proven', family_n: 11 }),
+    // A family named for a partner draws no strategy tag: its line says whose state it is.
+    desk('hilibrand-3', { family: 'hilibrand', venues: ['kalshi'], gate: gateOf(3), band: 'swing', mode: 'live', stake_usd: '120.00', pnl_usd: '4.10',
+      evidence: evidenceOf('1.300000', { E: '1.700000', W_real: '1.200000', real_trades: 20 }), family_state: 'swing', family_n: 40 }),
+    desk('mullins-26', { family: 'weather-favorites', parent_id: 'mullins-6', generation: 4, venues: ['kalshi'], gate: gateOf(0, life({ born_at: bornAt })), band: 'replay',
+      family_state: 'unproven', family_n: 16 }),
+    desk('hawkins-20', { family: 'prices-favorites', venues: ['kalshi'], status: 'retired', pnl_usd: '-1.00', gate: gateOf(1, life({ died_at: diedAt, cause: 'displaced' })) }),
+  ];
+  const board = { enabled: true, bands: {}, moves: [], families: familiesBlock(), lab: labReading({ at }) };
+  // The tape tells how Mullins XXVI was born; its desk's own record only when.
+  const tape = [ladderEvent('mullins-26 is born (a child of mullins-6, generation 4, niche kalshi/day/favorites-no-temperature). an Alpha Lab graduate (param, by house, lineage agent:mullins-6): a tweak.',
+    { id: 'born:mullins-26', seq: 301, at: bornAt })];
+  const draw = (body, look, events = []) => withBrowser('', path => {
+    if (path.includes('/checkpoint')) return body;
+    if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+    return { schema_version: 1, latest_seq: 0, events: path.includes('kind=lab.progress') ? events : [] };
+  }, async () => {
+    const root = stubPage('floor', FLOOR_IDS);
+    const feed = await startCapital(root);
+    try {
+      const ladder = root.querySelector('#floor-improvement');
+      assert.doesNotMatch(ladder.textContent, HOUSE_JARGON);
+      for (const node of ladder.descendants()) {
+        for (const name of ['aria-label', 'title']) if (node.getAttribute(name)) assert.doesNotMatch(node.getAttribute(name), HOUSE_JARGON, node.getAttribute(name));
+      }
+      assert.deepEqual(root.find('a'), [], 'no links');
+      await look(ladder);
+    } finally { feed.stop(); }
+  });
+  const body = checkpoint({ published_at: at, desks: roster, board });
+  assert.equal(validCheckpoint(body), true);
+  await draw(body, ladder => {
+    const dot = id => ladder.descendants().find(node => node.getAttribute('data-agent') === id);
+    const readout = () => words(ladder.withClass('board-detail')[0]);
+    dot('mullins-13').click();
+    assert.equal(readout(), 'Mullins XIII Kalshi Level 1 · practice +1.2% · 4 trades weather favorites unproven · 16 settlements 60% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades');
+    const family = ladder.withClass('board-detail-family')[0];
+    assert.deepEqual([family.withClass('strategy-tag').map(words), family.withClass('board-state-unproven').map(words)], [['weather favorites'], ['unproven']]);
+    assert.equal(ladder.withClass('board-detail-head')[0].withClass('strategy-tag').length, 0, 'the tag leads the family line, not the head');
+    dot('meriwether-h2d625d').click();
+    assert.match(readout(), /^Meriwether Kalshi Level 2 · \$30\.00 stake · \+\$19\.47 real · 5 real trades sports central run under proven · 11 settlements /);
+    dot('hilibrand-3').click();
+    assert.match(readout(), /^Hilibrand III Kalshi Level 3 · \$120\.00 stake · \+\$4\.10 real · 20 real trades Compounding family · 40 settlements$/);
+    assert.equal(ladder.withClass('board-detail-family')[0].withClass('board-state-swing').map(words).join(), 'Compounding family');
+    // A retired agent's readout says how it ended; the moves list says it for births and exits alike.
+    dot('hawkins-20').click();
+    assert.match(readout(), /^Hawkins XX Kalshi prices favorites Retired · −\$1\.00 practice × Retired · 20 min ago · lost its seat$/);
+    const moves = ladder.withClass('board-moves')[0].withClass('board-change-text').map(words);
+    assert.deepEqual(moves.slice(0, 2), ['Hawkins XX · retired · lost its seat', 'Mullins XXVI · born · lab graduate']);
+    // The proven edges, compounding first, then the unproven count; then the lab's quiet line.
+    const strip = ladder.withClass('board-families')[0];
+    assert.equal(words(strip), 'Proven edges weather favorites compounding · 40 settlements, 32 real · lower bound +3.1% · 2 agents at $120 · capacity $14/day '
+      + 'sports central run under proven · 11 settlements, 2 real · lower bound +14.2% · 1 agent at $30 · capacity $57/day 44 strategies still unproven');
+    assert.equal(strip.find('ul')[0].getAttribute('aria-label'), 'Proven edges');
+    assert.equal(strip.withClass('board-families-name')[0].getAttribute('aria-hidden'), 'true', 'read once, by the list');
+    assert.deepEqual(strip.withClass('board-family').map(item => item.withClass('strategy-tag').map(words)[0]), ['weather favorites', 'sports central run under']);
+    assert.deepEqual(strip.withClass('board-state-swing').map(words), ['compounding']);
+    assert.deepEqual(strip.withClass('board-state-proven').map(words), ['proven']);
+    assert.equal(words(ladder.withClass('board-lab')[0]), 'Lab 84 strategies tested in the last hour · 3 graduates waiting for a seat');
+    const order = ladder.withClass('board')[0].children.map(node => String(node.className).split(' ')[0]);
+    assert.deepEqual(order.slice(-3), ['board-moves', 'board-families', 'board-lab'], 'under the moves, the edges, then the lab');
+  }, tape);
+  // Nothing proven yet, and a lab that has tested nothing in the hour.
+  await draw(checkpoint({ published_at: at, desks: roster, board: { ...board, families: familiesBlock({ unproven: 45, rows: [] }), lab: labReading({ at, tested_last_hour: 0, graduates_waiting: 0 }) } }), ladder => {
+    assert.equal(words(ladder.withClass('board-families')[0]), 'No proven edge yet · 45 strategies unproven');
+    assert.equal(ladder.withClass('board-families')[0].find('ul').length, 0);
+    assert.equal(words(ladder.withClass('board-lab')[0]), 'Lab No strategy tested in the last hour');
+  });
+  // A lab reading more than half an hour older than its checkpoint is not drawn.
+  await draw(checkpoint({ published_at: at, desks: roster, board: { ...board, lab: labReading({ at: new Date(now - 60000 - LAB_STALE_MS - 1000).toISOString() }) } }), ladder => {
+    assert.equal(ladder.withClass('board-lab').length, 0);
+    assert.equal(ladder.withClass('board-families').length, 1);
+  });
+  // A checkpoint from before the House published its mechanism ledger: no family line, no strip, no lab, and the tag stays in the head.
+  const before = roster.map(({ family_state, family_n, ...rest }) => rest);
+  await draw(checkpoint({ published_at: at, desks: before, board: { enabled: true, bands: {}, moves: [] } }), ladder => {
+    assert.deepEqual([ladder.withClass('board-families').length, ladder.withClass('board-lab').length], [0, 0]);
+    ladder.descendants().find(node => node.getAttribute('data-agent') === 'mullins-13').click();
+    assert.equal(words(ladder.withClass('board-detail')[0]), 'Mullins XIII Kalshi weather favorites Level 1 · practice +1.2% · 4 trades 60% to Level 2 · evidence 1.006 of 1.01 · 4 of 5 trades');
+    assert.equal(ladder.withClass('board-detail-family').length, 0);
+    // Without the tape, a birth says whose child it is, from the desk's own record.
+    assert.match(words(ladder.withClass('board-moves')[0]), /Mullins XXVI · born · child of Mullins VI/);
+  });
+});
+
 test('checkpoint lifecycle survives a quiet or truncated tape and contaminated accounts never appear profitable', () => {
   const now = Date.parse('2026-09-15T15:00:00.000Z');
   const board = checkpoint({ desks: [desk('haghani', { pnl_usd: '500', gate: { name: 'rung 1', passed: false, evidence: {
@@ -500,6 +663,69 @@ test('the checkpoint carries the capital board: bands, stakes, evidence and move
     ['an enabled string', summary({ enabled: 'yes' })], ['no moves', (({ moves, ...rest }) => rest)(summary())],
   ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: value })), false, why);
   assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ moves: Array.from({ length: 50 }, (_, n) => ({ ...move, id: `le-${n}` })) }) })), true, 'fifty moves');
+});
+
+test('the checkpoint carries the mechanism ledger: a desk\'s family, the proven families and the lab, typed, and old checkpoints still pass', () => {
+  const at = '2026-09-15T14:05:00.000Z';
+  const row = (overrides = {}) => desk('mullins-13', { family: 'weather-favorites', band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000'), last_move: null,
+    family_state: 'unproven', family_n: 16, ...overrides });
+  const summary = (overrides = {}) => ({ enabled: true, bands: {}, moves: [], families: familiesBlock(), lab: labReading(), ...overrides });
+  // Before the House publishes any of it: every earlier checkpoint shape still passes.
+  const { family_state, family_n, ...before } = row();
+  assert.equal(validDesk(before, at), true, 'a desk without its family\'s record');
+  const { families, lab, ...older } = summary();
+  assert.equal(validCheckpoint(checkpoint({ desks: [before], board: older })), true, 'a board without families or the lab');
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary() })), true);
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: { ...older, families } })), true, 'families without the lab');
+  assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: { ...older, lab } })), true, 'the lab without families');
+  for (const [why, value] of [['proven', row({ family_state: 'proven', family_n: 11 })], ['compounding (the House\'s swing)', row({ family_state: 'swing', family_n: 40 })],
+    ['no settlement yet', row({ family_n: 0 })], ['the most settlements', row({ family_n: 1000000 })]]) {
+    assert.equal(validDesk(value, at), true, why);
+  }
+  for (const [why, value] of [
+    ['an unknown state', row({ family_state: 'compounding' })], ['a capitalised state', row({ family_state: 'Proven' })], ['a null state', row({ family_state: null })],
+    ['a string count', row({ family_n: '16' })], ['a float count', row({ family_n: 1.5 })], ['a negative count', row({ family_n: -1 })],
+    ['too many settlements', row({ family_n: 1000001 })], ['a null count', row({ family_n: null })],
+    ['a state without its count', (({ family_n: _, ...rest }) => rest)(row())], ['a count without its state', (({ family_state: _, ...rest }) => rest)(row())],
+    ['the House\'s bound on the desk', row({ family_bound: '0.1' })], ['the House\'s capacity on the desk', row({ capacity: { usd_per_day: 1, binds: false } })],
+  ]) assert.equal(validDesk(value, at), false, why);
+  assert.equal(validFamilyRow(familyRow()), true);
+  assert.equal(validFamilies(familiesBlock()), true);
+  assert.equal(validLabReading(labReading(), at), true);
+  for (const [why, value] of [
+    ['none proven yet', familiesBlock({ rows: [] })], ['nothing followed', { unproven: 0, rows: [] }],
+    ['a negative bound on a proven row', familiesBlock({ rows: [familyRow({ bound: '-0.000100' })] })], ['no stake', familiesBlock({ rows: [familyRow({ stake_usd: null })] })],
+    ['no capacity measured', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: null })] })], ['a negative capacity', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: '-3.10' })] })],
+    ['no agent on real money', familiesBlock({ rows: [familyRow({ members_real: 0, real_n: 0 })] })],
+    ['one family on two venues', familiesBlock({ rows: [familyRow(), familyRow({ venue: 'alpaca' })] })],
+    ['eight rows', familiesBlock({ rows: Array.from({ length: 8 }, (_, n) => familyRow({ family: `family-${n}` })) })],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ families: value }) })), true, why);
+  for (const [why, value] of [
+    ['an unknown key', familiesBlock({ proven: 2 })], ['no rows', { unproven: 44 }], ['no unproven count', { rows: [] }], ['a string count', familiesBlock({ unproven: '44' })],
+    ['too many unproven', familiesBlock({ unproven: 100001 })], ['rows as an object', familiesBlock({ rows: { a: familyRow() } })],
+    ['nine rows', familiesBlock({ rows: Array.from({ length: 9 }, (_, n) => familyRow({ family: `family-${n}` })) })],
+    ['a duplicate row', familiesBlock({ rows: [familyRow(), familyRow()] })],
+    ['an unproven row: the unproven are a count', familiesBlock({ rows: [familyRow({ state: 'unproven' })] })], ['the page\'s word as a state', familiesBlock({ rows: [familyRow({ state: 'compounding' })] })],
+    ['a family that is not an id', familiesBlock({ rows: [familyRow({ family: 'Weather Favorites' })] })], ['a family with a slash', familiesBlock({ rows: [familyRow({ family: 'crypto/usd' })] })],
+    ['a bad venue', familiesBlock({ rows: [familyRow({ venue: 'Kalshi!' })] })],
+    ['a numeric bound', familiesBlock({ rows: [familyRow({ bound: 0.1423 })] })], ['seven places', familiesBlock({ rows: [familyRow({ bound: '0.1423001' })] })],
+    ['a null bound', familiesBlock({ rows: [familyRow({ bound: null })] })], ['a plus sign', familiesBlock({ rows: [familyRow({ bound: '+0.14' })] })],
+    ['a numeric stake', familiesBlock({ rows: [familyRow({ stake_usd: 30 })] })], ['a negative stake', familiesBlock({ rows: [familyRow({ stake_usd: '-30.00' })] })],
+    ['a numeric capacity', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: 56.65 })] })], ['an exponent', familiesBlock({ rows: [familyRow({ capacity_usd_per_day: '1E+2' })] })],
+    ['more real settlements than settlements', familiesBlock({ rows: [familyRow({ n: 2, real_n: 3 })] })], ['a float count', familiesBlock({ rows: [familyRow({ n: 11.5 })] })],
+    ['too many settlements', familiesBlock({ rows: [familyRow({ n: 1000001, real_n: 0 })] })], ['too many members', familiesBlock({ rows: [familyRow({ members_real: 161 })] })],
+    ['an extra key on a row', familiesBlock({ rows: [familyRow({ since: at })] })], ['a missing key on a row', familiesBlock({ rows: [(({ members_real: _, ...rest }) => rest)(familyRow())] })],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ families: value }) })), false, why);
+  for (const [why, value] of [['a minute of clock skew', labReading({ at: '2026-09-15T14:06:00.000Z' })], ['nothing tested', labReading({ tested_last_hour: 0, graduates_waiting: 0 })],
+    ['the most tested', labReading({ tested_last_hour: 1000000 })]]) {
+    assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), true, why);
+  }
+  for (const [why, value] of [
+    ['a reading after the checkpoint', labReading({ at: '2026-09-15T14:06:01.000Z' })], ['Python\'s isoformat', labReading({ at: '2026-09-15T14:00:00+00:00' })],
+    ['a string count', labReading({ tested_last_hour: '84' })], ['a negative count', labReading({ graduates_waiting: -1 })], ['a float count', labReading({ tested_last_hour: 8.4 })],
+    ['too many tested', labReading({ tested_last_hour: 1000001 })], ['too many waiting', labReading({ graduates_waiting: 100001 })],
+    ['an extra key', labReading({ batches_last_hour: 63 })], ['a missing key', (({ graduates_waiting: _, ...rest }) => rest)(labReading())], ['null', null],
+  ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), false, why);
 });
 
 test('the roster holds 160 desks and the checkpoint half a megabyte, and no more', async () => {
