@@ -11,7 +11,7 @@ import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
-  validFamilyRow, validFamilies, validLabReading, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
+  validFamilyRow, validFamilies, validLabReading, validSwingClock, validCapacityCurve, validFlywheel, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
 } from '../capital/schema.js';
 import {
   orderDesks, partnerOf, partnerName, truncate, money, percent, signedMoney, streamUrl, startCapital, PARTNERS, PARTNER_ORDER,
@@ -21,6 +21,7 @@ import {
   closedRecord, ladderMove, boardSnapshot, LEVELS, NEXT_LEVEL, levelOf, levelProgress, coinSize, reasonWords, moveWords, nextIndex,
   agentWords, progressWords, houseWords, settleStakes, replayable,
   FAMILY_WORDS, LAB_STALE_MS, familyStrip, labLine, familyWords, unprovenWords, labWords, familyLine,
+  FLYWHEEL_STALE_MS, flywheelReading, flywheelCells, clockWords, capacityWords, aboutText,
 } from '../capital/capital.js';
 import { NOW, floor, request, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 
@@ -726,6 +727,182 @@ test('the checkpoint carries the mechanism ledger: a desk\'s family, the proven 
     ['too many tested', labReading({ tested_last_hour: 1000001 })], ['too many waiting', labReading({ graduates_waiting: 100001 })],
     ['an extra key', labReading({ batches_last_hour: 63 })], ['a missing key', (({ graduates_waiting: _, ...rest }) => rest)(labReading())], ['null', null],
   ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), false, why);
+});
+
+// The flywheel (Sept 25, 2026, the forward-first run's W): the floor's last 24 hours, and each proven family's
+// clock to compounding and capacity curve, as the House publishes them.
+const swingClock = (overrides = {}) => ({ look_at: 15, to_go: 4, per_day: '5.556', days: '0.72', ...overrides });
+const curvePoint = (multiple, overrides = {}) => ({ multiple, size_usd: (5.39 * multiple).toFixed(2), fill_rate: '0.6000',
+  usd_per_day: (32.33 * multiple).toFixed(2), basis: 'real', ...overrides });
+const capacityCurve = () => [curvePoint(1), curvePoint(2), curvePoint(4, { fill_rate: null, usd_per_day: null, basis: null })];
+const flywheelBlock = (overrides = {}) => ({ at: '2026-09-15T14:04:00.000Z', compute_usd_per_day: '122.31', real_profit_usd_per_day: '19.38',
+  positive_blocks_per_day: 182, graduates_per_day: 8, proofs_per_day: 1, restarts_per_day: 24, ...overrides });
+test('the checkpoint carries the flywheel and each proven family\'s clock and capacity curve, typed, and refuses anything else', () => {
+  const at = '2026-09-15T14:05:00.000Z';
+  const row = desk('mullins-13', { family: 'weather-favorites', band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000'), last_move: null });
+  const board = (families = familiesBlock()) => ({ enabled: true, bands: {}, moves: [], families });
+  const valid = overrides => validCheckpoint(checkpoint({ desks: [row], board: board(), ...overrides }));
+  // Before the House publishes any of it: every earlier checkpoint shape still passes.
+  assert.equal(valid({}), true, 'no flywheel');
+  assert.equal(validFlywheel(flywheelBlock(), at), true);
+  for (const [why, value] of [
+    ['everything', flywheelBlock()], ['only the restarts (what health carries before Y2)', { at: '2026-09-15T14:04:00.000Z', restarts_per_day: 24 }],
+    ['only its time: the strip draws nothing', { at: '2026-09-15T14:04:00.000Z' }], ['a losing day', flywheelBlock({ real_profit_usd_per_day: '-3.10' })],
+    ['nothing spent, nothing earned', flywheelBlock({ compute_usd_per_day: '0', real_profit_usd_per_day: '0', positive_blocks_per_day: 0, proofs_per_day: 0 })],
+    ['a minute of clock skew', flywheelBlock({ at: '2026-09-15T14:06:00.000Z' })], ['an old reading: the page decides it is stale', flywheelBlock({ at: '2026-09-14T14:05:00.000Z' })],
+  ]) assert.equal(valid({ flywheel: value }), true, why);
+  for (const [why, value] of [
+    ['Y2\'s own health name, unmapped', flywheelBlock({ compute_per_day_usd: '122.31' })], ['an unknown number', flywheelBlock({ tick_p50_seconds: 40 })],
+    ['a numeric dollar amount', flywheelBlock({ compute_usd_per_day: 122.31 })], ['a negative compute bill', flywheelBlock({ compute_usd_per_day: '-1' })],
+    ['a null: absent means unknown', flywheelBlock({ restarts_per_day: null })], ['a string count', flywheelBlock({ restarts_per_day: '24' })],
+    ['a float count', flywheelBlock({ positive_blocks_per_day: 1.5 })], ['a negative count', flywheelBlock({ graduates_per_day: -1 })],
+    ['too many restarts', flywheelBlock({ restarts_per_day: 100001 })], ['too many proofs', flywheelBlock({ proofs_per_day: 1001 })],
+    ['read after the checkpoint', flywheelBlock({ at: '2026-09-15T14:06:01.000Z' })], ['Python\'s isoformat', flywheelBlock({ at: '2026-09-15T14:04:00+00:00' })],
+    ['no time', (({ at: _, ...rest }) => rest)(flywheelBlock())], ['a list', [flywheelBlock()]], ['null', null], ['a private key', flywheelBlock({ _source: 'health' })],
+  ]) assert.equal(valid({ flywheel: value }), false, why);
+  assert.equal(validCheckpoint(checkpoint({ desks: [row], board: { ...board(), flywheel: flywheelBlock() } })), false, 'the flywheel is the checkpoint\'s, not the board\'s');
+  // A proven family's clock and capacity curve.
+  const family = overrides => familiesBlock({ rows: [familyRow({ swing_clock: swingClock(), capacity_curve: capacityCurve(), ...overrides })] });
+  assert.equal(validSwingClock(swingClock()), true);
+  assert.equal(validCapacityCurve(capacityCurve()), true);
+  for (const [why, value] of [
+    ['the clock and the curve', family()], ['the clock alone', familiesBlock({ rows: [familyRow({ swing_clock: swingClock() })] })],
+    ['the curve alone (C6 before the clock)', familiesBlock({ rows: [familyRow({ capacity_curve: capacityCurve() })] })],
+    ['a compounding family\'s curve', familiesBlock({ rows: [familyRow({ state: 'swing', capacity_curve: capacityCurve() })] })],
+    ['no rate yet', family({ swing_clock: swingClock({ per_day: null, days: null }) })], ['the review passed', family({ swing_clock: swingClock({ to_go: 0, days: '0' }) })],
+    ['no review scheduled', family({ swing_clock: swingClock({ look_at: null }) })],
+    ['distinct days still owed (M1)', family({ swing_clock: swingClock({ dates_to_go: 2 }) })], ['the grant holds Level 3', family({ swing_clock: swingClock({ grant_holds: true }) })],
+    ['one point', family({ capacity_curve: [curvePoint(1)] })], ['every book\'s fills', family({ capacity_curve: [curvePoint(1, { basis: 'all' })] })],
+    ['a measured size that loses', family({ capacity_curve: [curvePoint(1, { usd_per_day: '-0.40' })] })],
+    ['measured, but no edge to price', family({ capacity_curve: [curvePoint(1, { usd_per_day: null })] })],
+  ]) assert.equal(valid({ board: board(value) }), true, why);
+  for (const [why, value] of [
+    ['a clock on a compounding family', family({ state: 'swing' })], ['the House\'s own clock shape', family({ swing_clock: { real_n: 11, needs: { real_settlements: 4, look_at: 15 }, days_to_swing: 0.72 } })],
+    ['an extra clock key', family({ swing_clock: swingClock({ confidence: '0.9' }) })], ['a missing clock key', family({ swing_clock: (({ days: _, ...rest }) => rest)(swingClock()) })],
+    ['four places a day', family({ swing_clock: swingClock({ per_day: '5.5556' }) })], ['a numeric rate', family({ swing_clock: swingClock({ per_day: 5.556 }) })],
+    ['negative days', family({ swing_clock: swingClock({ days: '-0.72' }) })], ['three places of days', family({ swing_clock: swingClock({ days: '0.722' }) })],
+    ['a null count to go', family({ swing_clock: swingClock({ to_go: null }) })], ['a year of days', family({ swing_clock: swingClock({ dates_to_go: 367 }) })],
+    ['a string grant', family({ swing_clock: swingClock({ grant_holds: 'yes' }) })], ['a clock as a number', family({ swing_clock: 0.72 })],
+    ['an empty curve', family({ capacity_curve: [] })], ['five points', family({ capacity_curve: [1, 2, 4, 8, 16].map(n => curvePoint(n)) })],
+    ['sizes out of order', family({ capacity_curve: [curvePoint(2), curvePoint(1)] })], ['a size twice', family({ capacity_curve: [curvePoint(1), curvePoint(1)] })],
+    ['an unmeasured size with a basis', family({ capacity_curve: [curvePoint(1, { fill_rate: null, usd_per_day: null })] })],
+    ['an unmeasured size priced', family({ capacity_curve: [curvePoint(1, { fill_rate: null, basis: null })] })],
+    ['a rate with no basis', family({ capacity_curve: [curvePoint(1, { basis: null })] })], ['practice as a basis', family({ capacity_curve: [curvePoint(1, { basis: 'practice' })] })],
+    ['a rate above one', family({ capacity_curve: [curvePoint(1, { fill_rate: '1.2' })] })], ['no multiple', family({ capacity_curve: [curvePoint(0)] })],
+    ['a numeric size', family({ capacity_curve: [curvePoint(1, { size_usd: 5.39 })] })], ['an extra point key', family({ capacity_curve: [curvePoint(1, { bucket: '5-10' })] })],
+    ['C6\'s own point shape', family({ capacity_curve: [{ multiple: 1, size_usd: 5.39, fill_rate: 0.6, basis: 'real', usd_per_day: 32.33 }] })],
+  ]) assert.equal(valid({ board: board(value) }), false, why);
+});
+
+test('the flywheel reads as four cells and a proven family as its clock to compounding and its capacity at the real size', () => {
+  const published = '2026-09-15T14:05:00.000Z';
+  const reading = overrides => flywheelReading(checkpoint({ flywheel: flywheelBlock(overrides) }));
+  const cells = overrides => flywheelCells(reading(overrides)).map(cell => [cell.name, cell.value, cell.tone]);
+  assert.deepEqual(cells(), [['Compute', '$122 · 6.3× real profit', ''], ['Evidence', '182 winning blocks · 8 graduates · 1 edge proven', ''],
+    ['Real profit', '+$19.38', 'positive'], ['Restarts', '24', '']]);
+  // Parity is compute over profit; a losing or empty day has no ratio, only its sign.
+  assert.deepEqual(cells({ real_profit_usd_per_day: '-3.10' }).map(cell => cell[1]).filter((_, n) => n !== 1), ['$122', '−$3.10', '24']);
+  assert.equal(cells({ real_profit_usd_per_day: '-3.10' })[2][2], 'negative');
+  assert.equal(cells({ compute_usd_per_day: '60.00', real_profit_usd_per_day: '30.00' })[0][1], '$60 · 2× real profit', 'the plan\'s line');
+  assert.equal(cells({ compute_usd_per_day: '8.50', real_profit_usd_per_day: '0.40' })[0][1], '$8.50 · 21× real profit');
+  assert.equal(cells({ positive_blocks_per_day: 1, graduates_per_day: 1, proofs_per_day: 0 })[1][1], '1 winning block · 1 graduate · no edge proven');
+  // What the House sends before Y2 (restarts from health, proofs from the board): only those cells.
+  assert.deepEqual(flywheelCells(flywheelReading(checkpoint({ flywheel: { at: '2026-09-15T14:04:00.000Z', proofs_per_day: 0, restarts_per_day: 24 } })))
+    .map(cell => [cell.name, cell.value]), [['Evidence', 'no edge proven'], ['Restarts', '24']]);
+  assert.equal(flywheelReading(checkpoint({ flywheel: { at: '2026-09-15T14:04:00.000Z' } })), null, 'nothing to draw');
+  assert.equal(flywheelReading(checkpoint()), null, 'no flywheel');
+  assert.deepEqual(flywheelCells(null), []);
+  // Drawn while the reading is at most half an hour older than its checkpoint, and only a reading the site accepts.
+  assert.notEqual(reading({ at: new Date(Date.parse(published) - FLYWHEEL_STALE_MS).toISOString() }), null, 'half an hour old');
+  assert.equal(reading({ at: new Date(Date.parse(published) - FLYWHEEL_STALE_MS - 1000).toISOString() }), null, 'older');
+  assert.equal(reading({ restarts_per_day: '24' }), null, 'a reading the site would refuse');
+  // The clock to compounding, in the page's words.
+  assert.equal(clockWords(swingClock()), 'Compounding review at 15 real settlements · 4 to go at 5.6 a day · about 17 hours');
+  assert.equal(clockWords(swingClock({ days: '2.34' })), 'Compounding review at 15 real settlements · 4 to go at 5.6 a day · about 2.3 days');
+  assert.equal(clockWords(swingClock({ days: '1.04' })), 'Compounding review at 15 real settlements · 4 to go at 5.6 a day · about 1 day');
+  assert.equal(clockWords(swingClock({ look_at: 10, to_go: 10, per_day: '0.000', days: null })), 'Compounding review at 10 real settlements · 10 to go', 'no rate, no estimate');
+  assert.equal(clockWords(swingClock({ to_go: 0, days: '0' })), 'Compounding review at 15 real settlements · passed · the audit is next');
+  assert.equal(clockWords(swingClock({ to_go: 1, dates_to_go: 2, days: '2.00' })),
+    'Compounding review at 15 real settlements · 1 to go at 5.6 a day · settlements on 2 more days · about 2 days');
+  assert.equal(clockWords(swingClock({ to_go: 0, dates_to_go: 1, days: '1.00' })), 'Compounding review at 15 real settlements · settlements on 1 more day · about 1 day');
+  assert.equal(clockWords(swingClock({ look_at: null, grant_holds: true })), 'Compounding review · 4 to go at 5.6 a day · about 17 hours · Level 3 not yet released');
+  assert.equal(clockWords(null), '');
+  assert.deepEqual(['0.001', '0.5', '0.99', '1', '12.25', '-1', 'x'].map(aboutText), ['about 1 hour', 'about 12 hours', 'about 24 hours', 'about 1 day', 'about 12.3 days', '', '']);
+  // The capacity curve: each size by its dollars, practice fills named, an unmeasured size never priced.
+  assert.equal(capacityWords(capacityCurve()), 'Capacity $32/day at $5.39 · $65/day at $11 · not measured at $22');
+  assert.equal(capacityWords([curvePoint(1, { usd_per_day: '0.25', size_usd: '25.00', basis: 'all' })]), 'Capacity $0.25/day at $25 incl. practice');
+  assert.equal(capacityWords([curvePoint(1, { usd_per_day: '-0.40' })]), 'Capacity −$0.40/day at $5.39');
+  assert.equal(capacityWords([curvePoint(1, { usd_per_day: null })]), 'Capacity not measured at $5.39', 'a rate with no edge to price it');
+  assert.equal(capacityWords(null), '');
+  // With a curve the family's line leaves capacity to it, so the page never states two capacities for one family.
+  const strip = rows => familyStrip({ families: { unproven: 0, rows } }).rows;
+  const [both] = strip([familyRow({ swing_clock: swingClock(), capacity_curve: capacityCurve() })]);
+  assert.deepEqual([both.clock, both.curve], [swingClock(), capacityCurve()]);
+  assert.equal(familyWords(both), 'proven · 11 settlements, 2 real · lower bound +14.2% · 1 agent at $30');
+  const [plain] = strip([familyRow()]);
+  assert.deepEqual([plain.clock, plain.curve], [null, null]);
+  assert.equal(familyWords(plain), 'proven · 11 settlements, 2 real · lower bound +14.2% · 1 agent at $30 · capacity $57/day');
+  const [swinging] = strip([familyRow({ state: 'swing', swing_clock: swingClock() })]);
+  assert.equal(swinging.clock, null, 'compounding needs no clock');
+  const [odd] = strip([familyRow({ swing_clock: { days_to_swing: 0.72 }, capacity_curve: [{ multiple: 1 }] })]);
+  assert.deepEqual([odd.clock, odd.curve], [null, null], 'a shape the site does not know is not read');
+});
+
+test('the ladder draws the flywheel strip under the moves, and each proven edge with its clock and its capacity', async () => {
+  const now = Date.now();
+  const at = new Date(now - 60000).toISOString();
+  const roster = [
+    desk('meriwether-h2d625d', { family: 'sports-central-run-under', venues: ['kalshi'], gate: gateOf(2), band: 'bunt', mode: 'live', stake_usd: '16.62', pnl_usd: '3.10',
+      evidence: evidenceOf('1.200000', { E: '1.288000', W_real: '1.400000', real_trades: 11 }), family_state: 'proven', family_n: 25 }),
+    desk('mullins-13', { family: 'weather-favorites', venues: ['kalshi'], gate: gateOf(1), band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000') }),
+  ];
+  const families = familiesBlock({ rows: [
+    familyRow({ family: 'weather-favorites', state: 'swing', n: 40, real_n: 32, bound: '0.031000', stake_usd: '120.00', members_real: 2, capacity_usd_per_day: '14.20',
+      capacity_curve: [curvePoint(1, { usd_per_day: '14.20', size_usd: '60.00' })] }),
+    familyRow({ n: 25, real_n: 11, stake_usd: '16.62', swing_clock: swingClock(), capacity_curve: capacityCurve() }),
+  ] });
+  const board = { enabled: true, bands: {}, moves: [], families, lab: labReading({ at }) };
+  const flywheel = flywheelBlock({ at: new Date(now - 120000).toISOString() });
+  const draw = (body, look) => withBrowser('', path => {
+    if (path.includes('/checkpoint')) return body;
+    if (path.includes('/history')) return { schema_version: 1, total: 0, points: [] };
+    return { schema_version: 1, latest_seq: 0, events: [] };
+  }, async () => {
+    const root = stubPage('floor', FLOOR_IDS);
+    const feed = await startCapital(root);
+    try {
+      const ladder = root.querySelector('#floor-improvement');
+      assert.doesNotMatch(ladder.textContent, HOUSE_JARGON);
+      assert.deepEqual(root.find('a'), [], 'no links');
+      await look(ladder);
+    } finally { feed.stop(); }
+  });
+  const body = checkpoint({ published_at: at, desks: roster, board, flywheel });
+  assert.equal(validCheckpoint(body), true);
+  await draw(body, ladder => {
+    const strip = ladder.withClass('board-flywheel')[0];
+    assert.equal(words(strip), 'Last 24 hours Compute $122 · 6.3× real profit Evidence 182 winning blocks · 8 graduates · 1 edge proven Real profit +$19.38 Restarts 24');
+    assert.equal(strip.find('dl')[0].getAttribute('aria-label'), 'The last 24 hours');
+    assert.equal(strip.withClass('board-flywheel-name')[0].getAttribute('aria-hidden'), 'true', 'read once, by the list');
+    assert.deepEqual(strip.find('dt').map(words), ['Compute', 'Evidence', 'Real profit', 'Restarts']);
+    assert.deepEqual(strip.find('dd').map(node => node.className || ''), ['', '', 'positive', '']);
+    const order = ladder.withClass('board')[0].children.map(node => String(node.className).split(' ')[0]);
+    assert.deepEqual(order.slice(-3), ['board-flywheel', 'board-families', 'board-lab'], 'under the moves: the flywheel, the edges, then the lab');
+    const edges = ladder.withClass('board-family');
+    assert.equal(words(edges[0]), 'weather favorites compounding · 40 settlements, 32 real · lower bound +3.1% · 2 agents at $120 Capacity $14/day at $60');
+    assert.equal(words(edges[1]), 'sports central run under proven · 25 settlements, 11 real · lower bound +14.2% · 1 agent at $17 '
+      + 'Compounding review at 15 real settlements · 4 to go at 5.6 a day · about 17 hours Capacity $32/day at $5.39 · $65/day at $11 · not measured at $22');
+    assert.deepEqual(edges.map(item => item.withClass('board-family-clock').length), [0, 1], 'a compounding family needs no clock');
+    assert.deepEqual(edges.map(item => item.withClass('board-family-capacity').length), [1, 1]);
+  });
+  // A stale reading, or none: no strip, and the rest of the ladder as before.
+  for (const stale of [flywheelBlock({ at: new Date(now - 60000 - FLYWHEEL_STALE_MS - 1000).toISOString() }), undefined]) {
+    const { flywheel: _, ...rest } = body;
+    await draw(stale ? { ...rest, flywheel: stale } : rest, ladder => {
+      assert.equal(ladder.withClass('board-flywheel').length, 0);
+      assert.equal(ladder.withClass('board-families').length, 1);
+    });
+  }
 });
 
 test('the roster holds 160 desks and the checkpoint half a megabyte, and no more', async () => {

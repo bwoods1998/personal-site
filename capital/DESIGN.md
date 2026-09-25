@@ -127,10 +127,30 @@ watch it think. Focus: say no to everything else. The desk pages and the loop pa
    - **Lab** (Sept 24, 2026). One quiet line last, headed Lab: "84 strategies tested in the last
      hour · 3 graduates waiting for a seat" (no graduate waiting says nothing). The lab's reading is
      drawn only while it is at most half an hour older than its checkpoint (`LAB_STALE_MS`).
+   - **The flywheel** (Sept 25, 2026, the forward-first run: the owner's "compute a day, evidence a
+     day, real profit a day, restarts a day"). Under the moves and above the proven edges, one strip
+     headed "Last 24 hours", up to four cells that wrap as a row, each drawn only when the House
+     publishes its number: **Compute** ("$122 · 6.3× real profit": compute over real profit is the
+     parity the owner reads; with no profit there is no ratio), **Evidence** ("182 winning blocks · 8
+     graduates · 1 edge proven": forward blocks that grew, lab graduates, families newly proven),
+     **Real profit** ("+$19.38", green or red) and **Restarts** ("24"). Drawn while the reading is at
+     most half an hour older than its checkpoint (`FLYWHEEL_STALE_MS`); a reading with no number draws
+     no strip. Each proven edge then gains up to two indented lines: its clock to compounding
+     ("Compounding review at 15 real settlements · 4 to go at 5.6 a day · about 17 hours"; "· passed ·
+     the audit is next" once the count is reached; "settlements on 2 more days" while the review lacks
+     distinct days; "Level 3 not yet released" while the owner's grant holds stakes at Level 2; a
+     compounding family has no clock) and its capacity at the real size, size by size ("Capacity
+     $32/day at $5.39 · $65/day at $11 · not measured at $22"; "incl. practice" where the fill rate
+     counts practice fills; a size never bid enough is never priced). With a curve, the edge's own line
+     drops its "capacity $X/day", so the page never states two capacities for one family.
    - Reads each desk's `band`, `stake_usd`, `evidence` {`W_paper`, `W_real`, `E`, `trades`,
      `real_trades`}, `last_move`, and `family_state` with `family_n` (together or not at all), and
      the checkpoint's `board` {`bands`, `moves`, `throttle`, `enabled`, `families` {`unproven`,
-     `rows`}, `lab` {`at`, `tested_last_hour`, `graduates_waiting`}}. A checkpoint from before the
+     `rows`}, `lab` {`at`, `tested_last_hour`, `graduates_waiting`}}, a family row's optional
+     `swing_clock` {`look_at`, `to_go`, `per_day`, `days`[, `dates_to_go`][, `grant_holds`]} and
+     `capacity_curve` [{`multiple`, `size_usd`, `fill_rate`, `usd_per_day`, `basis`}], and the
+     checkpoint's `flywheel` {`at`[, `compute_usd_per_day`][, `real_profit_usd_per_day`][,
+     `positive_blocks_per_day`][, `graduates_per_day`][, `proofs_per_day`][, `restarts_per_day`]}. A checkpoint from before the
      allocator publishes none of these: the level then follows `gate.evidence.rung` (0 and 1 Level
      1, 2 Level 2, 3 Level 3) and a real desk's `capital_usd` stands in for its stake; one from
      before the mechanism ledger draws no family line, no proven edges and no lab line.
