@@ -11,7 +11,7 @@ import {
   validEvent, validEventBatch, validCheckpoint, validDesk, validInfra, validStream, validKindPayload,
   validVenues, validVenueBalance, validBudget, socketMatches, parseStreamTags, sourceUrl, deskMode, isLive,
   validPosition, validMutation, validLiveSession, validExperiment, validCurveRow, validLab, validWatch, validCalibration, validRun,
-  validFamilyRow, validFamilies, validLabReading, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
+  validFamilyRow, validFamilies, validLabReading, validSwingClock, validCapacityCurve, validFlywheel, EVENT_KINDS, KIND_STREAMS, MAX_BATCH_BYTES, TAPES,
 } from '../capital/schema.js';
 import {
   orderDesks, partnerOf, partnerName, truncate, money, percent, signedMoney, streamUrl, startCapital, PARTNERS, PARTNER_ORDER,
@@ -726,6 +726,71 @@ test('the checkpoint carries the mechanism ledger: a desk\'s family, the proven 
     ['too many tested', labReading({ tested_last_hour: 1000001 })], ['too many waiting', labReading({ graduates_waiting: 100001 })],
     ['an extra key', labReading({ batches_last_hour: 63 })], ['a missing key', (({ graduates_waiting: _, ...rest }) => rest)(labReading())], ['null', null],
   ]) assert.equal(validCheckpoint(checkpoint({ desks: [row()], board: summary({ lab: value }) })), false, why);
+});
+
+// The flywheel (Sept 25, 2026, the forward-first run's W): the floor's last 24 hours, and each proven family's
+// clock to compounding and capacity curve, as the House publishes them.
+const swingClock = (overrides = {}) => ({ look_at: 15, to_go: 4, per_day: '5.556', days: '0.72', ...overrides });
+const curvePoint = (multiple, overrides = {}) => ({ multiple, size_usd: (5.39 * multiple).toFixed(2), fill_rate: '0.6000',
+  usd_per_day: (32.33 * multiple).toFixed(2), basis: 'real', ...overrides });
+const capacityCurve = () => [curvePoint(1), curvePoint(2), curvePoint(4, { fill_rate: null, usd_per_day: null, basis: null })];
+const flywheelBlock = (overrides = {}) => ({ at: '2026-09-15T14:04:00.000Z', compute_usd_per_day: '122.31', real_profit_usd_per_day: '19.38',
+  positive_blocks_per_day: 182, graduates_per_day: 8, proofs_per_day: 1, restarts_per_day: 24, ...overrides });
+test('the checkpoint carries the flywheel and each proven family\'s clock and capacity curve, typed, and refuses anything else', () => {
+  const at = '2026-09-15T14:05:00.000Z';
+  const row = desk('mullins-13', { family: 'weather-favorites', band: 'paper', stake_usd: null, evidence: evidenceOf('1.012000'), last_move: null });
+  const board = (families = familiesBlock()) => ({ enabled: true, bands: {}, moves: [], families });
+  const valid = overrides => validCheckpoint(checkpoint({ desks: [row], board: board(), ...overrides }));
+  // Before the House publishes any of it: every earlier checkpoint shape still passes.
+  assert.equal(valid({}), true, 'no flywheel');
+  assert.equal(validFlywheel(flywheelBlock(), at), true);
+  for (const [why, value] of [
+    ['everything', flywheelBlock()], ['only the restarts (what health carries before Y2)', { at: '2026-09-15T14:04:00.000Z', restarts_per_day: 24 }],
+    ['only its time: the strip draws nothing', { at: '2026-09-15T14:04:00.000Z' }], ['a losing day', flywheelBlock({ real_profit_usd_per_day: '-3.10' })],
+    ['nothing spent, nothing earned', flywheelBlock({ compute_usd_per_day: '0', real_profit_usd_per_day: '0', positive_blocks_per_day: 0, proofs_per_day: 0 })],
+    ['a minute of clock skew', flywheelBlock({ at: '2026-09-15T14:06:00.000Z' })], ['an old reading: the page decides it is stale', flywheelBlock({ at: '2026-09-14T14:05:00.000Z' })],
+  ]) assert.equal(valid({ flywheel: value }), true, why);
+  for (const [why, value] of [
+    ['Y2\'s own health name, unmapped', flywheelBlock({ compute_per_day_usd: '122.31' })], ['an unknown number', flywheelBlock({ tick_p50_seconds: 40 })],
+    ['a numeric dollar amount', flywheelBlock({ compute_usd_per_day: 122.31 })], ['a negative compute bill', flywheelBlock({ compute_usd_per_day: '-1' })],
+    ['a null: absent means unknown', flywheelBlock({ restarts_per_day: null })], ['a string count', flywheelBlock({ restarts_per_day: '24' })],
+    ['a float count', flywheelBlock({ positive_blocks_per_day: 1.5 })], ['a negative count', flywheelBlock({ graduates_per_day: -1 })],
+    ['too many restarts', flywheelBlock({ restarts_per_day: 100001 })], ['too many proofs', flywheelBlock({ proofs_per_day: 1001 })],
+    ['read after the checkpoint', flywheelBlock({ at: '2026-09-15T14:06:01.000Z' })], ['Python\'s isoformat', flywheelBlock({ at: '2026-09-15T14:04:00+00:00' })],
+    ['no time', (({ at: _, ...rest }) => rest)(flywheelBlock())], ['a list', [flywheelBlock()]], ['null', null], ['a private key', flywheelBlock({ _source: 'health' })],
+  ]) assert.equal(valid({ flywheel: value }), false, why);
+  assert.equal(validCheckpoint(checkpoint({ desks: [row], board: { ...board(), flywheel: flywheelBlock() } })), false, 'the flywheel is the checkpoint\'s, not the board\'s');
+  // A proven family's clock and capacity curve.
+  const family = overrides => familiesBlock({ rows: [familyRow({ swing_clock: swingClock(), capacity_curve: capacityCurve(), ...overrides })] });
+  assert.equal(validSwingClock(swingClock()), true);
+  assert.equal(validCapacityCurve(capacityCurve()), true);
+  for (const [why, value] of [
+    ['the clock and the curve', family()], ['the clock alone', familiesBlock({ rows: [familyRow({ swing_clock: swingClock() })] })],
+    ['the curve alone (C6 before the clock)', familiesBlock({ rows: [familyRow({ capacity_curve: capacityCurve() })] })],
+    ['a compounding family\'s curve', familiesBlock({ rows: [familyRow({ state: 'swing', capacity_curve: capacityCurve() })] })],
+    ['no rate yet', family({ swing_clock: swingClock({ per_day: null, days: null }) })], ['the review passed', family({ swing_clock: swingClock({ to_go: 0, days: '0' }) })],
+    ['no review scheduled', family({ swing_clock: swingClock({ look_at: null }) })],
+    ['distinct days still owed (M1)', family({ swing_clock: swingClock({ dates_to_go: 2 }) })], ['the grant holds Level 3', family({ swing_clock: swingClock({ grant_holds: true }) })],
+    ['one point', family({ capacity_curve: [curvePoint(1)] })], ['every book\'s fills', family({ capacity_curve: [curvePoint(1, { basis: 'all' })] })],
+    ['a measured size that loses', family({ capacity_curve: [curvePoint(1, { usd_per_day: '-0.40' })] })],
+    ['measured, but no edge to price', family({ capacity_curve: [curvePoint(1, { usd_per_day: null })] })],
+  ]) assert.equal(valid({ board: board(value) }), true, why);
+  for (const [why, value] of [
+    ['a clock on a compounding family', family({ state: 'swing' })], ['the House\'s own clock shape', family({ swing_clock: { real_n: 11, needs: { real_settlements: 4, look_at: 15 }, days_to_swing: 0.72 } })],
+    ['an extra clock key', family({ swing_clock: swingClock({ confidence: '0.9' }) })], ['a missing clock key', family({ swing_clock: (({ days: _, ...rest }) => rest)(swingClock()) })],
+    ['four places a day', family({ swing_clock: swingClock({ per_day: '5.5556' }) })], ['a numeric rate', family({ swing_clock: swingClock({ per_day: 5.556 }) })],
+    ['negative days', family({ swing_clock: swingClock({ days: '-0.72' }) })], ['three places of days', family({ swing_clock: swingClock({ days: '0.722' }) })],
+    ['a null count to go', family({ swing_clock: swingClock({ to_go: null }) })], ['a year of days', family({ swing_clock: swingClock({ dates_to_go: 367 }) })],
+    ['a string grant', family({ swing_clock: swingClock({ grant_holds: 'yes' }) })], ['a clock as a number', family({ swing_clock: 0.72 })],
+    ['an empty curve', family({ capacity_curve: [] })], ['five points', family({ capacity_curve: [1, 2, 4, 8, 16].map(n => curvePoint(n)) })],
+    ['sizes out of order', family({ capacity_curve: [curvePoint(2), curvePoint(1)] })], ['a size twice', family({ capacity_curve: [curvePoint(1), curvePoint(1)] })],
+    ['an unmeasured size with a basis', family({ capacity_curve: [curvePoint(1, { fill_rate: null, usd_per_day: null })] })],
+    ['an unmeasured size priced', family({ capacity_curve: [curvePoint(1, { fill_rate: null, basis: null })] })],
+    ['a rate with no basis', family({ capacity_curve: [curvePoint(1, { basis: null })] })], ['practice as a basis', family({ capacity_curve: [curvePoint(1, { basis: 'practice' })] })],
+    ['a rate above one', family({ capacity_curve: [curvePoint(1, { fill_rate: '1.2' })] })], ['no multiple', family({ capacity_curve: [curvePoint(0)] })],
+    ['a numeric size', family({ capacity_curve: [curvePoint(1, { size_usd: 5.39 })] })], ['an extra point key', family({ capacity_curve: [curvePoint(1, { bucket: '5-10' })] })],
+    ['C6\'s own point shape', family({ capacity_curve: [{ multiple: 1, size_usd: 5.39, fill_rate: 0.6, basis: 'real', usd_per_day: 32.33 }] })],
+  ]) assert.equal(valid({ board: board(value) }), false, why);
 });
 
 test('the roster holds 160 desks and the checkpoint half a megabyte, and no more', async () => {
