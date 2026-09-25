@@ -18,6 +18,8 @@ Three floors, one dot per agent: **Level 1 · Practice**, **Level 2 · Live trad
 
 Hover, keyboard focus or tap fills the readout with the agent's level, stake or practice growth, trades, progress and latest move. Crossings travel through a gate between the floors; the newest climb replays once when the ladder first comes into view, labelled as a replay. The latest five moves are buttons that select their agent. Retired agents sit below the floors; a desk with no band is listed as **Level unknown** rather than given an invented level.
 
+Under the moves, the **flywheel** strip reads the floor's last 24 hours in up to four cells: compute (with its ratio to real profit, the parity the owner reads), evidence (forward blocks that grew, lab graduates, families newly proven), real profit and House restarts. Each cell is drawn only when the runtime publishes its number, and the strip only while its reading is at most half an hour older than its checkpoint. Each proven edge below it adds its clock to compounding (the real settlements at which its review is read, how many are still to come, and the time to it at the family's own rate) and its capacity at the real size, at 1×, 2× and 4× the stake, with a size never bid enough left unpriced.
+
 Levels come from the checkpoint's `band` (or `gate.evidence.rung` on older publications), stakes from `stake_usd` (or `capital_usd`), progress from `evidence` while `board.enabled` is true. `accounting_ok: false` suppresses a contaminated result and shows **Accounting under review**. A dot moves only when the checkpoint's roster confirms it; the exact league-owned `lab.progress` templates supply live events and are shown in the page's own words. See the runtime's [ladder contract](https://github.com/bwoods1998/long-term-capital-management/blob/main/docs/contracts/2026-09-21-game-ladder.md).
 
 The roster refreshes every 30 seconds and on lifecycle events through the existing WebSocket, with polling fallback. Movement markers last one hour; each move animates once per visit. Reduced-motion preferences turn off animation. Stale checkpoints are labelled, and missing data never becomes a fabricated zero population. All rendering uses text nodes, with no added library, font, external request or paid service.
@@ -53,7 +55,7 @@ A shadow desk's `broker.order`, `broker.fill` and `ledger.mark` payloads carry `
 
 ### The checkpoint
 
-`validCheckpoint` requires `{schema_version, published_at, floor, desks, committee, budget}` and accepts one optional block, `infra`. Required fields are still required; optional ones are typed when present and refused when malformed, and a field nobody validates is refused outright.
+`validCheckpoint` requires `{schema_version, published_at, floor, desks, committee, budget}` and accepts the optional blocks `infra`, `lab`, `watch`, `run`, `board` and, since September 25, 2026, `flywheel`. Required fields are still required; optional ones are typed when present and refused when malformed, and a field nobody validates is refused outright.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -66,7 +68,14 @@ A shadow desk's `broker.order`, `broker.fill` and `ledger.mark` payloads carry `
 | `infra.checkpoint_count`, `infra.uptime_seconds`, `infra.requests_today` | count or null | Whole, non-negative. |
 | `infra.spend_usd` | money or null | Sail spend today; the `budget` block answers when this does not. |
 
-The runtime publishes only those `infra` keys. The hostname, the pid and everything else its `hostinfo.describe_host()` knows stay on the box.
+| `flywheel.at` | instant | Required inside `flywheel`: when the numbers were read, never after the checkpoint (a minute of skew aside). |
+| `flywheel.compute_usd_per_day` | money | Compute bought in the last 24 hours. |
+| `flywheel.real_profit_usd_per_day` | signed money | Real settled profit in the last 24 hours. |
+| `flywheel.positive_blocks_per_day`, `graduates_per_day`, `proofs_per_day`, `restarts_per_day` | count | Forward blocks that grew, lab graduates, families newly proven, House restarts. |
+| `board.families.rows[].swing_clock` | object | A proven family's clock to compounding: exactly `{look_at, to_go, per_day, days}` plus optional `dates_to_go`, `grant_holds`. Refused on a compounding family. |
+| `board.families.rows[].capacity_curve` | array ≤4 | Exactly `{multiple, size_usd, fill_rate, usd_per_day, basis}` per point, multiples rising; an unmeasured size has no rate, no basis and no dollars. |
+
+Every `flywheel` number is optional, and absent means unknown: a `null` is refused. The runtime publishes only those `infra` keys. The hostname, the pid and everything else its `hostinfo.describe_host()` knows stay on the box.
 
 ### The live tape
 
@@ -151,7 +160,7 @@ https://developers.cloudflare.com/durable-objects/platform/limits/
 
 `npm run check`, `npm test`, `npm run build`, and `npx wrangler deploy --dry-run`.
 
-`test/capital.test.mjs` covers the publication validators including the `risk.review` payload contract, the optional `infra` and live/shadow floor fields, `shadow: true` payloads, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the retirement routes, the partner/sparkline/now-line/playbook/allocation projections, the shadow and live badges and card numbers, the infrastructure strip, the floor, desk and committee pages mounted against a stub DOM, the public-file allowlist, and the build with hashed assets.
+`test/capital.test.mjs` covers the publication validators including the `risk.review` payload contract, the optional `infra` and live/shadow floor fields, `shadow: true` payloads, idempotent and conflicting batches, checkpoint monotonicity and the derived desk roster, pagination and ETags, WebSocket tag matching and fan-out, the retirement routes, the partner/sparkline/now-line/playbook/allocation projections, the shadow and live badges and card numbers, the infrastructure strip, the flywheel strip with each proven family's clock and capacity curve, the floor, desk and committee pages mounted against a stub DOM, the public-file allowlist, and the build with hashed assets.
 
 Tests cover concurrent idempotent orders, index consistency, cooldown/daily limits, moderation gating and revocation, admin session expiry/logout, forged cookies, cross-origin writes and body limits. Cloudflare runtime/browser smoke checks additionally exercise the ticket, approval flow, literal HTML text rendering, public-file allowlist and mobile overflow.
 
