@@ -307,6 +307,17 @@ button.board-change:focus-visible { outline-offset: 2px; }
 .board-family { padding: 3px 0; }
 .board-family-rest { display: block; padding: 3px 0 0; }
 .board-lab { margin: 10px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--line); color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
+/* The flywheel (Sept 25, 2026): the last 24 hours in up to four cells that wrap as a row, the numbers in ink
+   and the labels quiet; then each proven edge's clock to compounding and its capacity, indented under it. */
+.board-flywheel { margin: 0; padding: 10px 0 0; border-top: 1px solid var(--line); color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
+.board-flywheel-name { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+.board-flywheel-cells { display: flex; flex-wrap: wrap; gap: 6px 26px; margin: 4px 0 10px; }
+.board-flywheel-cell { min-width: 0; max-width: 100%; }
+.board-flywheel-cell dt { font-size: 10px; letter-spacing: .3px; }
+.board-flywheel-cell dd { margin: 0; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.board-flywheel-cell dd.positive { color: var(--positive); }
+.board-flywheel-cell dd.negative { color: var(--negative); }
+.board-family-clock, .board-family-capacity { display: block; padding-left: 12px; }
 
 /* Motion: only real events move anything, and each once. */
 .board-arriving { --ripple: var(--accent); animation: board-arrival 1.2s ease-out backwards; }
@@ -390,6 +401,7 @@ button.board-change:focus-visible { outline-offset: 2px; }
   .board-caption { flex-wrap: wrap; gap: 2px 12px; }
   .board-legend { gap: 3px 12px; }
   .board-change { font-size: 10px; }
+  .board-flywheel-cells { gap: 6px 18px; }
   .board-detail-progress { flex-wrap: wrap; }
   .board-detail-progress > span:last-child { flex-basis: 100%; }
 }

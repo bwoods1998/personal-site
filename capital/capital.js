@@ -1,5 +1,6 @@
 import {
   MAX_EVENT_LIMIT, REAL_BANDS, PROVEN_STATES, bandName, deskId, familyState, isLive, validCheckpoint, validPublicEvent, socketMatches, tapeName,
+  validSwingClock, validCapacityCurve, validFlywheel,
 } from './schema.js';
 
 // Long-Term Capital Management's own record, rendered from text nodes only. Prices are the floor's
@@ -1434,6 +1435,9 @@ export function familyStrip(board) {
       family: row.family, name: humanize(row.family.replace(/-/g, ' ')), state: row.state, n: row.n, realN: Number.isSafeInteger(row.real_n) ? row.real_n : 0,
       bound: row.bound, stake: numeric(row.stake_usd) ? row.stake_usd : null, members: Number.isSafeInteger(row.members_real) ? row.members_real : 0,
       capacity: numeric(row.capacity_usd_per_day) ? row.capacity_usd_per_day : null,
+      // Sept 25, 2026 (the forward-first run): a proven family's clock to compounding, and its capacity curve.
+      clock: row.state === 'proven' && validSwingClock(row.swing_clock) ? row.swing_clock : null,
+      curve: validCapacityCurve(row.capacity_curve) ? row.capacity_curve : null,
     }));
   return { rows, unproven: block.unproven };
 }
@@ -1446,12 +1450,80 @@ export function labLine(board, publishedAt) {
 }
 // One family on the strip, after its name: "proven · 11 settlements, 2 real · lower bound +14.2% · 1
 // agent at $30 · capacity $57/day". The bound is on its growth a settlement; its capacity (what the
-// edge earns a day at that stake) is said only once it is measured above nothing.
+// edge earns a day at that stake) is said only once it is measured above nothing, and only here while
+// the family has no capacity curve: with one, the curve's own line says it, size by size.
 export function familyWords(row) {
   const counted = row.realN > 0 ? `${settlementsText(row.n)}, ${row.realN} real` : settlementsText(row.n);
   const staked = row.stake === null ? '' : row.members > 0 ? `${plural(row.members, 'agent')} at ${money(row.stake, 0)}` : `${money(row.stake, 0)} stake`;
-  const capacity = row.capacity !== null && Number(row.capacity) > 0 ? `capacity ${money(row.capacity, Number(row.capacity) >= 10 ? 0 : 2)}/day` : '';
+  const capacity = !row.curve && row.capacity !== null && Number(row.capacity) > 0 ? `capacity ${dollars(row.capacity)}/day` : '';
   return join(FAMILY_WORDS[row.state], counted, `lower bound ${percentText(Number(row.bound) * 100)}`, staked, capacity);
+}
+// Whole dollars from $10, cents below: "$57", "$7.81".
+const dollars = value => money(value, Math.abs(Number(value)) >= 10 ? 0 : 2);
+// "about 17 hours", "about 2.3 days".
+export function aboutText(days) {
+  const value = Number(days);
+  if (!Number.isFinite(value) || value < 0) return '';
+  if (value < 1) return `about ${plural(Math.max(1, Math.round(value * 24)), 'hour')}`;
+  const tenths = Math.round(value * 10) / 10;
+  return `about ${tenths} ${tenths === 1 ? 'day' : 'days'}`;
+}
+const tenthsText = value => String(Math.round(Number(value) * 10) / 10);
+// A proven family's clock to compounding (the House's family swing), in the page's words: "Compounding
+// review at 15 real settlements · 4 to go at 5.6 a day · about 17 hours"; once the review's count is
+// reached, "... · passed · the audit is next". The review also needs settlements on distinct days
+// ("settlements on 2 more days"), and "Level 3 not yet released" says the owner's grant still holds
+// stakes at Level 2. Nothing here is a promise: the review reads the family's record when it gets there.
+export function clockWords(clock) {
+  if (!clock) return '';
+  const dates = Number.isSafeInteger(clock.dates_to_go) ? clock.dates_to_go : 0;
+  const waiting = clock.to_go > 0 || dates > 0;
+  const rate = clock.per_day !== null && Number(clock.per_day) > 0 ? ` at ${tenthsText(clock.per_day)} a day` : '';
+  return join(clock.look_at === null ? 'Compounding review' : `Compounding review at ${plural(clock.look_at, 'real settlement')}`,
+    clock.to_go > 0 ? `${clock.to_go} to go${rate}` : '', dates > 0 ? `settlements on ${plural(dates, 'more day')}` : '',
+    waiting && clock.days !== null ? aboutText(clock.days) : '', waiting ? '' : 'passed · the audit is next',
+    clock.grant_holds === true ? 'Level 3 not yet released' : '');
+}
+// The capacity curve at the real size: "Capacity $32/day at $5 · $65/day at $11 · not measured at $22".
+// A rate that counts practice fills says so ("incl. practice"); a size never bid enough is never priced.
+export function capacityWords(curve) {
+  if (!Array.isArray(curve) || !curve.length) return '';
+  const points = curve.map(point => (point.fill_rate === null || point.usd_per_day === null ? `not measured at ${dollars(point.size_usd)}`
+    : `${Number(point.usd_per_day) > 0 ? dollars(point.usd_per_day) : signedMoney(point.usd_per_day, 2)}/day at ${dollars(point.size_usd)}${point.basis === 'all' ? ' incl. practice' : ''}`));
+  return `Capacity ${points.join(' · ')}`;
+}
+
+// ---- the flywheel (Sept 25, 2026, the forward-first run's W)
+// The floor's last 24 hours: compute bought evidence, evidence earns real capital, capital earns real profit,
+// and the House keeps running. Drawn while the reading is at most half an hour older than its checkpoint.
+export const FLYWHEEL_STALE_MS = 30 * 60 * 1000;
+export function flywheelReading(checkpoint) {
+  const value = checkpoint?.flywheel;
+  const published = checkpoint?.published_at;
+  if (!value || !published || !validFlywheel(value, published)) return null;
+  if (!(Date.parse(published) - Date.parse(value.at) <= FLYWHEEL_STALE_MS)) return null;
+  const pick = field => (Object.hasOwn(value, field) ? value[field] : null);
+  const reading = { compute: pick('compute_usd_per_day'), profit: pick('real_profit_usd_per_day'), blocks: pick('positive_blocks_per_day'),
+    graduates: pick('graduates_per_day'), proofs: pick('proofs_per_day'), restarts: pick('restarts_per_day') };
+  return Object.values(reading).some(number => number !== null) ? reading : null;
+}
+// The strip's cells, in the flywheel's order, each only when its number is published: "Compute $122 ·
+// 6.3× real profit", "Evidence 182 winning blocks · 8 graduates · 1 edge proven", "Real profit +$19.38",
+// "Restarts 24". Compute over profit is the parity the owner reads; with no profit there is no ratio.
+export function flywheelCells(reading) {
+  if (!reading) return [];
+  const cells = [];
+  if (reading.compute !== null) {
+    const times = reading.profit !== null && Number(reading.profit) > 0 ? Number(reading.compute) / Number(reading.profit) : null;
+    const ratio = times === null ? '' : `${times >= 10 ? Math.round(times) : tenthsText(times)}× real profit`;
+    cells.push({ name: 'Compute', value: join(dollars(reading.compute), ratio), tone: '' });
+  }
+  const evidence = join(reading.blocks === null ? '' : plural(reading.blocks, 'winning block'), reading.graduates === null ? '' : plural(reading.graduates, 'graduate'),
+    reading.proofs === null ? '' : reading.proofs ? `${plural(reading.proofs, 'edge')} proven` : 'no edge proven');
+  if (evidence) cells.push({ name: 'Evidence', value: evidence, tone: '' });
+  if (reading.profit !== null) cells.push({ name: 'Real profit', value: signedMoney(reading.profit, 2), tone: signOf(reading.profit) });
+  if (reading.restarts !== null) cells.push({ name: 'Restarts', value: String(reading.restarts), tone: '' });
+  return cells;
 }
 // "44 strategies still unproven"; with nothing proven, "No proven edge yet · 45 strategies unproven".
 export function unprovenWords(strip) {
@@ -1579,7 +1651,7 @@ export function boardSnapshot(checkpoint, events = [], now = Date.now()) {
     living: living.length, real: living.filter(agent => agent.real).length, levels, agents,
     unknown: living.filter(agent => agent.band === null), retired: agents.filter(agent => agent.retired),
     moves: moves.filter(move => !sameLevel(move)).slice(0, 5), throttle, enabled, latestClimb,
-    families: familyStrip(board), lab: labLine(board, checkpoint?.published_at),
+    families: familyStrip(board), lab: labLine(board, checkpoint?.published_at), flywheel: flywheelReading(checkpoint),
     ready: living.filter(agent => agent.progress !== null && agent.progress >= 1).sort((a, b) => b.level - a.level)[0] || null,
     closest: practice.reduce((best, agent) => (agent.progress !== null && agent.progress >= ARC_MIN && (!best || agent.progress > best.progress) ? agent : best), null),
     publishedAt: checkpoint?.published_at || null, stale: !floorRunning(checkpoint, now),
@@ -2041,7 +2113,27 @@ function boardPanel(checkpoint, state) {
     }
     panel.append(trail);
   }
-  // Below the moves (Sept 24, 2026): the proven edges, then the lab's one quiet line.
+  // Below the moves (Sept 25, 2026): the flywheel's last 24 hours, one cell a number, when the House publishes it.
+  const cells = flywheelCells(model.flywheel);
+  if (cells.length) {
+    const strip = element('div', null, 'board-flywheel');
+    const list = element('dl', null, 'board-flywheel-cells');
+    list.setAttribute('aria-label', 'The last 24 hours');
+    for (const cell of cells) {
+      const item = element('div', null, 'board-flywheel-cell');
+      const value = element('dd', null, cell.tone || null);
+      value.append(phrases(cell.value));
+      item.append(element('dt', cell.name), value);
+      list.append(item);
+    }
+    // The list names itself to a screen reader; the label is for the eye.
+    const name = element('span', 'Last 24 hours', 'board-flywheel-name');
+    name.setAttribute('aria-hidden', 'true');
+    strip.append(name, list);
+    panel.append(strip);
+  }
+  // Then (Sept 24, 2026) the proven edges, each with its clock to compounding and its capacity at the real
+  // size when the House publishes them (Sept 25, 2026), then the lab's one quiet line.
   const families = model.families;
   const unproven = families ? unprovenWords(families) : '';
   if (families && (families.rows.length || unproven)) {
@@ -2052,6 +2144,10 @@ function boardPanel(checkpoint, state) {
       for (const row of families.rows) {
         const item = element('li', null, 'board-family');
         item.append(familyNode(row.name, familyWords(row), row.state, 'board-family-line'));
+        const clock = clockWords(row.clock);
+        if (clock) item.append(phrases(clock, 'board-family-clock'));
+        const capacity = capacityWords(row.curve);
+        if (capacity) item.append(phrases(capacity, 'board-family-capacity'));
         list.append(item);
       }
       // The list names itself to a screen reader; the label is for the eye.
