@@ -792,7 +792,15 @@ function agentsPanel(checkpoint, state) {
       button.setAttribute('aria-expanded', 'false');
       button.setAttribute('title', `${row.name} · ${row.bandText}`);
       button.append(element('span', null, 'agent-dot-core'));
-      button.addEventListener('click', () => state.selectAgent(state.selectedAgent === row.id ? null : row.id));
+      button.addEventListener('click', () => {
+        const opening = state.selectedAgent !== row.id;
+        state.selectAgent(opening ? row.id : null);
+        if (opening) {
+          const animate = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          details.scrollIntoView?.({ block: 'nearest', behavior: animate ? 'smooth' : 'auto' });
+        }
+      });
       buttons.set(row.id, button);
       detailHosts.set(row.id, host);
       group.append(button);

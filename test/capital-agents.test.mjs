@@ -66,6 +66,7 @@ test('thoughts and news keep their alias when their agent is absent from the ros
   assert.deepEqual(socket.received.map(event => event.display_name), ['Meriwether', 'Meriwether']);
   for (const event of events) assert.equal(validPublicEvent(event), true);
   assert.equal(validPublicEvent({ ...events[0], display_name: 'bid 1.25' }), false);
+  for (const stream of [1, null, {}, []]) assert.equal(validPublicEvent({ ...events[1], stream }), false, 'malformed stream refuses an alias without throwing');
   assert.equal((await post(capital, '/api/capital/events', batch({ ...thought, display_name: 'Scholes' }))).status, 400);
 });
 

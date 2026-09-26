@@ -581,6 +581,8 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.equal(board.withClass('agent-dot').length, 12, 'all agents have a dot, retired ones in the closed archive');
     assert.equal(board.find('table').length, 0);
     assert.equal(board.querySelector('#agent-detail').hidden, true);
+    const scrolls = [];
+    board.querySelector('#agent-detail').scrollIntoView = options => scrolls.push(options);
     const dot = board.withClass('agent-dot')[0];
     assert.equal(dot.tag, 'button', 'native keyboard and touch interaction');
     assert.equal(dot.getAttribute('aria-expanded'), 'false');
@@ -588,12 +590,14 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.equal(dot.getAttribute('aria-expanded'), 'true');
     const detail = board.querySelector('#agent-detail');
     assert.equal(detail.hidden, false);
+    assert.deepEqual(scrolls, [{ block: 'nearest', behavior: 'auto' }], 'an explicit selection brings its detail into view');
     assert.match(textOf(detail), /^Meriwether Sized × iron condor Sells short-dated/);
     assert.match(textOf(detail), /real 22 trades · 16 won · \+\$212\.40/);
     assert.match(textOf(detail), /real money XSP iron condor · 4 legs · Sep 28 · ×1 max loss \$184\.00 \+\$12\.50/);
     detail.withClass('agent-close')[0].click();
     assert.equal(detail.hidden, true);
     assert.equal(dot.getAttribute('aria-expanded'), 'false');
+    assert.equal(scrolls.length, 1, 'closing does not scroll');
     assert.doesNotMatch(root.textContent, VENUES);
     assert.deepEqual(root.find('a'), []);
   });

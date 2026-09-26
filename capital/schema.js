@@ -212,7 +212,8 @@ export function validPublicEvent(event) {
   if (!plainObject(event)) return false;
   const { display_name: displayName, ...original } = event;
   if (Object.hasOwn(event, 'display_name') && (!validDisplayName(displayName)
-      || !(event.stream?.startsWith('agent:') || (event.kind === 'swarm.news' && agentId(event.payload?.agent))))) return false;
+      || !((typeof event.stream === 'string' && event.stream.startsWith('agent:'))
+        || (event.kind === 'swarm.news' && agentId(event.payload?.agent))))) return false;
   return counter(event.seq, Number.MAX_SAFE_INTEGER) && validEvent(original);
 }
 
