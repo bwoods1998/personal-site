@@ -12,6 +12,13 @@ export function progress(target = 'candidate', done = {}, blocked = 'validation_
   return { target, checks: PROGRESS_CHECKS[target].map(key => ({ key, done: done[key] ?? 0, need: needs[key] || 1 })), blocked };
 }
 
+test('the D2 line (50 trades on 25 days) validates beside the earlier 100 on 60', () => {
+  const d2 = { target: 'candidate', checks: PROGRESS_CHECKS.candidate.map(key => ({ key, done: 0,
+    need: { validation_trades: 50, validation_days: 25, validation_quarters: 3 }[key] || 1 })), blocked: 'validation_failed' };
+  assert.equal(validAgent(agent('d2', { progress: d2 }), PUBLISHED_AT), true);
+  assert.equal(validAgent(agent('old-line', { progress: progress() }), PUBLISHED_AT), true);
+});
+
 test('promotion payloads are exact, complete, bounded and backward compatible, with no private evidence fields', () => {
   const row = agent('one', { progress: progress() });
   assert.equal(validAgent(row, PUBLISHED_AT), true);
@@ -21,7 +28,7 @@ test('promotion payloads are exact, complete, bounded and backward compatible, w
   assert.equal(validAgent({ ...row, display_name: 'Meriwether' }, PUBLISHED_AT, { publicRead: true }), true);
   const mutations = [
     p => { p.bid = '1.25'; }, p => { p.checks[0].score = .99; }, p => { p.checks[0].key = 'secret'; },
-    p => { p.checks[1].done = 101; }, p => { p.checks[1].need = 99; }, p => { p.checks[0].need = 2; },
+    p => { p.checks[1].done = 101; }, p => { p.checks[1].need = 49; }, p => { p.checks[1].need = 101; }, p => { p.checks[2].need = 24; }, p => { p.checks[0].need = 2; },
     p => { p.checks[0].done = true; }, p => { p.checks[0].done = NaN; }, p => { p.checks[0].done = -.1; },
     p => { p.checks.pop(); }, p => { p.checks[1] = p.checks[0]; }, p => { p.blocked = 'private model details'; },
     p => { p.target = 'probe'; },

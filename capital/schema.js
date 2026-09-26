@@ -305,7 +305,9 @@ export const PROGRESS_CHECKS = {
   sized: [...REAL_CHECKS, 'forward_trades', 'forward_mean', 'forward_confidence', 'real_trades', 'probe_sessions', 'real_record'],
   maintain: [...REAL_CHECKS, 'forward_trades', 'forward_mean', 'forward_confidence', 'real_record'],
 };
-const PROGRESS_LIMITS = { validation_trades: [100, 100], validation_days: [60, 60], validation_quarters: [3, 3],
+// Validation needs: the owner's D2 line (Sept 26: 50 trades on 25 days) and the plan's earlier 100 on 60, so a
+// checkpoint from either House release validates while the new line rolls out.
+const PROGRESS_LIMITS = { validation_trades: [50, 100], validation_days: [25, 60], validation_quarters: [3, 3],
   forward_trades: [20, 1000], real_trades: [5, 50], probe_sessions: [1, 20] };
 export const PROGRESS_BLOCKERS = ['validation_pending', 'evidence_stale', 'validation_failed', 'review_pending', 'review_failed',
   'audit_pending', 'audit_failed', 'holdout_pending', 'holdout_failed', 'look_limit', 'gate_paused', 'real_money_off',
