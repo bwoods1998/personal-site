@@ -1021,7 +1021,6 @@ async function startPage(root) {
       state.agents = new Map(state.checkpoint.agents.map(agent => [agent.id, agent]));
       state.names = new Map(state.checkpoint.agents.map(agent => [agent.id, agentName(agent)]));
       drawMoney();
-      state.drawAgents();
       if (state.primed) drawLive();
     } catch {
       if (state.checkpoint) return;
@@ -1035,7 +1034,10 @@ async function startPage(root) {
       // Every refresh re-reads the status: a fresh checkpoint turns the word to live, and the last one
       // held turns it to stopped once it is older than the window.
       drawStatus();
-      if (state.checkpoint) drawn(box.numbers, numbersPanel(state.checkpoint, state));
+      if (state.checkpoint) {
+        drawn(box.numbers, numbersPanel(state.checkpoint, state));
+        state.drawAgents(); // failed refreshes must also expire old promotion evidence
+      }
     }
   }
   await refresh();

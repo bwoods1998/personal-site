@@ -100,3 +100,32 @@ test('activity cues require a fresh agent publication and never use balances or 
   assert.equal(freshAgentActivity(note('one', 'Working.', PUBLISHED_AT), at - 61000), null);
   assert.equal(freshAgentActivity({ kind: 'account.mark', at: PUBLISHED_AT }, at), null);
 });
+
+test('a failed refresh expires the visible rings and selected checklist while preserving the selected agent', async () => {
+  const { capital } = floor();
+  await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one', {
+    progress: progress('candidate', { validation_run: 1, validation_trades: 70 }) })], structures: [] }));
+  let failing = false;
+  const root = stubPage('floor', FLOOR_IDS);
+  await withBrowser('', path => failing ? new Response('Unavailable', { status: 503 })
+    : capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
+    let clock = at, refresh;
+    Date.now = () => clock;
+    globalThis.setInterval = (callback, delay) => { if (delay === 30000) refresh = callback; return 0; };
+    const feed = await startCapital(root);
+    const board = root.querySelector('#floor-agents');
+    board.withClass('agent-dot')[0].click();
+    assert.equal(board.withClass('agent-dot')[0].find('circle').length, 2);
+    assert.match(words(board.querySelector('#agent-detail')), /1 \/ 11 checks/);
+    failing = true; clock += 16 * 60000;
+    refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(words(root.querySelector('#floor-status')), /stopped/);
+    const selected = board.withClass('agent-dot')[0];
+    assert.equal(selected.getAttribute('aria-expanded'), 'true');
+    assert.equal(selected.find('circle').length, 1);
+    assert.match(words(board.querySelector('#agent-detail')), /Progress unavailable/);
+    assert.doesNotMatch(words(board.querySelector('#agent-detail')), /1 \/ 11 checks/);
+    feed.stop();
+  });
+});
