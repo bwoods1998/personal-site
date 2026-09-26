@@ -61,7 +61,7 @@ test('published to a record and read back, the fixtures fill every section', { s
   const [checkpoint, batch] = load();
   const capital = await publishedRecord(checkpoint, batch);
   assert.deepEqual(await (await post(capital, '/api/capital/events', batch)).json(), { stored: 0, replayed: batch.events.length }, 'the publisher may retry freely');
-  const board = await (await get(capital, '/api/capital/checkpoint')).json();
+  const board = await (await get(capital, '/api/capital/checkpoint?progress=1')).json();
   assert.deepEqual({ ...board, agents: board.agents.map(({ display_name: _name, ...agent }) => agent) }, checkpoint);
   assert.equal(validCheckpoint(board, { publicRead: true }), true);
   const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;

@@ -463,7 +463,7 @@ async function loadEvents(query) {
   return data;
 }
 async function loadCheckpoint() {
-  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint`, MAX_CHECKPOINT_BYTES);
+  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint?progress=1`, MAX_CHECKPOINT_BYTES);
   if (!validCheckpoint(data, { publicRead: true })) throw new Error('Invalid checkpoint.');
   return data;
 }
