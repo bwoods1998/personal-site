@@ -16,13 +16,12 @@ registerHooks({
 const { default: worker } = await import('../worker.mjs');
 
 const checkpoint = (overrides = {}) => ({
-  schema_version: 1, published_at: '2026-09-15T14:05:00.000Z',
-  floor: { equity: '100', cash: '100', daily_pnl: '0', capital_usd: '100', since_inception_pct: '0', benchmark: null },
-  desks: [], committee: { last_memo_at: null, allocations: {} }, budget: { spent_today_usd: '0', cap_usd: '1' }, ...overrides,
+  schema_version: 2, published_at: '2026-09-15T14:05:00.000Z', run: { started_at: null },
+  account: null, performance: null, compute: null, gym: null, agents: [], structures: [], ...overrides,
 });
 const thought = (n = 1) => ({
-  id: `desk.crypto-reversion.thought.${n}`, stream: 'desk:crypto-reversion', kind: 'desk.thought', at: `2026-09-15T14:0${n}:00.000Z`,
-  payload: { text: 'Two deviations under the mean.' }, digest: n.toString(16).padStart(64, '0'),
+  id: `note.condor-vrp.${n}`, stream: 'agent:condor-vrp', kind: 'agent.note', at: `2026-09-15T14:0${n}:00.000Z`,
+  payload: { text: 'Realized volatility is running under what the options expect.' }, digest: n.toString(16).padStart(64, '0'),
 });
 
 // The CAPITAL binding as the worker sees it: one in-memory floor per object name, and a record
@@ -59,13 +58,13 @@ function bench() {
   return { send, calls, cache, objects, restore: () => { globalThis.caches = saved; } };
 }
 
-test('a tape address names its own object and the ordinary path; everything else is the real floor', () => {
+test('a tape address names its own object and the ordinary path; everything else is the real record', () => {
   assert.equal(CAPITAL_OBJECT, 'capital-v1');
   assert.equal(tapeObject('test'), 'capital-tape-test');
   assert.deepEqual(capitalRoute('/api/capital/t/test/events'), { tape: 'test', object: 'capital-tape-test', path: '/api/capital/events' });
-  assert.deepEqual(capitalRoute('/api/capital/t/canary/desks/crypto-reversion-2'), { tape: 'canary', object: 'capital-tape-canary', path: '/api/capital/desks/crypto-reversion-2' });
+  assert.deepEqual(capitalRoute('/api/capital/t/canary/agents/condor-vrp-2'), { tape: 'canary', object: 'capital-tape-canary', path: '/api/capital/agents/condor-vrp-2' });
   assert.deepEqual(capitalRoute('/api/capital/t/test/stream'), { tape: 'test', object: 'capital-tape-test', path: '/api/capital/stream' });
-  for (const path of ['/api/capital', '/api/capital/', '/api/capital/events', '/api/capital/checkpoint', '/api/capital/stream', '/api/capital/desks/t', '/api/capital/tape/demo/events', '/api/capital/unknown']) {
+  for (const path of ['/api/capital', '/api/capital/', '/api/capital/events', '/api/capital/checkpoint', '/api/capital/stream', '/api/capital/agents/t', '/api/capital/tape/demo/events', '/api/capital/unknown']) {
     assert.deepEqual(capitalRoute(path), { tape: null, object: 'capital-v1', path }, path);
   }
   // Two tapes exist and no others: a well-formed name that is not on the list names nothing.
@@ -85,18 +84,18 @@ test('the worker sends a test tape to its own object with the path rewritten, an
     assert.equal((await send('POST', '/api/capital/t/test/checkpoint', { body: checkpoint(), auth: null })).response.status, 401);
     const published = await send('POST', '/api/capital/t/test/checkpoint', { body: checkpoint() });
     assert.equal(published.response.status, 200);
-    assert.deepEqual(await published.response.json(), { published_at: '2026-09-15T14:05:00.000Z', desks: 0 });
+    assert.deepEqual(await published.response.json(), { published_at: '2026-09-15T14:05:00.000Z', agents: 0 });
     const call = calls.at(-1);
     assert.deepEqual([call.object, call.method, call.url], ['capital-tape-test', 'POST', 'https://blakewoods.us/api/capital/checkpoint']);
     assert.equal(call.request.headers.get('Authorization'), `Bearer ${token}`, 'the headers travel with it');
 
-    assert.deepEqual(await (await send('POST', '/api/capital/t/test/events', { body: { schema_version: 1, events: [thought(1), thought(2)] } })).response.json(), { stored: 2, replayed: 0 });
+    assert.deepEqual(await (await send('POST', '/api/capital/t/test/events', { body: { schema_version: 2, events: [thought(1), thought(2)] } })).response.json(), { stored: 2, replayed: 0 });
     // The query string is kept, the body of a read is the tape's own.
-    const read = await send('GET', '/api/capital/t/test/events?kind=desk.thought&limit=1', { auth: null });
-    assert.equal(calls.at(-1).url, 'https://blakewoods.us/api/capital/events?kind=desk.thought&limit=1');
-    assert.deepEqual((await read.response.json()).events.map(event => event.id), ['desk.crypto-reversion.thought.2']);
+    const read = await send('GET', '/api/capital/t/test/events?kind=agent.note&limit=1', { auth: null });
+    assert.equal(calls.at(-1).url, 'https://blakewoods.us/api/capital/events?kind=agent.note&limit=1');
+    assert.deepEqual((await read.response.json()).events.map(event => event.id), ['note.condor-vrp.2']);
     assert.deepEqual(await (await send('GET', '/api/capital/t/test/checkpoint', { auth: null })).response.json(), checkpoint());
-    assert.deepEqual((await (await send('GET', '/api/capital/t/test/desks', { auth: null })).response.json()).desks, []);
+    assert.deepEqual((await (await send('GET', '/api/capital/t/test/agents', { auth: null })).response.json()).agents, []);
 
     // The real floor and every other tape know nothing of it.
     const real = await send('GET', '/api/capital/checkpoint', { auth: null });
@@ -165,10 +164,10 @@ test('the live socket route works under a tape and is never cached; the real flo
   const { send, calls, cache, restore } = bench();
   try {
     const upgrade = { Upgrade: 'websocket', Origin: 'https://blakewoods.us' };
-    const tape = await send('GET', '/api/capital/t/test/stream?streams=ops', { auth: null, headers: upgrade });
+    const tape = await send('GET', '/api/capital/t/test/stream?streams=swarm', { auth: null, headers: upgrade });
     assert.equal(await tape.response.text(), 'upgraded');
     assert.deepEqual([calls.at(-1).object, calls.at(-1).url, calls.at(-1).upgrade, calls.at(-1).origin],
-      ['capital-tape-test', 'https://blakewoods.us/api/capital/stream?streams=ops', 'websocket', 'https://blakewoods.us']);
+      ['capital-tape-test', 'https://blakewoods.us/api/capital/stream?streams=swarm', 'websocket', 'https://blakewoods.us']);
     // Without the upgrade the tape's own object answers exactly as the floor's does.
     assert.equal((await send('GET', '/api/capital/t/test/stream', { auth: null })).response.status, 426);
     assert.equal((await send('GET', '/api/capital/stream', { auth: null })).response.status, 426);
@@ -176,10 +175,32 @@ test('the live socket route works under a tape and is never cached; the real flo
 
     // Production: the same object name as ever, and the very request the visitor sent.
     for (const [method, path, options] of [['GET', '/api/capital/events?limit=3', { auth: null }], ['GET', '/api/capital/stream', { auth: null, headers: upgrade }],
-      ['POST', '/api/capital/events', { body: { schema_version: 1, events: [thought(3)] } }], ['GET', '/api/capital/desks/t', { auth: null }]]) {
+      ['POST', '/api/capital/events', { body: { schema_version: 2, events: [thought(3)] } }], ['GET', '/api/capital/agents/t', { auth: null }]]) {
       const { request } = await send(method, path, options);
       assert.equal(calls.at(-1).object, 'capital-v1', path);
       assert.equal(calls.at(-1).request, request, `${path} is forwarded as it arrived`);
     }
+  } finally { restore(); }
+});
+
+// The reset the main session runs before the new House starts (plan, "How it resets"): the real record and
+// both tapes, each erased on its own object, with the publish token and the confirmation, and nothing else.
+test('the reset reaches the real record and each tape on its own object, and erases all four tables there', async () => {
+  const { send, calls, objects, restore } = bench();
+  try {
+    for (const base of ['/api/capital', '/api/capital/t/test', '/api/capital/t/canary']) {
+      assert.equal((await send('POST', `${base}/events`, { body: { schema_version: 2, events: [thought(1)] } })).response.status, 200, base);
+      assert.equal((await send('POST', `${base}/checkpoint`, { body: checkpoint() })).response.status, 200, base);
+    }
+    assert.equal((await send('POST', '/api/capital/reset?confirm=erase-everything', { auth: null })).response.status, 401);
+    assert.equal((await send('POST', '/api/capital/reset', {})).response.status, 400);
+    for (const [base, object] of [['/api/capital', 'capital-v1'], ['/api/capital/t/test', 'capital-tape-test'], ['/api/capital/t/canary', 'capital-tape-canary']]) {
+      const { response } = await send('POST', `${base}/reset?confirm=erase-everything`);
+      assert.deepEqual(await response.json(), { reset: true, cleared: { events: 1, floor_history: 0, checkpoint: 1, desks: 0 } }, base);
+      assert.equal(calls.at(-1).object, object);
+      // What the gateway watchdog reads next: a 404, which it records and never answers with a restart.
+      assert.equal((await send('GET', `${base}/checkpoint`, { auth: null })).response.status, 404, base);
+    }
+    assert.equal(objects.size, 3);
   } finally { restore(); }
 });

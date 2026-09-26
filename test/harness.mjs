@@ -1,10 +1,10 @@
-// Shared stand-ins for the capital tests: an in-memory floor object, a request helper, and the
+// Shared stand-ins for the capital tests: an in-memory record object, a request helper, and the
 // few DOM parts the page script touches. Not a test file itself (`npm test` runs *.test.mjs).
 import { DatabaseSync } from 'node:sqlite';
 import { Capital } from '../lib/capital.mjs';
 
 export const token = 'woods-capital-test-publication-token-01';
-export const NOW = Date.parse('2026-09-15T15:00:00.000Z');
+export const NOW = Date.parse('2026-09-28T15:00:00.000Z');
 
 // A stand-in for the Durable Object's synchronous SQLite surface and its socket registry.
 export function floor(now = NOW) {
@@ -55,7 +55,7 @@ export class StubElement {
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 export const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-portfolio', 'floor-practice', 'floor-positions', 'floor-closed', 'floor-improvement'];
+export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-swarm', 'floor-structures'];
 export function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;
