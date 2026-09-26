@@ -1,94 +1,58 @@
-# The options swarm, for a first-time visitor
+# Capital: watch the agents think
 
-*The brief for `/capital/`, the project's only page, as it started over on Sept 26, 2026. A stranger
-lands and, in seconds, knows what this is (AI agents trading options), how it is doing (four numbers),
-and can watch the swarm decide, train and trade. Focus: say no to everything else. The desk pages and
-the loop page are retired; `/capital/desk/*` and `/capital/committee/*` redirect here.*
+The single `/capital/` page shows AI agents trading options. The runtime owns the money, models,
+training and orders; visiting this page starts none of those things.
 
-## Principles
+## The page
 
-1. **Live first.** The first screen is the name, one sentence, four numbers, and an agent's decision
-   typing out above a feed of what the swarm is deciding, trading and becoming.
-2. **Five sections, nothing else.** The masthead, live, the Brokerage Account, the swarm, open
-   structures. No navigation beyond the two header links (the owner's site, the repository), no arena,
-   no ladder, no "how it works".
-3. **No venue is named.** The copy says "AI agents trading options."; the account is the "Brokerage
-   Account". No venue's name appears anywhere a visitor can read: not in the copy, not in anything
-   published (`schema.js` refuses it; the publisher writes "the broker").
-4. **Never a quote.** The data licenses forbid publishing quotes, bids, asks, spreads, implied vols,
-   greeks, surfaces or fitted parameters. The checkpoint has no field for any of them (every block is an
-   allowlist), and every sentence published is quote-free: no decimal number, no dollar or cent price, no
-   number beside a quote word. A structure is what it is (underlying, type, legs, expiry, size), what it
-   can lose, and its P&L; never its strikes or its prices.
-5. **Honest when losing.** Losses are red and first-class. Total profit is a dash until the balance is
-   fresh and the funding history is verified; profit after compute is a dash until every input cost is
-   metered. Nothing stands in for a number the House has not published.
-6. **Words people use.** Bands are Gym, Candidate, Probe, Sized and Retired. Structures read as words
-   ("XSP iron condor"). Numbers short and signed (−$74.87, +$212.72). At most 40 static words above the
-   feed, 90 on the page.
-7. **Phone first, no libraries, no external requests, CSS tokens from `:root`.** 16px gutters at
-   390px; tables stack into rows; nothing scrolls sideways. Inline styles only via CSSOM.
+1. **Profit and Running.** Exactly two headline numbers. Profit is the complete real-options P&L,
+   including marked open positions, supplied in `trading {as_of, pnl_usd}`. Deposits, compute,
+   simulated returns and unrelated holdings do not enter it. A missing, null or stale total is a dash.
+   Running ticks from the House's first start on its new record.
+2. **Thoughts first.** A generous, legible space for an actual published note, the agent's name, a
+   subtle band and when it was written. New notes wait long enough for the current one to be read.
+   Long thoughts expand and remain until the reader closes them. The feed below carries actual
+   thinking, trades and news, newest first; repeats fold into one line. No invented activity.
+3. **The balance chart.** The recorded account balance since the reset, without a heading, axes or
+   reconciliation paragraphs. Only the current balance and its timestamp sit below it. Hover can
+   inspect a recorded point. This balance is distinct from the Profit headline.
+4. **Agents.** Three horizontal stages of dots: 3 Increased capital (Sized), 2 Live trading (Probe),
+   1 Practice (Candidate and Gym). Candidates are filled dots; Gym agents are rings. The published
+   band determines a dot's stage; the page never invents progress or a coming promotion. Each dot is
+   a native button. Click, tap or press Enter for name, strategy, concise performance and open
+   positions. Close or Escape returns focus to its dot. Retired agents remain in a collapsed row.
+   There is no separate option-structures section.
 
-## The page, top to bottom
+No extra narrative paragraphs, footer or explanatory dashboard panels. The only links are the
+owner's home page and the repository. On a phone the stages stack; dots have 44px touch targets.
+Reduced motion turns off typing and animation. All text uses text nodes; all assets are self-hosted.
 
-1. **Masthead** (`#masthead`). "Long-Term Capital Management", "AI agents trading options.", and four
-   numbers: **Brokerage Account** (the balance), **Total profit** (the balance less its equity at the
-   reset, less the owner's deposits net of withdrawals), **After compute** (total profit less Sail,
-   OpenAI, ThetaData, market data and anything else: the one number), and **Running** (a ticking clock
-   from `run.started_at`, the House's first start on its new ledger).
-2. **Live** (`#live`). The heading is the status: one dot and one word, following the data. The House is
-   running while the newest checkpoint the page holds is under 15 minutes old (`floorRunning`); then the
-   word is a green, pulsing **live** once the socket or polling is up, and **connecting** until it is.
-   With no checkpoint, or none that recent, it is a red, still **stopped**. The stage: the newest agent
-   note, typed, with the agent's name, its band and its mechanism; an agent keeps the stage while it is
-   still talking (45 s hold). Below it, twelve lines, newest first: thinking (`agent.note`), trading
-   (`agent.trade`: "opened 2 SPY debit verticals · Sep 28 · max loss $96", "closed … +$31.00", tagged real
-   money or shadow; tap for the agent's reason), and the swarm's news (`swarm.news`). A repeat folds into
-   one line with ×N. WebSocket first, polling after.
-3. **Brokerage Account** (`#account`). One chart: the balance from the reset (its start point is the
-   basis), every `account.mark` since, and the checkpoint's own reading, with a hover readout. Under it,
-   the reconciliation in four lines: the balance now and at the reset; total profit and the flows netted
-   out of it; compute, part by part ("not yet metered" where the House has no number); and profit after
-   compute.
-4. **The swarm** (`#swarm`). The Gym's pace in one line ("48,213 programs tested · 51,240.5
-   market-years simulated · 11 families alive · 37 retired"), the count in each band (every band, empty
-   ones too), then one row per living agent, highest band first: its name, its band, its structure as a
-   tag and its mechanism in a sentence (tap to read it whole), and its record: real money's when it has
-   one ("real 22 trades · 16 won · +$212.40"), else the forward record (nightly replays and live shadow),
-   else the Gym's count of what its lineage has tried ("1,204 trials · 17 revisions"). Twenty-four rows,
-   then a button for the rest and the retired.
-5. **Open structures** (`#structures`). One line ("3 real · 1 shadow · $341 at risk on real money"),
-   then real money first by maximum loss, then the shadow book: agent, structure, legs · expiry · size,
-   maximum loss, P&L.
+## Names and identity
 
-No footer.
+The original twelve partner names return in their original order: Meriwether, Hilibrand, Scholes,
+Rosenfeld, Haghani, Mullins, McEntee, Krasker, Hawkins, Hufschmid, Huang and Leahy. A durable site-owned
+ordinal supplies the name, then numbered generations such as Meriwether 2. The same name appears on
+a dot, its detail, a thought and its tape entries. Aliases survive retirement, clipped rosters and
+restarts. They never change an agent's ID, lineage or evidence.
 
-## The numbers and the reset
+`agent_names` belongs to the site's existing Durable Object. Publication allocates names in the
+same transaction as the event or checkpoint. Public reads and WebSocket delivery add a strict
+`display_name` annotation; publisher inputs may not supply it. Original bodies and digests remain
+untouched. A record reset also clears names.
 
-- The profit basis is the checkpoint's `performance` block: the account's equity at the reset and the
-  owner's net flows since, verified from the account's own history. `PERFORMANCE_START_AT` and
-  `START_EQUITY` in `capital.js` are the fallback while no checkpoint carries one, and the floor under it:
-  a basis dated before `PERFORMANCE_START_AT` is never read, so the old record cannot leak into the new
-  one. The main session sets the pair at deploy time to `league/config.json` `performance`.
-- Total profit needs `account` fresh (within ten minutes of `published_at`) and not stale, and
-  `net_flows` verified within ten minutes. After compute needs every `compute` part.
-- The reset (`POST /api/capital/reset?confirm=erase-everything` with the publish token, also under
-  `/t/test` and `/t/canary`) erases the tape, the balance history, the checkpoint and the roster. Until
-  the House's first checkpoint the page reads "stopped", every number is a dash, and every section says
-  it is empty.
+## Honest public data
 
-## Reads
+The schema still allowlists every field. No quotes, bids, asks, strikes, greeks, surfaces, programs
+or fitted parameters publish. Prose stays quote-free and names no venue. Dot details use only the
+published mechanism, structure kind, trade counts, wins, P&L, maximum loss and training counts.
+Losses remain signed and visible. A roster subtotal never stands in for total options P&L.
 
-The checkpoint (`schema.js` `validCheckpoint`, schema 2): `run {started_at}`, `account {equity, cash,
-as_of, stale}`, `performance {start_at, start_equity, net_flows, verified_at}`, `compute {as_of,
-sail_usd, openai_usd, thetadata_usd, market_data_usd, other_usd}`, `gym {as_of, trials, market_years,
-families_alive, families_retired}`, `agents[]` `{id, family, mechanism, structure, band, born_at,
-retired_at, record {trials, revisions, forward, real}}` and `structures[]` `{id, agent, underlying,
-structure, legs, expiry, quantity, real, opened_at, max_loss_usd, pnl_usd}`. The tape: `agent.note`,
-`agent.trade`, `swarm.news {agent, text}`, `account.mark`. An agent is named by its id. The publisher's side is
-`long-term-capital-management/league/publish.py` and its contract, `league/tests/fixtures/site_contract.md`.
+The new `trading` block is optional for schema-2 compatibility. Its signed dollar string can be null
+when the complete real book cannot be priced. Profit requires an as-of time within ten minutes of
+both the checkpoint and the current browser clock. The account chart retains the published reset
+basis, with `PERFORMANCE_START_AT` and `START_EQUITY` as fallbacks; neither defines headline Profit.
 
-## Copy rules
-
-Sentence case. "Real money" and "shadow" for the two books. Structures and bands in words. Numbers
-short and signed.
+Public transport remains one hibernating WebSocket with eight-second polling fallback and
+thirty-second checkpoint refresh. Status follows the checkpoint, not an animation or local switch.
+The runtime contract is `league/tests/fixtures/site_contract.md`; old and new fixtures are exercised
+by `test/league-contract.test.mjs`.

@@ -57,6 +57,7 @@ export const STRUCTURES = [
 export function swarmCheckpoint(overrides = {}) {
   return {
     schema_version: 2, published_at: PUBLISHED_AT,
+    trading: { as_of: PUBLISHED_AT, pnl_usd: '220.40' },
     run: { started_at: '2026-09-26T07:02:18.000Z' },
     account: { equity: '5694.37', cash: '5210.12', as_of: '2026-09-28T14:57:58.000Z', stale: false },
     performance: { start_at: RESET_AT, start_equity: '481.65', net_flows: '5000', verified_at: '2026-09-28T14:55:02.000Z' },

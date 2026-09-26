@@ -42,8 +42,14 @@ export class StubElement {
   }
   set textContent(value) { this._text = String(value); this.children = []; }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(' '); }
-  append(...nodes) { for (const node of nodes) if (node) this.children.push(node); }
-  replaceChildren(...nodes) { this._text = ''; this.children = nodes.filter(Boolean); }
+  append(...nodes) {
+    for (const node of nodes) if (node) {
+      if (node.parentNode) node.parentNode.children = node.parentNode.children.filter(child => child !== node);
+      node.parentNode = this;
+      this.children.push(node);
+    }
+  }
+  replaceChildren(...nodes) { this._text = ''; for (const node of this.children) node.parentNode = null; this.children = []; this.append(...nodes); }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   addEventListener(name, handler) { this.listeners.set(name, [...(this.listeners.get(name) || []), handler]); }
@@ -55,7 +61,7 @@ export class StubElement {
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 export const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-swarm', 'floor-structures'];
+export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-agents'];
 export function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;
@@ -65,7 +71,8 @@ export function stubPage(kind, ids) {
 // `routes(path)` answers a fetch with a JSON body, null for a 404, or a whole Response (so a page
 // can be mounted against a real floor object). `search` is the page's own query string.
 export function withBrowser(search, routes, work) {
-  const saved = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, interval: globalThis.setInterval, socket: globalThis.WebSocket };
+  const saved = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, interval: globalThis.setInterval, socket: globalThis.WebSocket, now: Date.now };
+  Date.now = () => NOW;
   globalThis.document = {
     createElement: tag => new StubElement(tag),
     createElementNS: (_namespace, tag) => new StubElement(tag),
@@ -82,6 +89,6 @@ export function withBrowser(search, routes, work) {
   };
   return Promise.resolve(work()).finally(() => {
     globalThis.document = saved.document; globalThis.window = saved.window;
-    globalThis.fetch = saved.fetch; globalThis.setInterval = saved.interval; globalThis.WebSocket = saved.socket;
+    globalThis.fetch = saved.fetch; globalThis.setInterval = saved.interval; globalThis.WebSocket = saved.socket; Date.now = saved.now;
   });
 }

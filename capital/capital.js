@@ -1,5 +1,5 @@
 import {
-  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, agentId, validCheckpoint, validPublicEvent, socketMatches, tapeName,
+  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, socketMatches, tapeName,
 } from './schema.js';
 
 // AI agents trading options on the Brokerage Account, drawn from the House's own record with text
@@ -175,6 +175,14 @@ export function profitAfterCompute(checkpoint) {
   const { total } = computeSpend(checkpoint);
   return profit === null || total === null ? null : decimalOf(centsOf(profit) - centsOf(total));
 }
+// The headline is the complete live-options book, never account movement or a roster subtotal.
+// An old schema-2 checkpoint has no such reading: leave a dash until its publisher catches up.
+export function tradingProfit(checkpoint, now = Date.now()) {
+  const trading = checkpoint?.trading;
+  if (!numeric(trading?.pnl_usd) || !within(trading.as_of, checkpoint.published_at)
+      || !within(trading.as_of, new Date(now).toISOString())) return null;
+  return trading.pnl_usd;
+}
 // When the timer started: the House's first start on its new ledger, else the reset itself.
 export function startedAt(checkpoint) {
   if (!checkpoint) return null;
@@ -184,15 +192,11 @@ export function startedAt(checkpoint) {
   return Number.isFinite(basis) ? basis : null;
 }
 export function mastheadNumbers(checkpoint, now = Date.now()) {
-  const account = checkpoint?.account;
-  const profit = totalProfit(checkpoint);
-  const net = profitAfterCompute(checkpoint);
+  const profit = tradingProfit(checkpoint, now);
   const started = startedAt(checkpoint);
   const elapsed = started === null ? { main: '—', tick: '' } : runningParts(Math.max(0, (now - started) / 1000));
   return [
-    { key: 'balance', label: 'Brokerage Account', value: account ? money(account.equity, 2) : '—', tone: '', note: account?.stale ? 'stale' : '' },
-    { key: 'profit', label: 'Total profit', value: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit), note: '' },
-    { key: 'net', label: 'After compute', value: net === null ? '—' : signedMoney(net), tone: net === null ? '' : signOf(net), note: '' },
+    { key: 'profit', label: 'Profit', value: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit), title: 'Live options trading P&L, including open positions.' },
     { key: 'clock', label: 'Running', value: elapsed.main, tick: elapsed.tick, tone: '', startedAt: started },
   ];
 }
@@ -251,8 +255,8 @@ export function accountSeries(marks, checkpoint) {
 
 // ---- the swarm
 const rankOf = band => { const index = BAND_ORDER.indexOf(band); return index === -1 ? BAND_ORDER.length : index; };
-// An agent is named by its id: "condor-vrp-3" reads "Condor Vrp 3".
-export const agentName = agent => titleCase(agent?.id) || show(agent?.id);
+// The site's durable person alias is display-only. Old checkpoints still have a readable fallback.
+export const agentName = agent => validDisplayName(agent?.display_name) ? agent.display_name : titleCase(agent?.id) || show(agent?.id);
 // "real 4 trades · 3 won · +$12.40": the record that sizes money, when there is one; else the forward
 // record; else the Gym's count of what its lineage has tried.
 export function recordWords(agent) {
@@ -337,11 +341,11 @@ export function feedLine(event, names = new Map()) {
   if (event.kind === 'swarm.news') {
     const text = plainNote(payload.text);
     const who = agentId(payload.agent) ? payload.agent : null;
-    return text ? { ...base, kind: 'swarm', agent: who || 'swarm', name: who ? names.get(who) || titleCase(who) : 'The House', text } : null;
+    return text ? { ...base, kind: 'swarm', agent: who || 'swarm', name: who ? event.display_name || names.get(who) || titleCase(who) : 'The House', text } : null;
   }
   const agent = streamAgentOf(event.stream);
   if (!agentId(agent)) return null;
-  const name = names.get(agent) || titleCase(agent);
+  const name = event.display_name || names.get(agent) || titleCase(agent);
   if (event.kind === 'agent.note') {
     const text = plainNote(payload.text);
     return text ? { ...base, kind: 'thinking', agent, name, text } : null;
@@ -387,7 +391,7 @@ export function heroNote(events, current = null, { holdMs = 45000 } = {}) {
     const own = notes.find(event => streamAgentOf(event.stream) === current);
     if (own && Date.parse(notes[0].at) - Date.parse(own.at) <= holdMs) pick = own;
   }
-  return { id: show(pick.id), agent: streamAgentOf(pick.stream), at: show(pick.at), text: plainNote(pick.payload.text) };
+  return { id: show(pick.id), agent: streamAgentOf(pick.stream), at: show(pick.at), text: plainNote(pick.payload.text), display_name: pick.display_name };
 }
 
 // ---- transport
@@ -423,7 +427,7 @@ async function loadEvents(query) {
 }
 async function loadCheckpoint() {
   const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint`, MAX_CHECKPOINT_BYTES);
-  if (!validCheckpoint(data)) throw new Error('Invalid checkpoint.');
+  if (!validCheckpoint(data, { publicRead: true })) throw new Error('Invalid checkpoint.');
   return data;
 }
 async function loadHistory() {
@@ -515,9 +519,8 @@ function startFeed({ streams, onEvents, onStatus }) {
 
 // ---- drawing
 const FEED_LINES = 12;
-const SWARM_ROWS = 24;
 const NOTE_TEXT_LIMIT = 420;
-const FEED_LABELS = { thinking: 'thinking', trading: 'trading', swarm: 'swarm' };
+const FEED_LABELS = { thinking: 'thinking', trading: 'trading', swarm: 'news' };
 function element(tag, content, className) {
   const node = document.createElement(tag);
   if (content !== undefined && content !== null) node.textContent = content;
@@ -548,10 +551,10 @@ function place(node, properties) {
 }
 // Types a note out at a readable pace in about two seconds; off when the visitor asked for less motion.
 const typers = new WeakMap();
-function typeInto(node, text) {
+function typeInto(node, text, animate = true) {
   const previous = typers.get(node);
   if (previous) clearTimeout(previous);
-  const canAnimate = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canAnimate = animate && typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!canAnimate || !text) { node.textContent = text; return; }
   const chunk = Math.max(2, Math.ceil(text.length / 90));
   let shown = 0;
@@ -566,6 +569,7 @@ function typeInto(node, text) {
 function numbersPanel(checkpoint, state) {
   return mastheadNumbers(checkpoint).map(item => {
     const row = element('div', null, `number number-${item.key}`);
+    if (item.title) row.setAttribute('title', item.title);
     const value = element('dd', null, item.tone || null);
     const main = element('span', item.value, 'number-value');
     value.append(main);
@@ -580,7 +584,9 @@ function numbersPanel(checkpoint, state) {
   });
 }
 function drawHeroInto(box, state) {
-  const hero = heroNote(state.feed, state.hero?.agent || null);
+  let hero = heroNote(state.feed, state.hero?.agent || null);
+  // A fresh thought gets enough time to be read even if the same agent immediately writes another.
+  if (state.hero?.note && Date.now() < state.hero.readUntil) hero = state.hero.note;
   if (!hero) {
     box.replaceChildren(element('p', state.checkpoint ? 'No agent has written a note yet.' : state.asked ? 'Nothing is running right now.' : 'Connecting…', 'empty-state now-empty'));
     state.hero = null;
@@ -591,19 +597,47 @@ function drawHeroInto(box, state) {
     const card = element('article', null, 'now');
     const head = element('div', null, 'now-head');
     const when = element('span', '', 'now-when');
-    head.append(pulse('pulse now-pulse'), element('span', agent ? agentName(agent) : titleCase(hero.agent), 'now-name'), ...(agent ? [bandTag(agent.band)] : []), when);
+    const name = element('span', '', 'now-name');
+    const band = element('span', null, 'now-band');
+    head.append(pulse('pulse now-pulse'), name, band, when);
     const thought = element('p', '', 'now-thought');
-    const mechanism = element('p', agent ? truncate(agent.mechanism, 160).text : '', 'now-research');
-    card.append(head, thought, mechanism);
-    state.hero = { agent: hero.agent, id: '', parts: { card, when, thought } };
+    const more = element('button', 'Read more', 'thought-more');
+    more.type = 'button';
+    more.hidden = true;
+    more.setAttribute('aria-expanded', 'false');
+    more.addEventListener('click', () => {
+      const open = more.getAttribute('aria-expanded') !== 'true';
+      more.setAttribute('aria-expanded', String(open));
+      more.textContent = open ? 'Less' : 'Read more';
+      thought.className = `now-thought${open ? ' thought-open' : ''}`;
+      typeInto(thought, open ? state.hero.note.text : truncate(state.hero.note.text, NOTE_TEXT_LIMIT).text, false);
+      // Do not replace an expanded thought until the reader closes it.
+      state.hero.readUntil = open ? Infinity : Date.now() + 12000;
+      clearTimeout(state.heroTimer);
+      if (!open) { state.heroTimer = setTimeout(() => state.drawLive(), 12010); state.heroTimer?.unref?.(); }
+    });
+    card.append(head, thought, more);
+    state.hero = { agent: hero.agent, id: '', parts: { card, when, thought, name, band, more } };
     box.replaceChildren(card);
   }
   const { parts } = state.hero;
+  parts.name.textContent = hero.display_name || (agent ? agentName(agent) : titleCase(hero.agent));
+  parts.band.replaceChildren(...(agent ? [bandTag(agent.band)] : []));
   const recent = Date.now() - Date.parse(hero.at) < 180000;
   parts.when.textContent = recent ? 'deciding now' : `last note ${ago(hero.at)}`;
   parts.card.className = `now${agent && REAL_BANDS.includes(agent.band) ? ' now-real' : ''}${recent ? '' : ' now-idle'}`;
   if (state.hero.id !== hero.id) {
     state.hero.id = hero.id;
+    state.hero.note = hero;
+    parts.more.hidden = !truncate(hero.text, NOTE_TEXT_LIMIT).truncated;
+    parts.more.setAttribute('aria-expanded', 'false');
+    parts.more.textContent = 'Read more';
+    parts.thought.className = 'now-thought';
+    const readingMs = Math.max(12000, Math.min(45000, hero.text.split(/\s+/).length / 3 * 1000 + 2000));
+    state.hero.readUntil = Date.now() + readingMs;
+    clearTimeout(state.heroTimer);
+    state.heroTimer = setTimeout(() => state.drawLive(), readingMs + 10);
+    state.heroTimer?.unref?.();
     typeInto(parts.thought, truncate(hero.text, NOTE_TEXT_LIMIT).text);
   }
 }
@@ -644,7 +678,6 @@ function balanceChart(series) {
     viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', class: 'balance-svg',
     role: 'img', 'aria-label': `Brokerage Account balance, ${money(series.first.equity.toFixed(2))} to ${money(series.last.equity.toFixed(2))}.`,
   });
-  svg.append(svgElement('line', { x1: 0, x2: width, y1: series.first.y.toFixed(1), y2: series.first.y.toFixed(1), class: 'balance-base' }));
   svg.append(svgElement('path', { d: series.area, class: 'balance-area' }), svgElement('path', { d: series.path, class: 'balance-line' }));
   const cross = svgElement('line', { x1: 0, x2: 0, y1: 0, y2: height, class: 'balance-cross', opacity: 0 });
   svg.append(cross);
@@ -653,7 +686,7 @@ function balanceChart(series) {
   place(end, { left: `${(series.last.x / width * 100).toFixed(2)}%`, top: `${(series.last.y / height * 100).toFixed(2)}%` });
   const readout = element('span', '', 'balance-readout');
   readout.hidden = true;
-  plot.append(svg, end, element('span', money(series.max.toFixed(2), 0), 'balance-max'), element('span', money(series.min.toFixed(2), 0), 'balance-min'), readout);
+  plot.append(svg, end, readout);
   plot.addEventListener('pointermove', move => {
     try {
       const box = svg.getBoundingClientRect();
@@ -674,105 +707,131 @@ function balanceChart(series) {
 function accountPanel(checkpoint, marks) {
   const series = accountSeries(marks, checkpoint);
   const nodes = series ? [balanceChart(series)] : [];
-  const list = element('ul', null, 'account-lines');
-  for (const line of accountLines(checkpoint)) list.append(element('li', line));
-  nodes.push(list);
+  const account = checkpoint?.account;
+  const caption = element('p', null, 'balance-caption');
+  if (account) {
+    const balance = element('span', money(account.equity), 'balance-current');
+    balance.setAttribute('aria-label', `Current account balance ${money(account.equity)}`);
+    caption.append(balance, element('span', '·'), timeNode(account.as_of));
+    if (account.stale) caption.setAttribute('title', 'Last recorded balance; the account could not be refreshed.');
+  } else caption.append(element('span', 'No balance yet.'));
+  nodes.push(caption);
   return nodes;
 }
-function headRow(columns) {
-  const head = element('thead');
-  const row = element('tr');
-  for (const [label, className] of columns) row.append(element('th', label, className));
-  head.append(row);
-  return head;
-}
-function mechanismCell(row, state) {
-  const cell = element('td', null, row.full ? 'col-why' : 'col-why why-empty');
-  const tag = row.structure ? element('span', row.structure, 'strategy-tag') : null;
-  if (!row.more) { cell.append(...[tag, element('span', row.short || '—', 'why-text')].filter(Boolean)); return cell; }
-  const open = state.open.has(row.id);
-  const words = element('span', open ? row.full : row.short, 'why-text');
-  const button = element('button', null, 'why-toggle');
-  button.type = 'button';
-  button.setAttribute('aria-expanded', open ? 'true' : 'false');
-  button.append(...[tag, words].filter(Boolean));
-  button.addEventListener('click', () => {
-    const next = !state.open.has(row.id);
-    if (next) state.open.add(row.id); else state.open.delete(row.id);
-    words.textContent = next ? row.full : row.short;
-    button.setAttribute('aria-expanded', next ? 'true' : 'false');
-  });
-  cell.append(button);
-  return cell;
-}
-function swarmPanel(checkpoint, state) {
-  const nodes = [element('p', gymLine(checkpoint), 'record-line gym-line')];
-  const counts = element('p', null, 'band-counts');
-  for (const row of bandCounts(checkpoint)) {
-    const cell = element('span', null, `band-count band-${row.band}${row.count ? '' : ' band-empty'}`);
-    cell.append(element('b', String(row.count)), element('span', row.word));
-    counts.append(cell);
-  }
-  nodes.push(counts);
+// The three stages of the earlier agent board, driven only by the published band. A Candidate
+// stays in practice until the House grants real trading; a dot never implies a future promotion.
+export const AGENT_STAGES = [
+  { level: 3, label: 'Increased capital', bands: ['sized'] },
+  { level: 2, label: 'Live trading', bands: ['probe'] },
+  { level: 1, label: 'Practice', bands: ['candidate', 'gym'] },
+];
+export function agentStages(checkpoint) {
   const rows = swarmRows(checkpoint);
-  if (!rows.length) { nodes.push(element('p', 'No agent yet. The first families are born in the Gym.', 'empty-state')); return nodes; }
-  const living = rows.filter(row => row.band !== 'retired');
-  const shown = state.more ? rows : living.slice(0, SWARM_ROWS);
-  const table = element('table', null, 'rows rows-swarm');
-  table.append(headRow([['Agent', 'col-agent'], ['Band', 'col-band'], ['Mechanism', 'col-why'], ['Record', 'col-record']]));
-  const body = element('tbody');
-  for (const row of shown) {
-    const line = element('tr', null, row.band === 'retired' ? 'row-retired' : '');
-    const agent = element('td', null, 'col-agent');
-    agent.append(element('span', row.name, 'agent-name'));
-    const band = element('td', null, 'col-band');
-    band.append(bandTag(row.band));
-    const record = element('td', null, 'col-record');
-    record.append(element('span', row.record.main, `record-main ${row.record.tone}`.trim()));
-    if (row.record.rest) record.append(element('span', row.record.rest, 'record-rest'));
-    line.append(agent, band, mechanismCell(row, state), record);
-    body.append(line);
-  }
-  table.append(body);
-  nodes.push(table);
-  const hidden = rows.length - shown.length;
-  if (hidden > 0 || state.more) {
-    const retired = rows.length - living.length;
-    const more = element('button', state.more ? 'fewer' : `${hidden} more${retired ? `, ${retired} retired among them` : ''}`, 'chip more');
-    more.type = 'button';
-    more.setAttribute('aria-expanded', state.more ? 'true' : 'false');
-    more.addEventListener('click', () => { state.more = !state.more; state.drawSwarm(); });
-    nodes.push(more);
-  }
-  return nodes;
+  return AGENT_STAGES.map(stage => ({ ...stage, agents: rows.filter(row => stage.bands.includes(row.band)) }));
 }
-function structuresPanel(checkpoint) {
-  const rows = structureRows(checkpoint);
-  if (!rows.length) return [element('p', 'No structure is open.', 'empty-state')];
-  const table = element('table', null, 'rows rows-book');
-  table.append(headRow([['Agent', 'col-agent'], ['Structure', 'col-market'], ['Legs · expiry · size', 'col-side'], ['Max loss', 'col-num'], ['P&L', 'col-num']]));
-  const body = element('tbody');
-  for (const row of rows) {
-    const line = element('tr', null, row.real ? '' : 'row-practice');
-    const agent = element('td', null, 'col-agent');
-    agent.append(element('span', row.name, 'agent-name'), moneyTag(row.real));
-    line.append(agent, element('td', row.what, 'col-market'), element('td', row.detail, 'col-side'),
-      element('td', row.maxLoss, 'col-num col-value'), element('td', row.pnl, `col-num col-pnl ${row.tone}`.trim()));
-    body.append(line);
+function agentDetail(row, checkpoint, state) {
+  const card = element('article', null, 'agent-detail-card');
+  const head = element('div', null, 'agent-detail-head');
+  const name = element('h3', row.name);
+  const close = element('button', '×', 'agent-close');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close agent details');
+  close.addEventListener('click', () => state.selectAgent(null, row.id));
+  head.append(name, bandTag(row.band), close);
+  const strategy = element('p', null, 'agent-strategy');
+  if (row.structure) strategy.append(element('span', row.structure, 'strategy-tag'));
+  strategy.append(element('span', row.full || 'No strategy published yet.'));
+  card.append(head, strategy);
+  const record = element('p', null, 'agent-record');
+  record.setAttribute('title', 'Closed trades and training attempts. Forward results are simulated.');
+  record.append(element('span', row.record.main, row.record.tone));
+  if (row.record.rest) record.append(element('span', row.record.rest));
+  card.append(record);
+  const positions = structureRows(checkpoint).filter(position => position.agent === row.id);
+  if (positions.length) {
+    const list = element('ul', null, 'agent-positions');
+    for (const position of positions) {
+      const item = element('li');
+      item.append(moneyTag(position.real), element('span', `${position.what} · ${position.detail}`),
+        element('span', `max loss ${position.maxLoss}`), element('span', position.pnl, position.tone));
+      list.append(item);
+    }
+    card.append(list);
   }
-  table.append(body);
-  return [element('p', structureLine(rows), 'record-line'), table];
+  return card;
+}
+function agentsPanel(checkpoint, state) {
+  const board = element('div', null, 'agent-board');
+  const rows = swarmRows(checkpoint);
+  const details = element('div', null, 'agent-detail');
+  details.id = 'agent-detail';
+  details.setAttribute('aria-live', 'polite');
+  board.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && state.selectedAgent) { event.preventDefault(); state.selectAgent(null, state.selectedAgent); }
+  });
+  const buttons = new Map();
+  const detailHosts = new Map();
+  const rowById = new Map(rows.map(row => [row.id, row]));
+  state.selectAgent = (id, focusId = null) => {
+    state.selectedAgent = rowById.has(id) ? id : null;
+    const row = rowById.get(state.selectedAgent);
+    for (const [agent, button] of buttons) button.setAttribute('aria-expanded', String(agent === state.selectedAgent));
+    details.replaceChildren(...(row ? [agentDetail(row, checkpoint, state)] : []));
+    details.hidden = !row;
+    if (row) detailHosts.get(row.id)?.append(details);
+    if (focusId) buttons.get(focusId)?.focus?.({ preventScroll: true });
+  };
+  const dots = (list, host) => {
+    const group = element('div', null, 'agent-dots');
+    for (const row of list) {
+      const button = element('button', null, `agent-dot dot-${row.band}`);
+      button.type = 'button';
+      button.dataset.agent = row.id;
+      button.setAttribute('aria-label', `${row.name} · ${row.bandText} · ${row.structure || 'strategy pending'}`);
+      button.setAttribute('aria-controls', details.id);
+      button.setAttribute('aria-expanded', 'false');
+      button.setAttribute('title', `${row.name} · ${row.bandText}`);
+      button.append(element('span', null, 'agent-dot-core'));
+      button.addEventListener('click', () => state.selectAgent(state.selectedAgent === row.id ? null : row.id));
+      buttons.set(row.id, button);
+      detailHosts.set(row.id, host);
+      group.append(button);
+    }
+    if (!list.length) { const empty = element('span', '—', 'stage-empty'); empty.setAttribute('aria-hidden', 'true'); group.append(empty); }
+    return group;
+  };
+  for (const stage of agentStages(checkpoint)) {
+    const section = element('section', null, `agent-stage stage-${stage.level}`);
+    const heading = element('h3', null, 'stage-heading');
+    heading.id = `agent-stage-${stage.level}`;
+    heading.append(element('span', String(stage.level), 'stage-level'), element('span', stage.label, 'stage-label'),
+      element('span', String(stage.agents.length), 'stage-count'));
+    section.setAttribute('aria-labelledby', heading.id);
+    section.append(heading, dots(stage.agents, section));
+    board.append(section);
+  }
+  const retired = rows.filter(row => row.band === 'retired');
+  if (retired.length) {
+    const archive = element('details', null, 'agents-retired');
+    archive.open = state.showRetired;
+    archive.addEventListener('toggle', () => { state.showRetired = archive.open; });
+    archive.append(element('summary', `${retired.length} retired`), dots(retired, archive));
+    board.append(archive);
+  }
+  board.append(details);
+  state.selectAgent(state.selectedAgent);
+  return [board];
 }
 
 async function startPage(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
     numbers: find('floor-numbers'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
-    account: find('floor-account'), swarm: find('floor-swarm'), structures: find('floor-structures'),
+    account: find('floor-account'), agents: find('floor-agents'),
   };
   const state = {
     checkpoint: null, agents: new Map(), names: new Map(), feed: [], marks: [], mode: 'loading',
-    hero: null, rendered: new Set(), primed: false, expanded: new Set(), open: new Set(), more: false, clock: null,
+    hero: null, rendered: new Set(), primed: false, expanded: new Set(), selectedAgent: null, showRetired: false, clock: null,
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
@@ -788,8 +847,15 @@ async function startPage(root) {
     box.status.replaceChildren(pulse(), element('span', text));
   };
   state.drawFeed = () => { if (box.feed) { drawFeedInto(box.feed, state); ready(box.feed); } };
-  const drawLive = () => { if (box.now) { drawHeroInto(box.now, state); ready(box.now); } state.drawFeed(); };
-  state.drawSwarm = () => { if (state.checkpoint) drawn(box.swarm, swarmPanel(state.checkpoint, state)); };
+  const drawLive = state.drawLive = () => { if (box.now) { drawHeroInto(box.now, state); ready(box.now); } state.drawFeed(); };
+  state.drawAgents = () => {
+    if (!state.checkpoint) return;
+    const focusedAgent = document.activeElement?.dataset?.agent;
+    const focusedClose = document.activeElement?.classList?.contains('agent-close');
+    drawn(box.agents, agentsPanel(state.checkpoint, state));
+    if (focusedAgent) box.agents?.querySelector(`[data-agent="${focusedAgent}"]`)?.focus?.({ preventScroll: true });
+    else if (focusedClose) box.agents?.querySelector('.agent-close')?.focus?.({ preventScroll: true });
+  };
   const drawMoney = () => {
     if (!state.checkpoint) return;
     drawn(box.numbers, numbersPanel(state.checkpoint, state));
@@ -806,8 +872,7 @@ async function startPage(root) {
       state.agents = new Map(state.checkpoint.agents.map(agent => [agent.id, agent]));
       state.names = new Map(state.checkpoint.agents.map(agent => [agent.id, agentName(agent)]));
       drawMoney();
-      state.drawSwarm();
-      drawn(box.structures, structuresPanel(state.checkpoint));
+      state.drawAgents();
       if (state.primed) drawLive();
     } catch {
       if (state.checkpoint) return;
@@ -815,13 +880,13 @@ async function startPage(root) {
       // every section says plainly that it is empty.
       ready(box.numbers);
       drawn(box.account, [element('p', 'No balance has been published yet.', 'empty-state')]);
-      drawn(box.swarm, [element('p', 'Waiting for the swarm.', 'empty-state')]);
-      drawn(box.structures, [element('p', 'No structure is open.', 'empty-state')]);
+      drawn(box.agents, [element('p', 'Waiting for the agents.', 'empty-state')]);
     } finally {
       state.asked = true;
       // Every refresh re-reads the status: a fresh checkpoint turns the word to live, and the last one
       // held turns it to stopped once it is older than the window.
       drawStatus();
+      if (state.checkpoint) drawn(box.numbers, numbersPanel(state.checkpoint, state));
     }
   }
   await refresh();
@@ -861,7 +926,7 @@ async function startPage(root) {
   });
   feed.remember(loaded);
   feed.prime(loaded.reduce((most, event) => Math.max(most, Number(event.seq) || 0), 0));
-  return { ...feed, stop() { clearTimeout(state.followUp); feed.stop(); } };
+  return { ...feed, stop() { clearTimeout(state.followUp); clearTimeout(state.heroTimer); feed.stop(); } };
 }
 
 export function startCapital(root = document.querySelector('[data-capital]')) {

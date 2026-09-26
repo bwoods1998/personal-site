@@ -43,6 +43,10 @@ Current Durable Object pricing and limits:
 https://developers.cloudflare.com/durable-objects/platform/pricing/
 https://developers.cloudflare.com/durable-objects/best-practices/websockets/
 
+The current page accepts the optional schema-2 `trading {as_of, pnl_usd}` block. Deploy the site before enabling that publisher field; older checkpoints remain accepted, but the Profit headline is a dash until a fresh options total arrives. This field is the complete live-options P&L, not account equity or profit after compute.
+
+`agent_names` is an additive SQLite table in the existing `Capital` object. On first startup the current roster and retained tape receive stable partner aliases; subsequent publication allocates names transactionally. Names survive clipping and restarts and are removed only by the explicit record reset. Public reads and WebSocket delivery add a validated `display_name`, while the original checkpoint/event bodies and IDs remain intact. Keep the object identity and `v3` migration unchanged; do not reset production to deploy this update.
+
 Site assets for `/capital/` are hashed at build time and served under the same self-only policy as the rest of the site, with `wss://blakewoods.us` named in `connect-src` so the tape does not depend on how a browser reads `'self'` for WebSockets. No external script, font or analytics is loaded.
 
 ## Retired: Portfolio Agent
