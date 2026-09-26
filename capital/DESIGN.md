@@ -18,9 +18,16 @@ training and orders; visiting this page starts none of those things.
    inspect a recorded point. This balance is distinct from the Profit headline.
 4. **Agents.** Three horizontal stages of dots: 3 Increased capital (Sized), 2 Live trading (Probe),
    1 Practice (Candidate and Gym). Candidates are filled dots; Gym agents are rings. The published
-   band determines a dot's stage; the page never invents progress or a coming promotion. Each dot is
+   band determines a dot's stage. A quiet gold ring fills from the House's current promotion
+   prerequisites, including partial trade/day counts; it is a checklist, never odds or a deadline.
+   No progress is inferred from training attempts, age or aggregate profit. Missing or stale
+   evidence leaves a bare track. Each dot is
    a native button. Click, tap or press Enter for name, strategy, concise performance and open
-   positions. Close or Escape returns focus to its dot. Retired agents remain in a collapsed row.
+   positions, plus the exact remaining checks and the current blocker. The top stage shows what
+   keeps its capital rather than inventing another level. Close or Escape returns focus to its dot.
+   Retired agents remain in a collapsed row. Dots stay in a stable order within each band. A fresh
+   note, trade or agent news produces one short ripple, only on screen and at most four at once;
+   historical playback creates none. A confirmed change of stage can glide to its new row.
    There is no separate option-structures section.
 
 No extra narrative paragraphs, footer or explanatory dashboard panels. The only links are the
@@ -46,6 +53,12 @@ The schema still allowlists every field. No quotes, bids, asks, strikes, greeks,
 or fitted parameters publish. Prose stays quote-free and names no venue. Dot details use only the
 published mechanism, structure kind, trade counts, wins, P&L, maximum loss and training counts.
 Losses remain signed and visible. A roster subtotal never stands in for total options P&L.
+
+The optional `agent.progress` block has a fixed target, complete ordered checklist and allowlisted
+blocker. Each check carries only a public threshold and an integer count (or a binary outcome).
+Validation returns, statistical values, holdout details and fitted parameters remain private.
+The schema rejects missing checks, duplicate checks, wrong-band targets and extra fields. Each
+dot's accessible name includes its completion count; all progress details are reachable by keyboard.
 
 The new `trading` block is optional for schema-2 compatibility. Its signed dollar string can be null
 when the complete real book cannot be priced. Profit requires an as-of time within ten minutes of

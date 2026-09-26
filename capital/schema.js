@@ -292,12 +292,42 @@ export function validRecord(value) {
 // sentence, its band and its record. The page names it from its id. Its program never publishes (its
 // parameters are fitted to licensed data), nor does anything the program reads.
 export const AGENT_FIELDS = ['id', 'family', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record'];
+export const PROGRESS_KEYS = ['validation_run', 'validation_trades', 'validation_days', 'validation_mean', 'validation_t',
+  'validation_dsr', 'validation_quarters', 'validation_stress', 'review', 'audit', 'holdout', 'real_structure',
+  'credit_equity', 'risk_fit', 'forward_nonnegative', 'forward_trades', 'forward_mean', 'forward_confidence',
+  'real_trades', 'probe_sessions', 'real_record', 'execution_ready'];
+export const PROGRESS_COUNTS = ['validation_trades', 'validation_days', 'validation_quarters', 'forward_trades', 'real_trades', 'probe_sessions'];
+const REAL_CHECKS = ['execution_ready', 'holdout', 'real_structure', 'credit_equity', 'risk_fit', 'forward_nonnegative'];
+export const PROGRESS_CHECKS = {
+  candidate: ['validation_run', 'validation_trades', 'validation_days', 'validation_mean', 'validation_t', 'validation_dsr',
+    'validation_quarters', 'validation_stress', 'review', 'audit', 'holdout'],
+  probe: REAL_CHECKS,
+  sized: [...REAL_CHECKS, 'forward_trades', 'forward_mean', 'forward_confidence', 'real_trades', 'probe_sessions', 'real_record'],
+  maintain: [...REAL_CHECKS, 'forward_trades', 'forward_mean', 'forward_confidence', 'real_record'],
+};
+const PROGRESS_LIMITS = { validation_trades: [100, 100], validation_days: [60, 60], validation_quarters: [3, 3],
+  forward_trades: [20, 1000], real_trades: [5, 50], probe_sessions: [1, 20] };
+export const PROGRESS_BLOCKERS = ['validation_pending', 'evidence_stale', 'validation_failed', 'review_pending', 'review_failed',
+  'audit_pending', 'audit_failed', 'holdout_pending', 'holdout_failed', 'look_limit', 'gate_paused', 'real_money_off',
+  'grant_inactive', 'account_unavailable', 'structure_ineligible', 'equity_low', 'risk_too_large', 'forward_negative',
+  'forward_incomplete', 'probe_incomplete', 'real_record_negative'];
+export function validProgress(value, band) {
+  const target = { gym: 'candidate', candidate: 'probe', probe: 'sized', sized: 'maintain' }[band];
+  return exact(value, ['target', 'checks', 'blocked']) && Boolean(target) && value.target === target
+    && nullable(value.blocked, reason => PROGRESS_BLOCKERS.includes(reason))
+    && Array.isArray(value.checks) && value.checks.length === PROGRESS_CHECKS[target].length
+    && value.checks.every((check, index) => exact(check, ['key', 'done', 'need']) && check.key === PROGRESS_CHECKS[target][index]
+      && integer(check.need, ...(PROGRESS_LIMITS[check.key] || [1, 1])) && integer(check.done, 0, check.need));
+}
 export function validAgent(value, publishedAt, { publicRead = false } = {}) {
-  return (exact(value, AGENT_FIELDS) || (publicRead && exact(value, [...AGENT_FIELDS, 'display_name']) && validDisplayName(value.display_name)))
+  if (!plainObject(value)) return false;
+  const fields = Object.hasOwn(value, 'progress') ? [...AGENT_FIELDS, 'progress'] : AGENT_FIELDS;
+  return (exact(value, fields) || (publicRead && exact(value, [...fields, 'display_name']) && validDisplayName(value.display_name)))
     && agentId(value.id) && slug(value.family) && prose(value.mechanism, 240)
     && nullable(value.structure, structureType) && bandName(value.band)
     && nullable(value.born_at, at => notAfter(at, publishedAt)) && nullable(value.retired_at, at => notAfter(at, publishedAt))
-    && validRecord(value.record);
+    && validRecord(value.record)
+    && (!Object.hasOwn(value, 'progress') || nullable(value.progress, progress => validProgress(progress, value.band)));
 }
 // One open structure, held as one instrument: whose, on what, which kind, how many legs, its (nearest)
 // expiry, how many, whether it is real money or the shadow book, its maximum loss and its P&L at the

@@ -1,5 +1,5 @@
 import {
-  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, socketMatches, tapeName,
+  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, validProgress, socketMatches, tapeName,
 } from './schema.js';
 
 // AI agents trading options on the Brokerage Account, drawn from the House's own record with text
@@ -276,7 +276,44 @@ export function swarmRows(checkpoint) {
     .map(({ agent }) => ({
       id: show(agent.id), name: agentName(agent), family: show(agent.family), band: show(agent.band), bandText: BAND_WORDS[agent.band] || '',
       real: REAL_BANDS.includes(agent.band), structure: STRUCTURE_WORDS[agent.structure] || '', ...mechanismParts(agent.mechanism), record: recordWords(agent),
+      progress: agentProgress(agent, checkpoint),
     }));
+}
+
+// Only the House's current prerequisite counts fill a ring. Trials, tenure and cumulative P&L
+// are interesting records but cannot say how close a particular program is to promotion.
+export const PROGRESS_TARGETS = {
+  candidate: 'Live shadow', probe: 'Live trading', sized: 'Increased capital', maintain: 'Maintain capital',
+};
+export const PROGRESS_LABELS = {
+  validation_run: 'Test completed', validation_trades: 'Validation trades', validation_days: 'Trading days',
+  validation_mean: 'Positive returns', validation_t: 'Return consistency', validation_dsr: 'Survives trial adjustment',
+  validation_quarters: 'Positive quarters', validation_stress: 'Higher trading costs', review: 'Strategy review',
+  audit: 'Independent audit', holdout: 'Unseen market test', real_structure: 'Supported structure',
+  credit_equity: 'Required equity', risk_fit: 'Fits risk limit', forward_nonnegative: 'Forward record intact',
+  forward_trades: 'Forward trades', forward_mean: 'Positive forward returns', forward_confidence: 'Reliable forward edge',
+  real_trades: 'Real trades', probe_sessions: 'Full trading sessions', real_record: 'Real record intact',
+  execution_ready: 'Trading enabled',
+};
+export const PROGRESS_BLOCKERS = {
+  validation_pending: 'Awaiting validation', evidence_stale: 'Evidence needs a fresh check', validation_failed: 'Validation needs improvement',
+  review_pending: 'Awaiting strategy review', review_failed: 'Strategy review not passed', audit_pending: 'Awaiting independent audit',
+  audit_failed: 'Independent audit not passed', holdout_pending: 'Awaiting unseen market test', holdout_failed: 'Unseen market test not passed',
+  look_limit: 'Unseen test limit reached', gate_paused: 'Testing gate paused', real_money_off: 'Live trading is off',
+  grant_inactive: 'Awaiting trading approval', account_unavailable: 'Awaiting account check', structure_ineligible: 'Structure stays in practice',
+  equity_low: 'Needs more account equity', risk_too_large: 'Trade exceeds risk limit', forward_negative: 'Forward record needs improvement',
+  forward_incomplete: 'Building a forward record', probe_incomplete: 'Building a live record', real_record_negative: 'Live record needs improvement',
+};
+export function agentProgress(agent, checkpoint, now = Date.now()) {
+  const source = agent?.progress;
+  if (agent?.band === 'retired' || !validProgress(source, agent?.band) || !floorRunning(checkpoint, now)) return null;
+  const checks = source.checks.map(check => ({ ...check, label: PROGRESS_LABELS[check.key] || check.key,
+    fraction: Math.min(1, check.done / check.need), met: check.done >= check.need }));
+  const completed = checks.filter(check => check.met).length;
+  const fraction = checks.reduce((sum, check) => sum + check.fraction, 0) / checks.length;
+  return { target: source.target, label: PROGRESS_TARGETS[source.target], checks, completed, fraction,
+    count: `${completed} / ${checks.length} checks`, blocked: source.blocked,
+    blocker: PROGRESS_BLOCKERS[source.blocked] || '', ready: completed === checks.length && !source.blocked };
 }
 export function mechanismParts(value, max = 110) {
   const full = show(value).replace(/\s+/g, ' ').trim();
@@ -727,7 +764,47 @@ export const AGENT_STAGES = [
 ];
 export function agentStages(checkpoint) {
   const rows = swarmRows(checkpoint);
-  return AGENT_STAGES.map(stage => ({ ...stage, agents: rows.filter(row => stage.bands.includes(row.band)) }));
+  return AGENT_STAGES.map(stage => ({ ...stage, agents: rows.filter(row => stage.bands.includes(row.band))
+    .sort((left, right) => rankOf(left.band) - rankOf(right.band) || left.id.localeCompare(right.id)) }));
+}
+
+function progressRing(progress) {
+  const ring = svgElement('svg', { viewBox: '0 0 36 36', class: 'agent-progress-ring', 'aria-hidden': 'true' });
+  ring.append(svgElement('circle', { cx: 18, cy: 18, r: 14, class: 'agent-progress-track' }));
+  if (progress && progress.fraction > 0) {
+    ring.append(svgElement('circle', { cx: 18, cy: 18, r: 14, pathLength: 100, class: 'agent-progress-fill',
+      'stroke-dasharray': `${(100 * progress.fraction).toFixed(2)} 100` }));
+  }
+  return ring;
+}
+
+function progressDetail(progress, band) {
+  const panel = element('div', null, 'agent-progress');
+  if (!progress) {
+    if (band !== 'retired') panel.append(element('p', 'Progress unavailable', 'progress-unavailable'));
+    return panel;
+  }
+  const head = element('div', null, 'progress-heading');
+  head.append(element('span', progress.target === 'maintain' ? progress.label : `Next · ${progress.label}`),
+    element('span', progress.count, 'progress-count'));
+  panel.append(head);
+  const list = element('ul', null, 'progress-checks');
+  for (const check of progress.checks) {
+    const item = element('li', null, `progress-check${check.met ? ' check-met' : ''}`);
+    const marker = element('span', check.met ? '✓' : '·', 'check-mark');
+    marker.setAttribute('aria-hidden', 'true');
+    const count = check.need === 1 ? (check.met ? 'Met' : 'Not met') : `${check.done.toLocaleString('en-US')} / ${check.need.toLocaleString('en-US')}`;
+    item.append(marker, element('span', check.label, 'check-label'), element('span', count, 'check-count'));
+    const meter = element('span', null, 'check-meter');
+    const fill = element('span');
+    place(fill, { width: `${100 * check.fraction}%` });
+    meter.setAttribute('aria-hidden', 'true'); meter.append(fill); item.append(meter);
+    list.append(item);
+  }
+  panel.append(list);
+  if (progress.blocker) panel.append(element('p', progress.blocker, 'progress-blocker'));
+  else if (progress.ready) panel.append(element('p', progress.target === 'maintain' ? 'Holding the line' : 'Checks complete', 'progress-ready'));
+  return panel;
 }
 function agentDetail(row, checkpoint, state) {
   const card = element('article', null, 'agent-detail-card');
@@ -747,6 +824,7 @@ function agentDetail(row, checkpoint, state) {
   record.append(element('span', row.record.main, row.record.tone));
   if (row.record.rest) record.append(element('span', row.record.rest));
   card.append(record);
+  card.append(progressDetail(row.progress, row.band));
   const positions = structureRows(checkpoint).filter(position => position.agent === row.id);
   if (positions.length) {
     const list = element('ul', null, 'agent-positions');
@@ -762,6 +840,9 @@ function agentDetail(row, checkpoint, state) {
 }
 function agentsPanel(checkpoint, state) {
   const board = element('div', null, 'agent-board');
+  const key = element('span', 'Promotion progress', 'agent-board-key');
+  key.setAttribute('title', 'The ring fills as the current program meets its next-stage checks. Click an agent for the remaining checks.');
+  board.append(key);
   const rows = swarmRows(checkpoint);
   const details = element('div', null, 'agent-detail');
   details.id = 'agent-detail';
@@ -770,6 +851,7 @@ function agentsPanel(checkpoint, state) {
     if (event.key === 'Escape' && state.selectedAgent) { event.preventDefault(); state.selectAgent(null, state.selectedAgent); }
   });
   const buttons = new Map();
+  state.dotNodes = buttons;
   const detailHosts = new Map();
   const rowById = new Map(rows.map(row => [row.id, row]));
   state.selectAgent = (id, focusId = null) => {
@@ -787,10 +869,14 @@ function agentsPanel(checkpoint, state) {
       const button = element('button', null, `agent-dot dot-${row.band}`);
       button.type = 'button';
       button.dataset.agent = row.id;
-      button.setAttribute('aria-label', `${row.name} · ${row.bandText} · ${row.structure || 'strategy pending'}`);
+      button.dataset.band = row.band;
+      const progressLabel = row.progress ? `${row.progress.count} · ${row.progress.label}${row.progress.blocker ? ` · ${row.progress.blocker}` : ''}`
+        : row.band === 'retired' ? '' : 'Progress unavailable';
+      button.setAttribute('aria-label', `${row.name} · ${row.bandText} · ${row.structure || 'strategy pending'}${progressLabel ? ` · ${progressLabel}` : ''}`);
       button.setAttribute('aria-controls', details.id);
       button.setAttribute('aria-expanded', 'false');
-      button.setAttribute('title', `${row.name} · ${row.bandText}`);
+      button.setAttribute('title', `${row.name} · ${row.bandText}${progressLabel ? ` · ${progressLabel}` : ''}`);
+      if (row.band !== 'retired') button.append(progressRing(row.progress));
       button.append(element('span', null, 'agent-dot-core'));
       button.addEventListener('click', () => {
         const opening = state.selectedAgent !== row.id;
@@ -831,6 +917,59 @@ function agentsPanel(checkpoint, state) {
   return [board];
 }
 
+// A live publication produces one short ripple. Historical batches, hidden tabs, stale events,
+// retired agents and reduced-motion readers never get simulated activity.
+export function freshAgentActivity(event, now = Date.now()) {
+  const age = now - Date.parse(event?.at);
+  if (!Number.isFinite(age) || age < -60000 || age > 120000) return null;
+  if (event.kind === 'agent.note' || event.kind === 'agent.trade') return streamAgentOf(event.stream);
+  return event.kind === 'swarm.news' ? event.payload?.agent : null;
+}
+function pulseAgents(events, state) {
+  if (document.visibilityState !== 'visible' || !floorRunning(state.checkpoint)
+      || typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const now = Date.now();
+  for (const event of events) {
+    const id = freshAgentActivity(event, now);
+    const button = state.dotNodes?.get(id);
+    if (!button || String(button.className).includes('dot-retired') || state.pulsing >= 4
+        || now - (state.lastPulse.get(id) || 0) < 8000) continue;
+    const box = button.getBoundingClientRect?.();
+    if (!box || box.bottom < 0 || box.top > window.innerHeight) continue;
+    state.lastPulse.set(id, now); state.pulsing += 1;
+    const ring = element('span', null, `agent-activity${event.kind === 'agent.trade' ? ' activity-trade' : ''}`);
+    ring.setAttribute('aria-hidden', 'true'); button.append(ring);
+    const timer = setTimeout(() => { ring.remove?.(); state.pulsing -= 1; state.pulseTimers.delete(timer); }, 900);
+    state.pulseTimers.add(timer);
+  }
+}
+
+function settleAgents(state) {
+  const previous = state.agentPositions;
+  const positions = new Map();
+  const animate = previous.size && document.visibilityState === 'visible' && floorRunning(state.checkpoint)
+    && typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const [id, node] of state.dotNodes || []) {
+    const box = node.getBoundingClientRect?.();
+    if (!box || !box.width || !box.height) continue;
+    const band = node.dataset.band;
+    const fill = node.querySelector?.('.agent-progress-fill');
+    const dash = fill?.getAttribute('stroke-dasharray');
+    positions.set(id, { x: box.left + window.scrollX, y: box.top + window.scrollY, band, dash });
+    const old = previous.get(id);
+    if (!animate || !old || box.bottom < 0 || box.top > window.innerHeight || band === 'retired') continue;
+    const current = positions.get(id);
+    const level = value => AGENT_STAGES.find(stage => stage.bands.includes(value))?.level;
+    if (level(old.band) !== level(band)) {
+      node.animate?.([{ transform: `translate(${old.x - current.x}px, ${old.y - current.y}px)` }, { transform: 'translate(0, 0)' }],
+        { duration: 700, easing: 'cubic-bezier(.2,.7,.2,1)' });
+    } else if (dash && old.dash !== dash) {
+      fill.animate?.([{ strokeDasharray: old.dash || '0 100' }, { strokeDasharray: dash }], { duration: 650, easing: 'ease-out' });
+    }
+  }
+  state.agentPositions = positions;
+}
+
 async function startPage(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
@@ -840,6 +979,7 @@ async function startPage(root) {
   const state = {
     checkpoint: null, agents: new Map(), names: new Map(), feed: [], marks: [], mode: 'loading',
     hero: null, rendered: new Set(), primed: false, expanded: new Set(), selectedAgent: null, showRetired: false, clock: null,
+    lastPulse: new Map(), pulseTimers: new Set(), pulsing: 0, agentPositions: new Map(),
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawn = (node, children) => { if (!node) return; node.replaceChildren(...children); ready(node); };
@@ -861,6 +1001,7 @@ async function startPage(root) {
     const focusedAgent = document.activeElement?.dataset?.agent;
     const focusedClose = document.activeElement?.classList?.contains('agent-close');
     drawn(box.agents, agentsPanel(state.checkpoint, state));
+    settleAgents(state);
     if (focusedAgent) box.agents?.querySelector(`[data-agent="${focusedAgent}"]`)?.focus?.({ preventScroll: true });
     else if (focusedClose) box.agents?.querySelector('.agent-close')?.focus?.({ preventScroll: true });
   };
@@ -922,7 +1063,7 @@ async function startPage(root) {
     onEvents: events => {
       const live = events.filter(event => FEED_KINDS.includes(event.kind));
       const balance = events.filter(event => event.kind === MARK);
-      if (live.length) { keepFeed(live); drawLive(); }
+      if (live.length) { keepFeed(live); drawLive(); pulseAgents(live, state); }
       if (balance.length) { state.marks = [...state.marks, ...balance.map(event => ({ at: event.at, equity: event.payload.equity }))]; drawMoney(); }
       // A trade or a birth changes the roster and the book: ask for the checkpoint once it has landed.
       if (events.some(event => event.kind === 'agent.trade' || event.kind === 'swarm.news')) {
@@ -934,7 +1075,8 @@ async function startPage(root) {
   });
   feed.remember(loaded);
   feed.prime(loaded.reduce((most, event) => Math.max(most, Number(event.seq) || 0), 0));
-  return { ...feed, stop() { clearTimeout(state.followUp); clearTimeout(state.heroTimer); feed.stop(); } };
+  return { ...feed, stop() { clearTimeout(state.followUp); clearTimeout(state.heroTimer);
+    for (const timer of state.pulseTimers) clearTimeout(timer); feed.stop(); } };
 }
 
 export function startCapital(root = document.querySelector('[data-capital]')) {
