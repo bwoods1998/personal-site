@@ -23,6 +23,7 @@ The masthead shows only **Profit** (the complete live-options P&L) and **Running
 | `POST /api/capital/checkpoint` | bearer | One schema-2 checkpoint, ≤512 KiB. Replies `{published_at, agents}`. |
 | `POST /api/capital/reset?confirm=erase-everything` | bearer | Erases the tape, balance history, checkpoint, roster and display-name registry of that record. |
 | `GET /api/capital/checkpoint` | public | Latest checkpoint, ETag, cached 5 s. 404 until the first one. |
+| `GET /api/capital/checkpoint?progress=1` | public | Opts into the optional strict agent promotion checklist. Default reads omit it so already-open older pages keep refreshing. The same opt-in works on agent roster/detail reads. |
 | `GET /api/capital/events?stream=&kind=&after=&limit=` | public | Newest first without `after`, oldest first following one; `limit` ≤200 (50 by default); ETag, cached 3 s. |
 | `GET /api/capital/history` | public | The Brokerage Account's balance marks, at most 2,048 points keeping the first and last. |
 | `GET /api/capital/agents`, `GET /api/capital/agents/<id>` | public | The agents of the latest checkpoint. |

@@ -56,6 +56,8 @@ Losses remain signed and visible. A roster subtotal never stands in for total op
 
 The optional `agent.progress` block has a fixed target, complete ordered checklist and allowlisted
 blocker. Each check carries only a public threshold and an integer count (or a binary outcome).
+The page requests `?progress=1` on checkpoint reads. Default checkpoint and agent reads omit the
+block so older pages can keep their strict schema-2 validation; POSTs still validate and store it.
 Validation returns, statistical values, holdout details and fitted parameters remain private.
 The schema rejects missing checks, duplicate checks, wrong-band targets and extra fields. Each
 dot's accessible name includes its completion count; all progress details are reachable by keyboard.

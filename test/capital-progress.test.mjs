@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PROGRESS_CHECKS, validAgent, validCheckpoint } from '../capital/schema.js';
 import { agentProgress, agentStages, freshAgentActivity, startCapital } from '../capital/capital.js';
-import { floor, post, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
+import { floor, post, get, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
 import { agent, swarmCheckpoint, PUBLISHED_AT, note, news } from './swarm-fixture.mjs';
 
 const at = Date.parse(PUBLISHED_AT);
@@ -58,6 +58,39 @@ test('a ring reflects current prerequisites, never time, training attempts or an
   assert.equal(heldView.blocker, 'Live trading is off');
   assert.equal(heldView.ready, false);
   assert.equal(agentProgress({ ...held, progress: progress('probe', all, null) }, board, at).ready, true);
+});
+
+test('progress reads are opt-in so existing tabs keep their exact agent shape and independent ETags', async () => {
+  const { capital } = floor();
+  const original = agent('one');
+  const published = { ...original, progress: progress('candidate', { validation_run: 1 }) };
+  const body = swarmCheckpoint({ agents: [published], structures: [] });
+  assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200);
+  for (const [path, select] of [
+    ['/api/capital/checkpoint', value => value.agents[0]],
+    ['/api/capital/agents', value => value.agents[0]],
+    ['/api/capital/agents/one', value => value],
+  ]) {
+    const legacy = await get(capital, path);
+    const current = await get(capital, path + '?progress=1');
+    assert.equal(legacy.status, 200); assert.equal(current.status, 200);
+    assert.deepEqual(select(await legacy.json()), { ...original, display_name: 'Meriwether' });
+    assert.deepEqual(select(await current.json()), { ...published, display_name: 'Meriwether' });
+    const oldTag = legacy.headers.get('ETag'), newTag = current.headers.get('ETag');
+    assert.notEqual(oldTag, newTag);
+    for (const [query, ownTag, otherTag] of [['', oldTag, newTag], ['?progress=1', newTag, oldTag]]) {
+      assert.equal((await get(capital, path + query, { 'If-None-Match': ownTag })).status, 304);
+      assert.equal((await get(capital, path + query, { 'If-None-Match': otherTag })).status, 200);
+      const head = await capital.fetch(new Request('https://blakewoods.us' + path + query, { method: 'HEAD' }));
+      assert.equal(head.headers.get('ETag'), ownTag);
+      assert.equal(await head.text(), '');
+    }
+    for (const query of ['?progress=0', '?progress=1&progress=1', '?progress=1&extra=yes', '?extra=yes']) {
+      assert.equal((await get(capital, path + query)).status, 404);
+    }
+  }
+  assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200, 'reads never alter the stored publication');
+  assert.equal((await post(capital, '/api/capital/checkpoint?progress=1', body)).status, 400, 'only public reads accept the opt-in');
 });
 
 test('dot positions remain stable within a band as attempts, returns and prerequisite counts change', () => {

@@ -4,6 +4,7 @@ import { registerHooks } from 'node:module';
 import { capitalRoute, CAPITAL_OBJECT, tapeObject } from '../lib/capital.mjs';
 import { tapeName, TAPES } from '../capital/schema.js';
 import { floor, token, NOW } from './harness.mjs';
+import { agent, swarmCheckpoint } from './swarm-fixture.mjs';
 
 // worker.mjs imports the Workers runtime's base class. Outside workerd a bare class stands in, so
 // the dispatch under test is the deployed file itself and not a copy of it.
@@ -157,6 +158,35 @@ test('reads are cached under the address as asked, so a tape and the real floor 
     // A miss is not kept.
     assert.equal((await send('GET', '/api/capital/t/canary/checkpoint', { auth: null })).response.status, 404);
     assert.equal(cache.size, 4);
+  } finally { restore(); }
+});
+
+test('legacy and progress reads stay distinct in the edge cache for the real floor and both tapes', async () => {
+  const { send, cache, restore } = bench();
+  try {
+    for (const base of ['/api/capital', '/api/capital/t/test', '/api/capital/t/canary']) {
+      const body = swarmCheckpoint({ agents: [agent('one', { progress: null })], structures: [] });
+      assert.equal((await send('POST', base + '/checkpoint', { body })).response.status, 200);
+      for (const resource of ['/checkpoint', '/agents', '/agents/one']) {
+        const legacyPath = base + resource, currentPath = legacyPath + '?progress=1';
+        const legacy = (await send('GET', legacyPath, { auth: null })).response;
+        const current = (await send('GET', currentPath, { auth: null })).response;
+        assert.equal(legacy.status, 200); assert.equal(current.status, 200);
+        const pick = value => value.agents ? value.agents[0] : value;
+        assert.equal(Object.hasOwn(pick(await legacy.json()), 'progress'), false);
+        assert.equal(pick(await current.json()).progress, null);
+        assert.notEqual(legacy.headers.get('ETag'), current.headers.get('ETag'));
+        assert.ok(cache.has('https://blakewoods.us' + legacyPath));
+        assert.ok(cache.has('https://blakewoods.us' + currentPath));
+        for (const [path, tag, otherTag] of [
+          [legacyPath, legacy.headers.get('ETag'), current.headers.get('ETag')],
+          [currentPath, current.headers.get('ETag'), legacy.headers.get('ETag')],
+        ]) {
+          assert.equal((await send('GET', path, { auth: null, headers: { 'If-None-Match': tag } })).response.status, 304);
+          assert.equal((await send('GET', path, { auth: null, headers: { 'If-None-Match': otherTag } })).response.status, 200);
+        }
+      }
+    }
   } finally { restore(); }
 });
 
