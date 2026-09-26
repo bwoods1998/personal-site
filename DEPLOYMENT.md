@@ -8,9 +8,9 @@ Update: `npm run deploy` from this directory.
 
 ## Long Term Capital Management publication
 
-Public pages: https://blakewoods.us/capital/, https://blakewoods.us/capital/desk/?id=&lt;desk&gt;, https://blakewoods.us/capital/committee/.
+Public page: https://blakewoods.us/capital/ (AI agents trading options; schema 2 since September 26, 2026). `/capital/desk/*` and `/capital/committee/*` redirect to it.
 
-The floor lives in its own SQLite Durable Object: binding `CAPITAL`, class `Capital`, migration tag `v3`, singleton object `capital-v1`. Keep all four intact on every later deployment or the event log, the checkpoint and the desk roster are orphaned. The existing `EXCHANGE` (`v1`) and retired `PORTFOLIO_STATE` (`v2`) objects are untouched by this project.
+The record lives in its own SQLite Durable Object: binding `CAPITAL`, class `Capital`, migration tag `v3`, singleton object `capital-v1` (test tapes: `capital-tape-test`, `capital-tape-canary`). Keep all four intact on every later deployment or the tape, the checkpoint and the roster are orphaned. The existing `EXCHANGE` (`v1`) and retired `PORTFOLIO_STATE` (`v2`) objects are untouched by this project.
 
 Create the publication secret once, with a value of at least 32 characters:
 
@@ -18,21 +18,26 @@ Create the publication secret once, with a value of at least 32 characters:
 npx wrangler secret put CAPITAL_PUBLISH_TOKEN
 ```
 
-The runtime sends that token as `Authorization: Bearer <token>` to `POST /api/capital/events` and `POST /api/capital/checkpoint`. Both are compared in constant time and both refuse a token under 32 characters. Never put the token in a URL, a page, or a browser request. Reads are public and unauthenticated: `GET /api/capital/checkpoint` (ETag, 5 s), `GET /api/capital/events?stream=&kind=&after=&limit=` (ETag, 3 s, limit ≤200) and `GET /api/capital/desks[/<id>]` (ETag, 5 s). Public GETs are also cached at the edge for their max-age; the WebSocket route is never cached.
+The runtime sends that token as `Authorization: Bearer <token>` to `POST /api/capital/events`, `/history`, `/checkpoint` and `/reset`. All compare in constant time and refuse a token under 32 characters. Never put the token in a URL, a page, or a browser request. Reads are public and unauthenticated: `GET /api/capital/checkpoint` (ETag, 5 s; 404 until the first checkpoint), `GET /api/capital/events?stream=&kind=&after=&limit=` (ETag, 3 s, limit ≤200), `GET /api/capital/history` and `GET /api/capital/agents[/<id>]` (ETag, 5 s). Public GETs are also cached at the edge for their max-age; the WebSocket route is never cached.
 
 Events are immutable and idempotent by `id`. Replaying a batch is safe; reusing an `id` with a different `digest` returns 409 and stores nothing from that batch, so a publisher crash cannot rewrite public history. Checkpoints only move forward; an older `published_at` returns 409.
 
+### Starting over (the reset)
+
+The owner's reset erases one record's tape, balance history, checkpoint and roster. It needs the publish token and the confirmation in the query, and it touches nothing else:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $CAPITAL_PUBLISH_TOKEN" -H 'Content-Type: application/json' \
+  'https://blakewoods.us/api/capital/reset?confirm=erase-everything'
+```
+
+and the same under `/api/capital/t/test/reset` and `/api/capital/t/canary/reset`. Afterwards `GET /api/capital/checkpoint` answers 404 until the House publishes again; the page reads "stopped" with every number a dash. Deploy the schema-2 site before the House publishes schema 2: an older site refuses the whole checkpoint.
+
 ### What the publisher must send
 
-Desk ids are the partner surnames in lower case: `merton`, `rosenfeld`, `hawkins`, `krasker`, `mullins`, `hilibrand`. Each publishes a `mode` of `shadow` or `live`: `live` means real money on a real venue, `shadow` means the desk's orders are scored against real prices and never sent. There is no paper trading, and the site never adds a shadow book into the floor's equity — the masthead reads `floor.live_equity` and `floor.live_daily_pnl`. A checkpoint may also carry an optional `infra` block (`host`, `box_id`, `checkpoint_count`, `spend_usd`, `uptime_seconds`, `region`, `requests_today`) which renders as the Infrastructure strip; every field is optional and a missing block simply renders nothing. A desk publishes on `desk:<id>` and its marks on `ledger:<id>`; the committee publishes on `committee` and renders as Meriwether. Any other desk id still publishes and renders, using the `name` from the checkpoint; a bred variant named `<surname>-NN` keeps the partner's name with its suffix beside it.
+Schema 2, exactly: see the README's checkpoint section and the runtime's `league/tests/fixtures/site_contract.md`. Every block is an allowlist; every sentence is quote-free and names no venue. The House's publisher (`league/publish.py`) masks both before it sends.
 
-Since September 25, 2026 a checkpoint may carry an optional `flywheel` block (`at` plus any of `compute_usd_per_day`, `real_profit_usd_per_day`, `positive_blocks_per_day`, `graduates_per_day`, `proofs_per_day`, `restarts_per_day`), and a proven family's row on the board may carry `swing_clock` and `capacity_curve`; see the README's checkpoint table. Deploy the site before the runtime sends them: an older site refuses the whole checkpoint.
-
-`risk.review` is the one kind with a fixed payload: exactly `{intent_id, desk_id, verdict, reason, model}`, `verdict` either `approve` or `block`, on the `risk` stream. Any extra or missing field returns 400 for the whole batch. Every other kind keeps a free-form payload under the shared safety rules.
-
-Card sparklines and the desk equity chart read `payload.equity` from `ledger.mark`; the card's "now" line reads `payload.text` from `desk.thought` and `payload.title` from `desk.memo`; the Playbook panel reads `payload.version`, `payload.reason` and `payload.diff` from `desk.playbook_updated`, where the diff may be a newline-separated string or an array of lines; the committee's allocations-over-time table reads `payload.allocations` from `committee.allocation`.
-
-`GET /api/capital/stream?streams=desk:merton,risk` upgrades to a WebSocket served by the Durable Object Hibernation API. It accepts only the blakewoods.us, www.blakewoods.us and localhost origins, at most 200 concurrent sockets, and treats client messages as keepalives only. Durable Object WebSockets bill for duration while connected: review the plan before announcing the floor, since sustained WebSocket work is documented under Workers Paid. Hibernation keeps that cost near zero between events, and the pages fall back to polling automatically if the socket is refused, so a plan limit degrades the tape instead of breaking the page.
+`GET /api/capital/stream?streams=agent:condor-vrp-3,swarm` upgrades to a WebSocket served by the Durable Object Hibernation API. It accepts only the blakewoods.us, www.blakewoods.us and localhost origins, at most 200 concurrent sockets, and treats client messages as keepalives only. Durable Object WebSockets bill for duration while connected: sustained WebSocket work is documented under Workers Paid. Hibernation keeps that cost near zero between events, and the page falls back to polling automatically if the socket is refused, so a plan limit degrades the tape instead of breaking the page.
 
 Current Durable Object pricing and limits:
 https://developers.cloudflare.com/durable-objects/platform/pricing/
