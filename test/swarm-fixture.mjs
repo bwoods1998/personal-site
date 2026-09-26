@@ -1,8 +1,11 @@
 // A record of the options swarm in schema 2: a dozen agents across the five bands, open structures on
 // real money and the shadow book, the Gym's pace, compute by part, and a tape. Invented numbers, for
 // the tests and the local preview only. Not a test file itself (`npm test` runs *.test.mjs).
+import { PERFORMANCE_START_AT } from '../capital/capital.js';
+
 export const PUBLISHED_AT = '2026-09-28T14:58:00.000Z';
-export const RESET_AT = '2026-09-26T06:25:30.000Z';
+// The record starts at the page's own reset constant, whatever the main session sets it to at deploy time.
+export const RESET_AT = PERFORMANCE_START_AT;
 
 export const tally = (trades, wins, pnl) => ({ trades, wins, pnl_usd: pnl });
 export function agent(id, overrides = {}) {

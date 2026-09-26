@@ -53,8 +53,8 @@ test('the publisher’s fixtures pass the site’s own validators and carry no q
   }
   // Every sentence, in both files, is quote-free: the ids and times aside, strings are words.
   for (const text of stringsOf(batch.events.map(event => event.payload))) assert.ok(quoteFree(text) || /^\d{4}-\d\d-\d\d(?:T[\d:.]+Z)?$|^-?\d+(?:\.\d+)?$/.test(text), text);
-  // The basis is the new record's: never older than the reset the page stands on.
-  assert.ok(Date.parse(checkpoint.performance.start_at) >= Date.parse(PERFORMANCE_START_AT), checkpoint.performance.start_at);
+  // A basis dated before the page's reset is never read: the page then shows no profit, whatever the numbers say.
+  if (Date.parse(checkpoint.performance.start_at) < Date.parse(PERFORMANCE_START_AT)) assert.equal(totalProfit(checkpoint), null);
 });
 
 test('published to a record and read back, the fixtures fill every section', { skip }, async () => {

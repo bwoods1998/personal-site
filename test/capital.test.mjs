@@ -405,10 +405,18 @@ test('the build publishes the page with hashed, self-hosted assets', async () =>
 });
 
 // ---------------------------------------------------------------------------- the numbers
+// The one pair the main session sets at deploy time (capital/capital.js, the reset): every other test reads them.
+test('the reset is one pair of constants: an instant after the old record, and a positive balance', () => {
+  assert.match(PERFORMANCE_START_AT, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+  assert.ok(Date.parse(PERFORMANCE_START_AT) >= Date.parse('2026-09-26T06:23:14.000Z'), 'no earlier than the options swarm\'s T0');
+  assert.ok(Date.parse(PERFORMANCE_START_AT) < Date.parse(PUBLISHED_AT), 'before the fixture\'s Monday');
+  assert.match(START_EQUITY, /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/);
+  assert.ok(Number(START_EQUITY) > 0);
+  assert.equal(RESET_AT, PERFORMANCE_START_AT);
+});
+
 test('total profit is the balance less the reset less net deposits, only on a fresh balance and a verified funding check', () => {
   const good = swarmCheckpoint();
-  assert.equal(PERFORMANCE_START_AT, RESET_AT);
-  assert.equal(START_EQUITY, '481.65');
   assert.equal(totalProfit(good), '212.72', '5,694.37 − 481.65 − 5,000');
   assert.equal(totalProfit(swarmCheckpoint({ account: { ...good.account, stale: true } })), null, 'a stale balance');
   assert.equal(totalProfit(swarmCheckpoint({ account: { ...good.account, as_of: '2026-09-28T14:40:00.000Z' } })), null, 'a balance 18 minutes old');
@@ -421,7 +429,7 @@ test('total profit is the balance less the reset less net deposits, only on a fr
   assert.equal(profitBasis(swarmCheckpoint({ performance: old })).start_equity, START_EQUITY);
   assert.equal(totalProfit(swarmCheckpoint({ performance: old })), null);
   // A later basis from the House is read as published.
-  const later = { ...good.performance, start_at: '2026-09-26T07:02:18.000Z', start_equity: '481.70', net_flows: '0' };
+  const later = { ...good.performance, start_at: new Date(Date.parse(PERFORMANCE_START_AT) + 3600000).toISOString(), start_equity: '481.70', net_flows: '0' };
   assert.equal(totalProfit(swarmCheckpoint({ performance: later })), '5212.67');
   assert.equal(totalProfit(swarmCheckpoint({ account: { ...good.account, equity: '5400.00' } })), '-81.65', 'losses are first-class');
 });
@@ -444,7 +452,7 @@ test('the one number is total profit after every input cost, and a dash while an
   assert.deepEqual(runningParts(3 * 86400 + 7 * 3600 + 5), { main: '79h 00m', tick: '05s' });
   assert.deepEqual(runningParts(200 * 3600), { main: '8d 8h', tick: '' });
   const lines = accountLines(good);
-  assert.match(lines[0], /^\$5,694\.37 now · \$481\.65 at the reset, Sep 26, 2:25 AM EDT\.$/);
+  assert.match(lines[0], /^\$5,694\.37 now · \$481\.65 at the reset, [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d [AP]M ED?T\.$/);
   assert.equal(lines[1], '+$212.72 total profit, after +$5,000.00 of deposits less withdrawals.');
   assert.equal(lines[2], '$287.59 compute: Sail $212.40, OpenAI $64.10, ThetaData $5.43, market data $5.66, other $0.00.');
   assert.equal(lines[3], '−$74.87 after compute: the one number.');
