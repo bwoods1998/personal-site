@@ -106,6 +106,7 @@ test('agents: at most 160, five bands, one family each, the mechanism in quote-f
     ['a House band word', { band: 'paper' }], ['the old ladder', { band: 'swing' }], ['an unknown structure', { structure: 'naked_put' }],
     ['a capital id', { id: 'Condor-1' }], ['a family with a slash', { family: 'condor/vrp' }], ['a blank name', { name: ' ' }],
     ['a quoted mechanism', { mechanism: 'Sells the 10-delta wings when IV is above 20.' }], ['a long mechanism', { mechanism: 'a'.repeat(241) }],
+    ['a venue in the mechanism', { mechanism: 'Trades what Alpaca lists.' }],
     ['more wins than trades', { record: { ...record, forward: { trades: 1, wins: 2, pnl_usd: '0' } } }],
     ['a record with a Sharpe', { record: { ...record, sharpe: '1.2' } }], ['a born date after the checkpoint', { born_at: '2026-09-28T16:00:00.000Z' }],
     ['a program', { program: 'def decide(ctx): ...' }], ['parameters', { params: { width: 5 } }],
@@ -159,6 +160,8 @@ test('the tape carries four kinds, each one exact payload on its own stream, in 
   const events = TAPE();
   for (const event of events) assert.equal(validEvent(event), true, event.id);
   assert.equal(validEventBatch(batch(...events)), true);
+  const close = trade('orb-4', { action: 'close', max_loss_usd: null, pnl_usd: '-12.00' });
+  assert.equal(validEvent(close), true, 'a close may no longer know its maximum loss');
   assert.equal(validEventBatch({ schema_version: 1, events }), false, 'schema 1 batches are refused');
   const open = trade('orb-4');
   const rejected = [
@@ -172,6 +175,9 @@ test('the tape carries four kinds, each one exact payload on its own stream, in 
     ['a trade with a price', { ...open, payload: { ...open.payload, price: '1.25' } }],
     ['a trade with strikes', { ...open, payload: { ...open.payload, strikes: [570, 575] } }],
     ['an open with a P&L', { ...open, payload: { ...open.payload, pnl_usd: '3' } }],
+    ['an open without its maximum loss', { ...open, payload: { ...open.payload, max_loss_usd: null } }],
+    ['a note naming the venue', note('orb-4', 'The Alpaca order was refused.')],
+    ['news naming a venue', news('Kalshi settled the market.')],
     ['a trade of a naked short', { ...open, payload: { ...open.payload, structure: 'short_put' } }],
     ['a mark with venues', { ...mark('1', PUBLISHED_AT), payload: { equity: '1', cash: '1', as_of: PUBLISHED_AT, venues: [] } }],
   ];
@@ -338,10 +344,13 @@ test('the retired Portfolio Agent redirects its pages and refuses its API', asyn
 // ---------------------------------------------------------------------------- the page's words
 const VENUES = /kalshi|alpaca|coinbase/i;
 test('no venue is named anywhere a visitor can read, and the page says what it is', async () => {
-  for (const file of ['capital/index.html', 'capital/capital.js', 'capital/schema.js', 'capital/capital.css', 'index.html', 'app.js']) {
+  for (const file of ['capital/index.html', 'capital/capital.js', 'capital/capital.css', 'index.html', 'app.js']) {
     const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, VENUES, file);
   }
+  // The schema names them once, in the rule that refuses them in anything published.
+  const schema = await readFile(new URL('../capital/schema.js', import.meta.url), 'utf8');
+  assert.deepEqual(schema.split('\n').filter(line => VENUES.test(line)), ['export const VENUE_NAMES = /alpaca|kalshi|coinbase/i;']);
   const html = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
   assert.match(html, /<p class="lede">AI agents trading options\.<\/p>/);
   assert.match(html, /<meta name="description" content="Long-Term Capital Management: AI agents trading options\./);

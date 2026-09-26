@@ -111,8 +111,12 @@ export const counter = (value, max = 1000000000) => Number.isSafeInteger(value) 
 export const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 export const nullable = (value, check) => value === null || check(value);
 export const underlying = value => typeof value === 'string' && /^[A-Z][A-Z0-9.]{0,9}$/.test(value);
-const plainText = (value, max) => typeof value === 'string' && value.length <= max && !CONTROL.test(value) && !value.includes('<');
-// Words a visitor reads: non-blank, bounded, no markup, and quote-free.
+// The page names no venue (the owner, Sept 25, 2026: the account is "the Brokerage Account"), and neither
+// does anything published to it: the publisher says "the broker" instead.
+export const VENUE_NAMES = /alpaca|kalshi|coinbase/i;
+const plainText = (value, max) => typeof value === 'string' && value.length <= max && !CONTROL.test(value) && !value.includes('<')
+  && !VENUE_NAMES.test(value);
+// Words a visitor reads: non-blank, bounded, no markup, no venue, and quote-free.
 export const words = (value, max) => plainText(value, max) && value.trim().length > 0 && quoteFree(value);
 // Words that may be empty: a reason nobody wrote is an empty string, not a lie.
 export const prose = (value, max) => plainText(value, max) && quoteFree(value);
@@ -167,8 +171,10 @@ export const KIND_PAYLOADS = {
   'agent.note': payload => exact(payload, ['text']) && words(payload.text, 2000),
   'agent.trade': payload => exact(payload, TRADE_FIELDS) && TRADE_ACTIONS.includes(payload.action) && typeof payload.real === 'boolean'
     && underlying(payload.underlying) && structureType(payload.structure) && integer(payload.legs, 1, 4) && calendarDay(payload.expiry)
-    && integer(payload.quantity, 1, 10000) && money(payload.max_loss_usd) && nullable(payload.pnl_usd, signedMoney)
-    && (payload.action === 'close' || payload.pnl_usd === null) && prose(payload.why, 240),
+    && integer(payload.quantity, 1, 10000) && nullable(payload.pnl_usd, signedMoney) && prose(payload.why, 240)
+    // An open states what it can lose and has no result yet; a close states its result, and its maximum
+    // loss only when the House still knows it.
+    && (payload.action === 'open' ? money(payload.max_loss_usd) && payload.pnl_usd === null : nullable(payload.max_loss_usd, money)),
   'swarm.news': payload => exact(payload, ['text']) && words(payload.text, 300),
   'account.mark': payload => exact(payload, ['equity', 'cash', 'as_of']) && money(payload.equity) && money(payload.cash) && instant(payload.as_of),
 };
