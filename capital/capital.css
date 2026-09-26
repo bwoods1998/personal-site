@@ -1,5 +1,5 @@
 /* Long-Term Capital Management: AI agents trading options. Dark editorial, Courier New for every
-   number and label, one column, five sections. No webfont, no external request. */
+   number and label, one column, two headline numbers. No webfont, no external request. */
 :root {
   color-scheme: dark;
   --background: #171916;
@@ -67,7 +67,7 @@ section { min-width: 0; }
 .tag-band { color: var(--tone-thought); }
 .tag-retired { color: var(--muted); opacity: .7; }
 
-/* 1 — the masthead: what this is, and four numbers. */
+/* The masthead: Profit and Running. */
 .masthead { padding: 48px 0 34px; }
 .navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; }
 .navigation a { color: var(--muted); text-decoration: none; }
@@ -84,7 +84,7 @@ section { min-width: 0; }
 .live-heading { margin: 0; font: inherit; }
 .live-heading .live-status { font: 13px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .8px; }
 .live-heading .pulse { width: 9px; height: 9px; }
-.numbers { display: grid; grid-template-columns: repeat(4, minmax(0, max-content)); gap: 18px 44px; margin: 30px 0 0; }
+.numbers { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 18px 72px; margin: 30px 0 0; }
 .number { min-width: 0; }
 .number dt { font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: .3px; }
 .number dd { margin: 4px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; min-width: 0; }
@@ -93,7 +93,7 @@ section { min-width: 0; }
 .number-note { font: 13px/1.4 'Courier New', Courier, monospace; }
 
 /* 2 — live: who is thinking now, then the feed. */
-.now { margin-top: 14px; padding: 16px 20px; border: 1px solid var(--line); border-left: 2px solid var(--tone-thought); background: var(--surface); display: grid; gap: 8px; min-width: 0; }
+.now { margin-top: 14px; padding: 22px 24px; border: 1px solid var(--line); border-left: 2px solid var(--tone-thought); background: var(--surface); display: grid; gap: 8px; min-width: 0; }
 .now-real { border-left-color: var(--accent); }
 .now-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 .now-pulse { background: var(--positive); }
@@ -102,13 +102,15 @@ section { min-width: 0; }
 .now-idle .now-when { color: var(--muted); }
 .now-idle .now-pulse { background: var(--muted); animation: none; }
 .now-thought {
-  margin: 0; font-size: clamp(16px, 1.7vw, 19px); line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; min-height: 3.2em;
-  display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  margin: 0; font-size: clamp(16px, 1.7vw, 19px); line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; min-height: 4.8em;
 }
 .now-thought::after { content: '▍'; color: var(--accent); margin-left: 2px; animation: think-blink 1s steps(2) infinite; }
 .now-idle .now-thought::after { content: none; }
 .now-research { margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--muted); min-width: 0; }
 .now-research:empty { display: none; }
+.thought-more { justify-self: start; padding: 4px 0; border: 0; color: var(--muted); background: none; cursor: pointer; font: 11px/1.6 'Courier New', Courier, monospace; }
+.thought-more:hover { color: var(--ink); }
+.now-thought.thought-open { display: block; overflow: visible; }
 .now-empty { margin: 14px 0 0; }
 .feed { list-style: none; margin: 10px 0 0; padding: 0; }
 .feed-line {
@@ -140,9 +142,10 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .line-new { animation: line-in 1.6s ease-out; }
 .feed .empty-state { padding: 10px 0; margin: 0; }
 
-/* The balance chart, under the Brokerage Account heading. */
-.balance { margin: 18px 0 0; }
-.balance-plot { position: relative; height: 200px; margin-left: 56px; }
+/* Only the balance line and its current reading. */
+.account { border-top: 0; padding-top: 12px; }
+.balance { margin: 0; }
+.balance-plot { position: relative; height: 180px; margin: 0 5px; }
 .balance-svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .balance-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .balance-area { fill: var(--ink); opacity: .08; }
@@ -155,55 +158,49 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .balance-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--background); }
 .balance-positive .balance-dot { background: var(--positive); }
 .balance-negative .balance-dot { background: var(--negative); }
-.balance-max, .balance-min { position: absolute; left: -56px; width: 48px; text-align: right; font: 12px/1.4 'Courier New', Courier, monospace; color: var(--muted); }
-.balance-max { top: -2px; }
-.balance-min { bottom: -2px; }
 .balance-readout { position: absolute; top: -26px; padding: 1px 7px; border: 1px solid var(--line); background: var(--surface); font: 11px/1.6 'Courier New', Courier, monospace; white-space: nowrap; pointer-events: none; }
 
-/* Tables: the swarm and the open structures. On a phone each row stacks. */
-.sub-heading { margin: 26px 0 0; font: 10px/1.6 'Courier New', Courier, monospace; font-weight: 400; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
-.section-heading + .sub-heading { margin-top: 18px; }
-.rows { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
-.rows th { padding: 0 14px 6px 0; border-bottom: 1px solid var(--line); text-align: left; font: 10px/1.6 'Courier New', Courier, monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 400; }
-.rows td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 20px; }
-.rows th:last-child, .rows td:last-child { padding-right: 0; }
-.rows .col-num { text-align: right; white-space: nowrap; font-family: 'Courier New', Courier, monospace; font-variant-numeric: tabular-nums; }
-.col-agent { white-space: nowrap; }
-.col-agent .tag { margin-left: 6px; }
-.agent-name { color: var(--ink); }
-.col-side { white-space: nowrap; font: 12px/20px 'Courier New', Courier, monospace; }
-.rows th.col-side { font-size: 10px; }
-.col-market { min-width: 180px; }
-.col-why { width: 46%; max-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 12.5px; }
-.why-text { display: inline; overflow-wrap: anywhere; }
-.why-toggle { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: inherit; text-align: left; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.why-toggle:hover { color: var(--ink); }
-.why-toggle[aria-expanded="true"] { white-space: normal; }
-.why-toggle[aria-expanded="true"] .why-text { color: var(--ink); }
-.strategy-tag { display: inline-block; margin: 0 6px 0 0; vertical-align: 1px; padding: 0 5px; border: 1px solid var(--line); font: 10px/1.5 'Courier New', Courier, monospace; color: var(--tone-tool); white-space: nowrap; }
-.row-practice .agent-name, .row-practice .col-market { color: var(--muted); }
-.record-line { margin: 10px 0 0; font: 12px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+ .balance-caption { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 8px; margin: 12px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
+.balance-current { color: var(--ink); }
 
-/* 3 — the Brokerage Account: every number the masthead shows, reconciled. */
-.account-lines { list-style: none; margin: 14px 0 0; padding: 0; color: var(--muted); font: 12px/1.8 'Courier New', Courier, monospace; overflow-wrap: anywhere; }
-.account-lines li:last-child:not(:only-child) { color: var(--ink); }
-
-/* 4 — the swarm: the Gym's pace, the count in each band, and one row per agent. 5 — open structures use .rows-book. */
-.gym-line { color: var(--ink); }
-.band-counts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 12px 0 4px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.band-count { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
-.band-count b { font: 400 20px/1.2 Arial, Helvetica, sans-serif; letter-spacing: -.5px; color: var(--ink); }
-.band-probe b, .band-sized b { color: var(--accent); }
-.band-empty b { color: var(--muted); }
-.col-band { white-space: nowrap; }
-.col-record { white-space: nowrap; font: 12px/20px 'Courier New', Courier, monospace; }
-.record-main { display: block; }
-.record-rest { display: block; color: var(--muted); font-size: 11px; }
-.row-retired .agent-name, .row-retired .col-why { color: var(--muted); opacity: .75; }
-.rows-swarm .col-why { width: 44%; }
+/* Three stages, one button per agent. Empty stages keep their place. */
+.agent-board { margin-top: 18px; }
+.agent-stage { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: center; min-height: 84px; padding: 15px 0; border-top: 1px solid var(--line); }
+.agent-stage:last-of-type { border-bottom: 1px solid var(--line); }
+.stage-heading { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px; align-items: baseline; gap: 10px; padding-right: 28px; }
+.stage-level { color: var(--muted); font: 11px/1.5 'Courier New', Courier, monospace; }
+.stage-label { font-size: 13px; line-height: 1.5; }
+.stage-count { color: var(--muted); text-align: right; font: 11px/1.5 'Courier New', Courier, monospace; }
+.stage-2 .stage-level, .stage-3 .stage-level { color: var(--accent); }
+.agent-dots { display: flex; flex-wrap: wrap; gap: 0; align-items: center; min-width: 0; }
+.agent-dot { flex: 0 0 40px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
+.agent-dot-core { display: block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; transition: transform .16s ease, box-shadow .16s ease; pointer-events: none; }
+.dot-candidate { color: var(--tone-thought); }
+.dot-candidate .agent-dot-core { background: var(--tone-thought); }
+.dot-probe, .dot-sized { color: var(--accent); }
+.dot-probe .agent-dot-core, .dot-sized .agent-dot-core { width: 15px; height: 15px; background: var(--accent); }
+.dot-sized .agent-dot-core { width: 19px; height: 19px; }
+.dot-retired .agent-dot-core { width: 9px; height: 9px; border-style: dotted; }
+.agent-dot:hover .agent-dot-core, .agent-dot[aria-expanded="true"] .agent-dot-core { transform: scale(1.2); box-shadow: 0 0 0 4px var(--background), 0 0 0 5px currentColor; }
+.stage-empty { margin-left: 15px; color: var(--line); font: 12px 'Courier New', Courier, monospace; }
+.agents-retired { margin-top: 12px; }
+.agents-retired summary { width: fit-content; color: var(--muted); cursor: pointer; font: 11px/1.8 'Courier New', Courier, monospace; }
+.agents-retired .agent-dots { margin-top: 8px; }
+.agent-detail { grid-column: 1 / -1; width: 100%; margin-top: 16px; }
+.agent-detail-card { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); }
+.agent-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.agent-detail-head h3 { color: var(--ink); font-size: 18px; letter-spacing: -.3px; }
+.agent-close { margin: -8px -8px -8px auto; border: 0; width: 40px; height: 40px; color: var(--muted); background: none; font: 24px/1 Arial, sans-serif; cursor: pointer; }
+.agent-close:hover { color: var(--ink); }
+.agent-strategy { margin: 10px 0 0; font: 14px/1.7 Arial, Helvetica, sans-serif; overflow-wrap: anywhere; }
+.strategy-tag { display: inline-block; margin-right: 7px; padding: 0 5px; border: 1px solid var(--line); color: var(--tone-tool); font: 10px/1.7 'Courier New', Courier, monospace; white-space: nowrap; }
+.agent-record { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 12px 0 0; color: var(--muted); font: 11px/1.7 'Courier New', Courier, monospace; }
+.agent-positions { list-style: none; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
+.agent-positions li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   .pulse, .line-new, .now-thought::after { animation: none; }
+  .agent-dot-core { transition: none; }
 }
 
 @media (max-width: 720px) {
@@ -215,32 +212,15 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .number-value { font-size: 26px; }
   .now { padding: 12px 14px; }
   .now-when { margin-left: 0; }
-  .now-thought { -webkit-line-clamp: 7; }
   .feed-line { grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; }
   .feed-text { grid-column: 1 / -1; grid-row: 2; }
   .feed-words { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .feed-open .feed-words { display: block; }
-  .balance-plot { height: 160px; margin-left: 48px; }
-  .balance-max, .balance-min { left: -48px; width: 40px; }
-  .rows thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .rows, .rows tbody { display: block; }
-  .rows tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .rows td { display: block; padding: 0; border: 0; min-width: 0; line-height: 1.5; }
-  .rows .col-market { grid-column: 1 / 4; grid-row: 1; min-width: 0; font-weight: 500; }
-  .rows .col-pnl { grid-column: 4; grid-row: 1; }
-  .rows .col-agent { grid-column: 1; grid-row: 2; font-size: 12px; }
-  .rows .col-side { grid-column: 2 / 4; grid-row: 2; line-height: 1.5; }
-  .rows .col-value { grid-column: 4; grid-row: 2; text-align: right; color: var(--muted); line-height: 1.5; }
-  .rows-book .col-agent { grid-column: 1 / 4; }
-  .rows-book .col-value { grid-column: 4; grid-row: 2; }
-  .rows-book .col-value::before { content: 'max loss '; }
-  .rows-book .col-side { grid-column: 1 / -1; grid-row: 3; white-space: normal; color: var(--muted); }
-  .rows-swarm tr { grid-template-columns: minmax(0, 1fr) auto; }
-  .rows-swarm .col-agent { grid-column: 1; grid-row: 1; font-size: 13px; font-weight: 500; }
-  .rows-swarm .col-band { grid-column: 2; grid-row: 1; }
-  .rows-swarm .col-record { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
-  .rows .col-why { grid-column: 1 / -1; grid-row: 3; width: auto; max-width: none; margin-top: 2px; white-space: normal; line-height: 1.5; }
-  .rows .why-toggle { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .rows .why-toggle[aria-expanded="true"] { display: block; }
-  .rows .why-empty { display: none; }
+  .account { padding-top: 8px; }
+  .balance-plot { height: 140px; }
+  .agent-stage { grid-template-columns: 1fr; gap: 8px; padding: 14px 0; }
+  .stage-heading { grid-template-columns: 18px minmax(0, 1fr) 24px; padding-right: 0; }
+  .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
+  .agent-detail-card { padding: 14px; }
+  .agent-positions li + li { margin-top: 10px; }
 }

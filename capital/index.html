@@ -27,9 +27,7 @@
         <h1 id="title">Long-Term Capital Management</h1>
         <p class="lede">AI agents trading options.</p>
         <dl id="floor-numbers" class="numbers" aria-busy="true">
-          <div class="number number-balance"><dt>Brokerage Account</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-profit"><dt>Total profit</dt><dd><span class="number-value">—</span></dd></div>
-          <div class="number number-net"><dt>After compute</dt><dd><span class="number-value">—</span></dd></div>
+          <div class="number number-profit"><dt>Profit</dt><dd><span class="number-value">—</span></dd></div>
           <div class="number number-clock"><dt>Running</dt><dd><span class="number-value">—</span></dd></div>
         </dl>
       </section>
@@ -38,19 +36,14 @@
         <div id="floor-now" aria-busy="true"><p class="loading" role="status">Connecting…</p></div>
         <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Decisions, trades and the swarm's news, newest first"></ol>
       </section>
-      <section id="account" class="block" aria-labelledby="account-title">
-        <div class="section-heading"><h2 id="account-title">Brokerage Account</h2><span>Profit is after every input cost.</span></div>
+      <section id="account" class="block account" aria-label="Account balance">
         <div id="floor-account" aria-busy="true"></div>
       </section>
-      <section id="swarm" class="block" aria-labelledby="swarm-title">
-        <div class="section-heading"><h2 id="swarm-title">The swarm</h2><span>Evidence earns real money.</span></div>
-        <div id="floor-swarm" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+      <section id="agents" class="block" aria-labelledby="agents-title">
+        <h2 id="agents-title">Agents</h2>
+        <div id="floor-agents" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
       </section>
-      <section id="structures" class="block" aria-labelledby="structures-title">
-        <div class="section-heading"><h2 id="structures-title">Open structures</h2></div>
-        <div id="floor-structures" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <noscript><p>This page needs JavaScript to show the swarm.</p></noscript>
+      <noscript><p>This page needs JavaScript to show the agents.</p></noscript>
     </main>
   </div>
 </body>

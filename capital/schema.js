@@ -205,16 +205,40 @@ export function validEventBatch(batch) {
   return batch.events.every(validEvent);
 }
 export function publicEvent(event) {
-  return { seq: event.seq, id: event.id, stream: event.stream, kind: event.kind, at: event.at, payload: event.payload, digest: event.digest };
+  return { seq: event.seq, id: event.id, stream: event.stream, kind: event.kind, at: event.at, payload: event.payload, digest: event.digest,
+    ...(validDisplayName(event.display_name) ? { display_name: event.display_name } : {}) };
 }
 export function validPublicEvent(event) {
-  return plainObject(event) && counter(event.seq, Number.MAX_SAFE_INTEGER) && validEvent({ ...event, seq: event.seq });
+  if (!plainObject(event)) return false;
+  const { display_name: displayName, ...original } = event;
+  if (Object.hasOwn(event, 'display_name') && (!validDisplayName(displayName)
+      || !((typeof event.stream === 'string' && event.stream.startsWith('agent:'))
+        || (event.kind === 'swarm.news' && agentId(event.payload?.agent))))) return false;
+  return counter(event.seq, Number.MAX_SAFE_INTEGER) && validEvent(original);
 }
+
+// The original twelve partners, in their original order. Ordinals are durable site-owned aliases:
+// never reorder this list or use an alias as an execution identity.
+export const PARTNER_NAMES = ['Meriwether', 'Hilibrand', 'Scholes', 'Rosenfeld', 'Haghani', 'Mullins',
+  'McEntee', 'Krasker', 'Hawkins', 'Hufschmid', 'Huang', 'Leahy'];
+export function displayNameFor(ordinal) {
+  if (!Number.isSafeInteger(ordinal) || ordinal < 1) return null;
+  const generation = Math.floor((ordinal - 1) / PARTNER_NAMES.length) + 1;
+  return `${PARTNER_NAMES[(ordinal - 1) % PARTNER_NAMES.length]}${generation > 1 ? ` ${generation}` : ''}`;
+}
+export const validDisplayName = value => typeof value === 'string' && value.length <= 40
+  && PARTNER_NAMES.some(name => new RegExp(`^${name}(?: [2-9]| [1-9][0-9]+)?$`).test(value));
 
 // -------------------------------------------------------------------------- checkpoint
 // Every block is present; a block not yet available is null and a list not yet filled is empty, so the
 // first hours of a new House publish a checkpoint the page draws as "not yet".
 export const CHECKPOINT_FIELDS = ['schema_version', 'published_at', 'run', 'account', 'performance', 'compute', 'gym', 'agents', 'structures'];
+
+// Options trading alone: all realized cashflows plus marked open positions, supplied by the House.
+// Optional for old schema-2 checkpoints; null P&L means the complete book could not be verified.
+export function validTrading(value, publishedAt) {
+  return exact(value, ['as_of', 'pnl_usd']) && notAfter(value.as_of, publishedAt) && nullable(value.pnl_usd, signedMoney);
+}
 
 // The run clock: when the House started on its new ledger (its first `ops.started`).
 export function validRun(value, publishedAt) {
@@ -268,8 +292,9 @@ export function validRecord(value) {
 // sentence, its band and its record. The page names it from its id. Its program never publishes (its
 // parameters are fitted to licensed data), nor does anything the program reads.
 export const AGENT_FIELDS = ['id', 'family', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record'];
-export function validAgent(value, publishedAt) {
-  return exact(value, AGENT_FIELDS) && agentId(value.id) && slug(value.family) && prose(value.mechanism, 240)
+export function validAgent(value, publishedAt, { publicRead = false } = {}) {
+  return (exact(value, AGENT_FIELDS) || (publicRead && exact(value, [...AGENT_FIELDS, 'display_name']) && validDisplayName(value.display_name)))
+    && agentId(value.id) && slug(value.family) && prose(value.mechanism, 240)
     && nullable(value.structure, structureType) && bandName(value.band)
     && nullable(value.born_at, at => notAfter(at, publishedAt)) && nullable(value.retired_at, at => notAfter(at, publishedAt))
     && validRecord(value.record);
@@ -283,9 +308,9 @@ export function validStructure(value, publishedAt) {
     && structureType(value.structure) && integer(value.legs, 1, 4) && calendarDay(value.expiry) && integer(value.quantity, 1, 10000)
     && typeof value.real === 'boolean' && notAfter(value.opened_at, publishedAt) && money(value.max_loss_usd) && nullable(value.pnl_usd, signedMoney);
 }
-export function validCheckpoint(checkpoint) {
+export function validCheckpoint(checkpoint, { publicRead = false } = {}) {
   try {
-    if (!exact(checkpoint, CHECKPOINT_FIELDS)) return false;
+    if (!exact(checkpoint, CHECKPOINT_FIELDS) && !exact(checkpoint, [...CHECKPOINT_FIELDS, 'trading'])) return false;
     const at = checkpoint.published_at;
     if (checkpoint.schema_version !== SCHEMA_VERSION || !instant(at)) return false;
     if (!validRun(checkpoint.run, at)) return false;
@@ -293,9 +318,10 @@ export function validCheckpoint(checkpoint) {
     if (!nullable(checkpoint.performance, value => validPerformance(value, at))) return false;
     if (!nullable(checkpoint.compute, value => validCompute(value, at))) return false;
     if (!nullable(checkpoint.gym, value => validGym(value, at))) return false;
+    if (Object.hasOwn(checkpoint, 'trading') && !nullable(checkpoint.trading, value => validTrading(value, at))) return false;
     const { agents, structures } = checkpoint;
     if (!Array.isArray(agents) || agents.length > MAX_AGENTS || new Set(agents.map(agent => agent?.id)).size !== agents.length
-      || !agents.every(agent => validAgent(agent, at))) return false;
+      || !agents.every(agent => validAgent(agent, at, { publicRead }))) return false;
     if (!Array.isArray(structures) || structures.length > MAX_STRUCTURES || new Set(structures.map(row => row?.id)).size !== structures.length
       || !structures.every(row => validStructure(row, at))) return false;
     return byteLength(checkpoint) <= MAX_CHECKPOINT_BYTES;
