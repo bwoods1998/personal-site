@@ -10,7 +10,7 @@ export const RESET_AT = PERFORMANCE_START_AT;
 export const tally = (trades, wins, pnl) => ({ trades, wins, pnl_usd: pnl });
 export function agent(id, overrides = {}) {
   return {
-    id, family: id.replace(/-\d+$/, ''), name: id.split('-').map(word => word[0].toUpperCase() + word.slice(1)).join(' '),
+    id, family: id.replace(/-\d+$/, ''),
     mechanism: 'Sells short-dated index premium when realized volatility runs under the level the options price in.',
     structure: 'iron_condor', band: 'gym', born_at: '2026-09-26T16:02:11.000Z', retired_at: null,
     record: { trials: 1204, revisions: 17, forward: null, real: null }, ...overrides,
@@ -84,9 +84,9 @@ export function trade(agentIdValue, payload = {}, at = '2026-09-28T14:02:40.000Z
       max_loss_usd: '184.00', pnl_usd: null, why: 'Realized volatility is running well under what the options price in.', ...payload },
   };
 }
-export function news(text, at = '2026-09-28T13:10:00.000Z') {
+export function news(text, at = '2026-09-28T13:10:00.000Z', agent = null) {
   serial += 1;
-  return { id: `news:${serial}`, stream: 'swarm', kind: 'swarm.news', at, payload: { text }, digest: hex(serial) };
+  return { id: `news:${serial}`, stream: 'swarm', kind: 'swarm.news', at, payload: { agent, text }, digest: hex(serial) };
 }
 export function mark(equity, at, cash = equity) {
   serial += 1;
@@ -95,7 +95,7 @@ export function mark(equity, at, cash = equity) {
 export const TAPE = () => [
   mark('481.65', '2026-09-26T06:30:00.000Z'),
   mark('5481.65', '2026-09-28T13:00:00.000Z', '5481.65'),
-  news('Condor Vrp 3 reached Sized: its forward record held over 64 trades.', '2026-09-28T12:05:00.000Z'),
+  news('moves from Probe to Sized: its forward record held over 64 trades.', '2026-09-28T12:05:00.000Z', 'condor-vrp-3'),
   trade('condor-vrp-3'),
   trade('orb-4', { underlying: 'SPY', structure: 'debit_vertical', legs: 2, quantity: 2, max_loss_usd: '96.00', why: 'The open broke higher on heavy volume.' }, '2026-09-28T14:10:00.000Z'),
   trade('orb-4', { action: 'close', underlying: 'SPY', structure: 'debit_vertical', legs: 2, quantity: 2, max_loss_usd: '96.00', pnl_usd: '31.00', why: 'Target reached before the lunch lull.' }, '2026-09-28T14:30:00.000Z'),

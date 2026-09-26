@@ -94,7 +94,7 @@ test('the profit basis, the compute bill and the Gym are typed, and refuse anyth
 
 test('agents: at most 160, five bands, one family each, the mechanism in quote-free words, and a record', () => {
   assert.deepEqual(BANDS, ['gym', 'candidate', 'probe', 'sized', 'retired']);
-  assert.deepEqual(AGENT_FIELDS, ['id', 'family', 'name', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record']);
+  assert.deepEqual(AGENT_FIELDS, ['id', 'family', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record']);
   const many = count => Array.from({ length: count }, (_, n) => agent(`agent-${n}`));
   assert.equal(MAX_AGENTS, 160);
   assert.equal(validCheckpoint(swarmCheckpoint({ agents: many(160) })), true);
@@ -104,7 +104,7 @@ test('agents: at most 160, five bands, one family each, the mechanism in quote-f
   const record = agent('a-1').record;
   for (const [label, patch] of [
     ['a House band word', { band: 'paper' }], ['the old ladder', { band: 'swing' }], ['an unknown structure', { structure: 'naked_put' }],
-    ['a capital id', { id: 'Condor-1' }], ['a family with a slash', { family: 'condor/vrp' }], ['a blank name', { name: ' ' }],
+    ['a capital id', { id: 'Condor-1' }], ['a family with a slash', { family: 'condor/vrp' }], ['a name: the page names an agent by its id', { name: 'Condor' }],
     ['a quoted mechanism', { mechanism: 'Sells the 10-delta wings when IV is above 20.' }], ['a long mechanism', { mechanism: 'a'.repeat(241) }],
     ['a venue in the mechanism', { mechanism: 'Trades what Alpaca lists.' }],
     ['more wins than trades', { record: { ...record, forward: { trades: 1, wins: 2, pnl_usd: '0' } } }],
@@ -145,7 +145,7 @@ test('a checkpoint that smuggles quotes, greeks, surfaces or parameters is refus
   }
   for (const text of QUOTED) {
     smuggled.push([`mechanism "${text}"`, { ...good, agents: [{ ...good.agents[0], mechanism: text }] }]);
-    smuggled.push([`name "${text}"`, { ...good, agents: [{ ...good.agents[0], name: text }] }]);
+    smuggled.push([`an agent's unnamed words "${text}"`, { ...good, agents: [{ ...good.agents[0], why: text }] }]);
   }
   for (const [label, body] of smuggled) {
     assert.equal(validCheckpoint(body), false, label);
@@ -178,6 +178,8 @@ test('the tape carries four kinds, each one exact payload on its own stream, in 
     ['an open without its maximum loss', { ...open, payload: { ...open.payload, max_loss_usd: null } }],
     ['a note naming the venue', note('orb-4', 'The Alpaca order was refused.')],
     ['news naming a venue', news('Kalshi settled the market.')],
+    ['news without its agent field', { ...news('x'), payload: { text: 'x' } }],
+    ['news about a malformed agent', news('is born.', PUBLISHED_AT, 'Condor 3')],
     ['a trade of a naked short', { ...open, payload: { ...open.payload, structure: 'short_put' } }],
     ['a mark with venues', { ...mark('1', PUBLISHED_AT), payload: { equity: '1', cash: '1', as_of: PUBLISHED_AT, venues: [] } }],
   ];
@@ -512,9 +514,11 @@ test('the feed reads decisions, trades and news in plain words, folds repeats, a
     ['trading', 'Orb 4', 'closed 2 SPY debit verticals', '+$31.00', true],
     ['trading', 'Orb 4', 'opened 2 SPY debit verticals · Sep 28 · max loss $96', '', true],
     ['trading', 'Condor Vrp 3', 'opened 1 XSP iron condor · Sep 28 · max loss $184', '', true],
-    ['swarm', 'Swarm', 'Condor Vrp 3 reached Sized: its forward record held over 64 trades.', '', null],
+    ['swarm', 'Condor Vrp 3', 'moves from Probe to Sized: its forward record held over 64 trades.', '', null],
   ]);
   assert.equal(lines[2].why, 'Target reached before the lunch lull.');
+  assert.deepEqual([feedLine(news('New code waits for the release train.')).name, feedLine(news('is born.', PUBLISHED_AT, 'skew-revert-2')).name], ['The House', 'Skew Revert 2'],
+    'an agent in the news is named by its id, never inside words the quote rule reads');
   const repeats = [note('orb-4', 'Waiting for the range.', '2026-09-28T14:00:00.000Z'), note('orb-4', 'Waiting for the range.', '2026-09-28T14:05:00.000Z')];
   assert.deepEqual(feedLines(repeats, names).map(line => [line.text, line.count]), [['Waiting for the range.', 2]]);
   assert.equal(feedLine(mark('1', PUBLISHED_AT)), null, 'a balance mark is the chart\'s, not the feed\'s');
@@ -565,7 +569,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.equal(lines.length, 5, 'the note on stage is not repeated below it');
     assert.match(lines[0], /thinking Putspread Dip 2 The gap down held/);
     assert.match(lines[1], /trading Orb 4 real money closed 2 SPY debit verticals \+\$31\.00$/);
-    assert.match(lines[4], /swarm Swarm Condor Vrp 3 reached Sized/);
+    assert.match(lines[4], /swarm Condor Vrp 3 moves from Probe to Sized/);
     const account = root.querySelector('#floor-account');
     assert.equal(account.find('svg').length, 1);
     assert.match(account.find('svg')[0].getAttribute('aria-label'), /\$481\.65 to \$5,694\.37/);

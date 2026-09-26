@@ -82,10 +82,10 @@ No footer.
 The checkpoint (`schema.js` `validCheckpoint`, schema 2): `run {started_at}`, `account {equity, cash,
 as_of, stale}`, `performance {start_at, start_equity, net_flows, verified_at}`, `compute {as_of,
 sail_usd, openai_usd, thetadata_usd, market_data_usd, other_usd}`, `gym {as_of, trials, market_years,
-families_alive, families_retired}`, `agents[]` `{id, family, name, mechanism, structure, band, born_at,
+families_alive, families_retired}`, `agents[]` `{id, family, mechanism, structure, band, born_at,
 retired_at, record {trials, revisions, forward, real}}` and `structures[]` `{id, agent, underlying,
 structure, legs, expiry, quantity, real, opened_at, max_loss_usd, pnl_usd}`. The tape: `agent.note`,
-`agent.trade`, `swarm.news`, `account.mark`. The publisher's side is
+`agent.trade`, `swarm.news {agent, text}`, `account.mark`. An agent is named by its id. The publisher's side is
 `long-term-capital-management/league/publish.py` and its contract, `league/tests/fixtures/site_contract.md`.
 
 ## Copy rules

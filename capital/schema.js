@@ -175,7 +175,9 @@ export const KIND_PAYLOADS = {
     // An open states what it can lose and has no result yet; a close states its result, and its maximum
     // loss only when the House still knows it.
     && (payload.action === 'open' ? money(payload.max_loss_usd) && payload.pnl_usd === null : nullable(payload.max_loss_usd, money)),
-  'swarm.news': payload => exact(payload, ['text']) && words(payload.text, 300),
+  // The sentence says what happened; `agent` says to whom (null for the House's own news), so an agent's
+  // name is never inside words that the quote rule reads.
+  'swarm.news': payload => exact(payload, ['agent', 'text']) && nullable(payload.agent, agentId) && words(payload.text, 300),
   'account.mark': payload => exact(payload, ['equity', 'cash', 'as_of']) && money(payload.equity) && money(payload.cash) && instant(payload.as_of),
 };
 export function validKindPayload(kind, payload) {
@@ -263,11 +265,11 @@ export function validRecord(value) {
     && nullable(value.forward, validTally) && nullable(value.real, validTally);
 }
 // One agent: one family (a mechanism, a structure and a slice of the universe), the mechanism in a
-// sentence, its band and its record. Its program never publishes (its parameters are fitted to
-// licensed data), nor does anything the program reads.
-export const AGENT_FIELDS = ['id', 'family', 'name', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record'];
+// sentence, its band and its record. The page names it from its id. Its program never publishes (its
+// parameters are fitted to licensed data), nor does anything the program reads.
+export const AGENT_FIELDS = ['id', 'family', 'mechanism', 'structure', 'band', 'born_at', 'retired_at', 'record'];
 export function validAgent(value, publishedAt) {
-  return exact(value, AGENT_FIELDS) && agentId(value.id) && slug(value.family) && words(value.name, 60) && prose(value.mechanism, 240)
+  return exact(value, AGENT_FIELDS) && agentId(value.id) && slug(value.family) && prose(value.mechanism, 240)
     && nullable(value.structure, structureType) && bandName(value.band)
     && nullable(value.born_at, at => notAfter(at, publishedAt)) && nullable(value.retired_at, at => notAfter(at, publishedAt))
     && validRecord(value.record);

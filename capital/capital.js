@@ -57,7 +57,7 @@ export const STRUCTURE_WORDS = {
 export const COMPUTE_WORDS = { sail_usd: 'Sail', openai_usd: 'OpenAI', thetadata_usd: 'ThetaData', market_data_usd: 'market data', other_usd: 'other' };
 const show = value => typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 const plural = (count, word, many = `${word}s`) => `${Number(count).toLocaleString('en-US')} ${count === 1 ? word : many}`;
-// "condor-vrp-3" reads as "Condor Vrp 3" when the House sent no name.
+// "condor-vrp-3" reads as "Condor Vrp 3".
 export const titleCase = slug => show(slug).split('-').filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // "2026-10-02" reads as "Oct 2": a contract's date, never shifted by a time zone.
@@ -251,7 +251,8 @@ export function accountSeries(marks, checkpoint) {
 
 // ---- the swarm
 const rankOf = band => { const index = BAND_ORDER.indexOf(band); return index === -1 ? BAND_ORDER.length : index; };
-export const agentName = agent => (show(agent?.name).trim() || titleCase(agent?.id) || show(agent?.id));
+// An agent is named by its id: "condor-vrp-3" reads "Condor Vrp 3".
+export const agentName = agent => titleCase(agent?.id) || show(agent?.id);
 // "real 4 trades · 3 won · +$12.40": the record that sizes money, when there is one; else the forward
 // record; else the Gym's count of what its lineage has tried.
 export function recordWords(agent) {
@@ -335,7 +336,8 @@ export function feedLine(event, names = new Map()) {
   const base = { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), pnl: '', tone: '', real: null };
   if (event.kind === 'swarm.news') {
     const text = plainNote(payload.text);
-    return text ? { ...base, kind: 'swarm', agent: 'swarm', name: 'Swarm', text } : null;
+    const who = agentId(payload.agent) ? payload.agent : null;
+    return text ? { ...base, kind: 'swarm', agent: who || 'swarm', name: who ? names.get(who) || titleCase(who) : 'The House', text } : null;
   }
   const agent = streamAgentOf(event.stream);
   if (!agentId(agent)) return null;
