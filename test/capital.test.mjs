@@ -462,10 +462,12 @@ test('the one number is total profit after every input cost, and a dash while an
   assert.match(accountLines(swarmCheckpoint({ compute: { ...good.compute, openai_usd: null } }))[2], /^Compute so far: .*OpenAI not yet metered/);
 });
 
-test('the balance chart draws the reset, every mark since and the fresh reading, and never an older record', () => {
-  const marks = [{ at: '2026-09-20T00:00:00.000Z', equity: '1021.92' }, { at: '2026-09-28T13:00:00.000Z', equity: '5481.65' }];
+test('the balance chart draws its start, every mark since and the fresh reading, and never an older record', () => {
+  const marks = [{ at: '2026-09-20T00:00:00.000Z', equity: '1021.92' }, { at: '2026-09-27T13:29:36.034Z', equity: '481.63' },
+    { at: '2026-09-28T13:00:00.000Z', equity: '5481.65' }];
   const series = accountSeries(marks, swarmCheckpoint());
-  assert.deepEqual(series.points.map(point => point.equity), [481.65, 5481.65, 5694.37]);
+  // The chart starts after the owner's deposit (CHART_START_AT): the pre-deposit balance is not drawn.
+  assert.deepEqual(series.points.map(point => point.equity), [1481.63, 5481.65, 5694.37]);
   assert.equal(series.tone, 'positive');
   assert.equal(accountSeries([], emptyCheckpoint()), null, 'one point is no line');
   assert.equal(balanceSeries([{ at: 'x', equity: '1' }, { at: PUBLISHED_AT, equity: '2' }]), null);
@@ -572,7 +574,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.match(lines[4], /news Meriwether moves from Probe to Sized/);
     const account = root.querySelector('#floor-account');
     assert.equal(account.find('svg').length, 1);
-    assert.match(account.find('svg')[0].getAttribute('aria-label'), /\$481\.65 to \$5,694\.37/);
+    assert.match(account.find('svg')[0].getAttribute('aria-label'), /\$1,481\.63 to \$5,694\.37/);  // the chart starts after the deposit
     assert.match(textOf(account), /^\$5,694\.37 · Sep 28, 10:57 AM EDT$/);
     assert.equal(account.withClass('account-lines').length, 0);
     assert.equal(account.withClass('balance-max').length, 0);

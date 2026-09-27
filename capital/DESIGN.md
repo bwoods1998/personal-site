@@ -13,7 +13,8 @@ training and orders; visiting this page starts none of those things.
    subtle band and when it was written. New notes wait long enough for the current one to be read.
    Long thoughts expand and remain until the reader closes them. The feed below carries actual
    thinking, trades and news, newest first; repeats fold into one line. No invented activity.
-3. **The balance chart.** The recorded account balance since the reset, without a heading, axes or
+3. **The balance chart.** The recorded account balance since the reset (or since the chart's own later
+   start: the owner's Sept 27 deposit is funding, so the chart starts after it), without a heading, axes or
    reconciliation paragraphs. Only the current balance and its timestamp sit below it. Hover can
    inspect a recorded point. This balance is distinct from the Profit headline.
 4. **Agents.** Three horizontal stages of dots: 3 Increased capital (Sized), 2 Live trading (Probe),
