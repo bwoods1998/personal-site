@@ -30,6 +30,11 @@ const MARK = 'account.mark';
 // deploy time to `league/config.json` `performance` (start_at, start_equity).
 export const PERFORMANCE_START_AT = '2026-09-26T06:25:30.000Z';
 export const START_EQUITY = '481.65';
+// The balance chart's own start (Sept 27, 2026): the owner's $1,000 deposit is funding, not performance, so the chart
+// starts over at the first recorded balance after it landed. The profit basis above is unchanged: profit already nets
+// the deposit through `performance.net_flows`. A later published basis (a new reset) takes over from this.
+export const CHART_START_AT = '2026-09-27T13:36:06.176Z';
+export const CHART_START_EQUITY = '1481.63';
 // A profit is shown only on an account reading and a funding check this fresh, against the checkpoint.
 export const VERIFY_WINDOW_MS = 10 * 60 * 1000;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -221,7 +226,8 @@ export function accountLines(checkpoint) {
 }
 
 // ---- the balance chart
-// Recorded balances only: never interpolated, never reset on a loss or a deposit.
+// Recorded balances only: never interpolated, never reset on a loss. The chart starts at `CHART_START_AT` when that is
+// later than the profit basis (the owner's deposit of Sept 27 is funding, not performance).
 export function balanceSeries(points, { width = 1000, height = 120 } = {}) {
   const marks = (Array.isArray(points) ? points : []).filter(point => numeric(point?.equity))
     .map(point => ({ at: Date.parse(point.at), equity: Number(point.equity) }))
@@ -242,13 +248,16 @@ export function balanceSeries(points, { width = 1000, height = 120 } = {}) {
     tone: change > 0.004 ? 'positive' : change < -0.004 ? 'negative' : '',
   };
 }
-// The reset's balance, every recorded mark since, and the checkpoint's own reading, in time order.
+// The chart's start (the reset, or the later chart start), every recorded mark since, and the checkpoint's own reading,
+// in time order.
 export function accountSeries(marks, checkpoint) {
   const basis = profitBasis(checkpoint);
-  const start = Date.parse(basis.start_at);
+  const origin = Date.parse(CHART_START_AT) > Date.parse(basis.start_at)
+    ? { start_at: CHART_START_AT, start_equity: CHART_START_EQUITY } : basis;
+  const start = Date.parse(origin.start_at);
   const end = checkpoint ? Date.parse(checkpoint.published_at) : Infinity;
   const points = (Array.isArray(marks) ? marks : []).filter(point => Date.parse(point?.at) >= start && Date.parse(point?.at) <= end);
-  points.push({ at: basis.start_at, equity: basis.start_equity });
+  points.push({ at: origin.start_at, equity: origin.start_equity });
   if (checkpoint?.account && !checkpoint.account.stale) points.push({ at: checkpoint.account.as_of, equity: checkpoint.account.equity });
   return balanceSeries(points);
 }
