@@ -60,6 +60,9 @@ test('the ledger is an exact allowlist: whose, what, how many, when and the doll
     ['closed before it opened', patchRow(2, { closed_at: '2026-09-28T13:00:00.000Z' })],
     ['opened after the checkpoint', patchRow(0, { opened_at: '2026-09-28T16:00:00.000Z' })],
     ['a close without milliseconds', patchRow(2, { closed_at: '2026-09-28T14:30:00Z' })],
+    // The review of #408 (N2): to the minute, never a broker's fill time to the second or the millisecond.
+    ['an open to the second', patchRow(0, { opened_at: '2026-09-28T14:02:40.000Z' })],
+    ['a close to the millisecond', patchRow(2, { closed_at: '2026-09-28T14:30:00.312Z' })],
     ['a fraction of a cent', patchRow(0, { pnl_usd: '12.505' })],
     ['a P&L as a number', patchRow(0, { pnl_usd: 12.5 })],
     ['a shadow id', patchRow(0, { id: 'shadow:condor-vrp-3@4:c:7' })],
@@ -71,6 +74,7 @@ test('the ledger is an exact allowlist: whose, what, how many, when and the doll
     ['a ledger without Profit', (() => { const body = ledgerCheckpoint(); delete body.trading; return body; })()],
     ['a ledger with a null Profit block', ledgerCheckpoint({ trading: null })],
     ['nothing folded into earlier', ledgerCheckpoint({ positions: ledger({ rows: [], earlier: { positions: 0, pnl_usd: '220.40' } }) })],
+    ['an unknown not-listed line beside a known Profit', ledgerCheckpoint({ positions: ledger({ rows: POSITIONS.slice(0, 4), earlier: { positions: 2, pnl_usd: null } }) })],
     ['an other block missing a part', ledgerCheckpoint({ positions: ledger({ other: { as_of: PUBLISHED_AT, fees_usd: '0', crypto_usd: '0', interest_usd: '0' } }) })],
     ['other activity read after the checkpoint', ledgerCheckpoint({ positions: ledger({ other: { ...ledger().other, as_of: '2026-09-28T16:00:00.000Z' } }) })],
     ['rows not a list', ledgerCheckpoint({ positions: ledger({ rows: {} }) })],
@@ -159,7 +163,7 @@ test('each line reads as who, what, how many, when and the dollar result; open f
     ['real:1', 'House calibration', 'SPY call debit vertical', '×1', 'Sep 29', '−$2.20', '−1.0%'],
     ['real:3', 'Condor Vrp 3', 'XSP iron condor', '×1', 'Sep 28', '+$205.40', '93.2%'],
   ]);
-  assert.deepEqual([book.other.label, book.other.detail, book.other.pnl, book.other.share], ['Other account activity', 'fees +$0.08 · crypto −$0.08', '$0.00', '0.0%']);
+  assert.deepEqual([book.other.label, book.other.detail, book.other.pnl, book.other.share], ['Other account activity', 'fees +$0.08 · crypto fees −$0.08', '$0.00', '0.0%']);
   assert.equal(book.unreconciled, null, 'a zero difference is not a line');
   assert.equal(book.earlier, null);
   assert.deepEqual([book.total.label, book.total.pnl, book.total.share], ['Profit', '+$220.40', '100.0%']);
@@ -174,10 +178,11 @@ test('each line reads as who, what, how many, when and the dollar result; open f
   assert.equal(validCheckpoint(partialCheckpoint), true);
   const partial = positionsLedger(partialCheckpoint, at);
   assert.equal(partial.open[0].quantity, '×1 of 2');
-  assert.deepEqual([partial.earlier.label, partial.earlier.pnl, partial.earlier.count], ['2 earlier positions', '+$203.20', 2]);
+  assert.deepEqual([partial.earlier.label, partial.earlier.detail, partial.earlier.pnl, partial.earlier.count],
+    ['2 positions not listed', 'the oldest closed, and any the table can’t describe', '+$203.20', 2]);
   assert.deepEqual([partial.unreconciled.label, partial.unreconciled.pnl], ['Unreconciled difference', '+$1.00']);
-  assert.deepEqual([partial.other.detail, partial.other.pnl], ['fees −$0.92 · crypto −$0.08', '−$1.00']);
-  assert.equal(positionsLine(partial), '2 open · 2 closed · 2 earlier');
+  assert.deepEqual([partial.other.detail, partial.other.pnl], ['fees −$0.92 · crypto fees −$0.08', '−$1.00']);
+  assert.equal(positionsLine(partial), '2 open · 2 closed · 2 not listed');
   const partialLines = [...partial.open, ...partial.closed, partial.earlier, partial.other, partial.unreconciled];
   assert.equal(partialLines.reduce((sum, line) => sum + cents(line.usd), 0n), cents(partial.total.usd));
   // A stale or unknown Profit is a dash in the total and every share, exactly as in the headline.
@@ -192,14 +197,17 @@ test('each line reads as who, what, how many, when and the dollar result; open f
   assert.equal(positionsLedger(null), null);
 });
 
-test('the House’s first real day: one calibration round trip, the broker’s fee difference and a crypto fee, adding up to Profit', () => {
+test('the House’s first real day: one calibration round trip with the broker’s own fees, and a crypto fee, adding up to Profit', () => {
+  // As the House publishes it since the review of #408 (5): the broker's posted fees are in the position's own row (the
+  // trade's real -2.12), and Other holds only what no position carries (the coins' sale fees).
   const calibration = position('real:1', { source: 'calibration', agent: null, underlying: 'SPY', structure: 'debit_vertical', right: 'call', legs: 2,
-    expiry: '2026-09-29', status: 'closed', open_quantity: 0, opened_at: '2026-09-28T14:10:01.312Z', closed_at: '2026-09-28T14:10:11.031Z', pnl_usd: '-2.20' });
-  const day = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '-2.20' }, positions: ledger({ rows: [calibration] }) });
+    expiry: '2026-09-29', status: 'closed', open_quantity: 0, opened_at: '2026-09-28T14:10:00.000Z', closed_at: '2026-09-28T14:10:00.000Z', pnl_usd: '-2.12' });
+  const day = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '-2.20' },
+    positions: ledger({ rows: [calibration], other: { ...ledger().other, fees_usd: '0.00' } }) });
   assert.equal(validCheckpoint(day), true);
   const book = positionsLedger(day, at);
-  assert.deepEqual(book.closed.map(line => [line.who, line.what, line.pnl, line.share]), [['House calibration', 'SPY call debit vertical', '−$2.20', '100.0%']]);
-  assert.deepEqual([book.other.detail, book.other.pnl, book.other.share], ['fees +$0.08 · crypto −$0.08', '$0.00', '0.0%']);
+  assert.deepEqual(book.closed.map(line => [line.who, line.what, line.pnl, line.share]), [['House calibration', 'SPY call debit vertical', '−$2.12', '96.4%']]);
+  assert.deepEqual([book.other.detail, book.other.pnl, book.other.share], ['crypto fees −$0.08', '−$0.08', '3.6%']);
   assert.deepEqual([book.total.pnl, book.total.share], ['−$2.20', '100.0%']);
 });
 
@@ -220,6 +228,9 @@ test('structures read in words, and shares are exact tenths of a percent', () =>
   assert.equal(shareOf(null, '1.00'), '—');
   assert.deepEqual(POSITION_COLUMNS.map(([, label]) => label), ['Who', 'Position', 'Qty', 'Expiry', 'Opened', 'Closed', 'P&L', 'Share']);
   assert.equal(mastheadNumbers(ledgerCheckpoint(), at)[0].title, PROFIT_TITLES.ledger);
+  // The review of #408 (N1): Profit counts crypto fees only, and says the leftover dust is not counted.
+  assert.match(PROFIT_TITLES.ledger, /crypto fees/);
+  assert.match(PROFIT_TITLES.ledger, /not the leftover crypto dust/);
   assert.equal(mastheadNumbers(swarmCheckpoint(), at)[0].title, PROFIT_TITLES.options, 'a House that predates the ledger publishes options alone');
 });
 
@@ -257,10 +268,10 @@ test('mounted, the ledger sits under the chart as one table whose total is the h
     assert.equal(rows[0].withClass('pos-pnl')[0].className, 'pos-pnl negative');
     assert.equal(rows[2].withClass('pos-pnl')[0].className, 'pos-pnl positive');
     const time = rows[2].find('time');
-    assert.deepEqual(time.map(node => node.dateTime), ['2026-09-28T13:41:12.000Z', '2026-09-28T14:30:00.000Z']);
+    assert.deepEqual(time.map(node => node.dateTime), ['2026-09-28T13:41:00.000Z', '2026-09-28T14:30:00.000Z']);
     assert.match(time[0].getAttribute('title'), /^Sep 28, 9:41 AM EDT$/);
     const foot = table.find('tfoot')[0];
-    assert.deepEqual(foot.find('tr').map(rowText), ['Other account activity fees +$0.08 · crypto −$0.08 $0.00 0.0%', 'Profit +$220.40 100.0%']);
+    assert.deepEqual(foot.find('tr').map(rowText), ['Other account activity fees +$0.08 · crypto fees −$0.08 $0.00 0.0%', 'Profit +$220.40 100.0%']);
     const headline = root.querySelector('#floor-numbers').withClass('number-value')[0].textContent;
     assert.equal(headline, '+$220.40');
     assert.equal(foot.withClass('pos-total')[0].withClass('pos-pnl')[0].textContent, headline, 'the total is the headline, to the cent');
@@ -273,13 +284,27 @@ test('mounted, the ledger sits under the chart as one table whose total is the h
 test('a difference, a fold and an empty book each read plainly, and a page before the ledger says so', async () => {
   const shown = ledgerCheckpoint({ positions: ledger({ rows: POSITIONS.map((row, n) => (n ? row : { ...row, pnl_usd: '13.50' })), unreconciled_usd: '-1.00' }) });
   await mounted(shown, async box => {
-    assert.deepEqual(box.find('tfoot')[0].find('tr').map(rowText), ['Other account activity fees +$0.08 · crypto −$0.08 $0.00 0.0%',
+    assert.deepEqual(box.find('tfoot')[0].find('tr').map(rowText), ['Other account activity fees +$0.08 · crypto fees −$0.08 $0.00 0.0%',
       'Unreconciled difference not yet matched to a position or account activity −$1.00 −0.5%', 'Profit +$220.40 100.0%']);
   });
   const folded = ledgerCheckpoint({ positions: ledger({ rows: POSITIONS.slice(0, 4), earlier: { positions: 2, pnl_usd: '203.20' } }) });
   await mounted(folded, async box => {
+    // The review of #408 (S2): the not-listed line sits in the footer, never under Closed (an open position the table
+    // cannot describe is counted in it too), and says what it holds.
     const closed = box.withClass('pos-body-closed')[0];
-    assert.equal(rowText(closed.find('tr').at(-1)), '2 earlier positions closed, added together +$203.20 92.2%');
+    assert.deepEqual(closed.withClass('pos-row').map(row => row.dataset.position), ['real:5', 'real:4']);
+    assert.equal(closed.withClass('pos-sum').length, 0);
+    assert.deepEqual(box.find('tfoot')[0].find('tr').map(rowText).slice(0, 2), [
+      '2 positions not listed the oldest closed, and any the table can’t describe +$203.20 92.2%',
+      'Other account activity fees +$0.08 · crypto fees −$0.08 $0.00 0.0%']);
+    assert.match(words(box.withClass('positions-caption')[0]), /^2 open · 2 closed · 2 not listed ·/);
+  });
+  // While Profit is unknown, a not-listed line with an unknown amount (an unpriced row folded) is shown, never hidden.
+  const unknownFold = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: null },
+    positions: ledger({ rows: POSITIONS.slice(0, 4), earlier: { positions: 1, pnl_usd: null }, other: null, unreconciled_usd: null }) });
+  assert.equal(validCheckpoint(unknownFold), true);
+  await mounted(unknownFold, async box => {
+    assert.equal(rowText(box.find('tfoot')[0].find('tr')[0]), '1 position not listed the oldest closed, and any the table can’t describe — —');
   });
   const empty = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '0.00' },
     positions: ledger({ rows: [], other: { ...ledger().other, fees_usd: '0.00', crypto_usd: '0.00' } }) });

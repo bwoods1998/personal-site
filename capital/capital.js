@@ -201,7 +201,7 @@ export function startedAt(checkpoint) {
 // With the positions ledger (Sept 28, 2026) Profit is the whole account's real P&L since the reset, and the
 // ledger below the chart adds up to it; a House that predates the ledger still publishes options alone.
 export const PROFIT_TITLES = {
-  ledger: 'Real P&L on the Brokerage Account since the reset: every options position, open ones at their current value, and other account activity. The positions below add up to it.',
+  ledger: 'Real options P&L on the Brokerage Account since the reset: every options position after fees, open ones at their current value, plus fees no position carries, crypto fees and interest. Not deposits, not compute, not the leftover crypto dust. The positions below add up to it.',
   options: 'Live options trading P&L, including open positions.',
 };
 export function mastheadNumbers(checkpoint, now = Date.now()) {
@@ -380,10 +380,12 @@ export function structureLine(rows) {
 // ---- the positions ledger
 // Every real position on the Brokerage Account since the reset (Sept 28, 2026, the owner: "line of sight into what the
 // agents are trading"): open ones first, then closed, newest first, and the lines that add them up to Profit exactly,
-// to the cent: the earliest closed positions folded together, the account's other activity, and any difference the
-// House could not reconcile. A dollar result per line, never a price.
+// to the cent: the positions not listed (the oldest closed, and any the table cannot describe) as one line, the account's
+// other activity, and any difference the House could not reconcile. A dollar result per line, never a price.
 export const SOURCE_WORDS = { calibration: 'House calibration', house: 'The House' };
-export const OTHER_WORDS = { fees_usd: 'fees', crypto_usd: 'crypto', interest_usd: 'interest', misc_usd: 'other' };
+// Crypto is its fees only: the leftover dust of the coins sold at the reset is not counted (the House, account_activity.py).
+export const OTHER_WORDS = { fees_usd: 'fees', crypto_usd: 'crypto fees', interest_usd: 'interest', misc_usd: 'other' };
+export const NOT_LISTED = 'the oldest closed, and any the table can’t describe';
 const RIGHT_FIRST = ['debit_vertical', 'credit_vertical', 'calendar', 'diagonal'];
 // "SPY call debit vertical", "QQQ long put", "XSP iron condor", "SPY long put butterfly".
 export function positionWhat(row) {
@@ -435,8 +437,9 @@ export function positionsLedger(checkpoint, now = Date.now()) {
   const known = other && OTHER_PARTS.every(part => numeric(other[part]));
   const otherUsd = known ? decimalOf(OTHER_PARTS.reduce((sum, part) => sum + centsOf(other[part]), 0n)) : null;
   const parts = known ? OTHER_PARTS.filter(part => centsOf(other[part]) !== 0n).map(part => `${OTHER_WORDS[part]} ${signedMoney(other[part])}`) : [];
-  const earlier = block.earlier && numeric(block.earlier.pnl_usd) ? { count: Number(block.earlier.positions) || 0,
-    ...amount('earlier', plural(block.earlier.positions, 'earlier position'), block.earlier.pnl_usd, 'closed, added together') } : null;
+  // Never hidden: shown whenever the House sends it, a dash while its amount is unknown.
+  const earlier = block.earlier && typeof block.earlier === 'object' ? { count: Number(block.earlier.positions) || 0,
+    ...amount('earlier', `${plural(block.earlier.positions, 'position')} not listed`, block.earlier.pnl_usd, NOT_LISTED) } : null;
   const unreconciled = numeric(block.unreconciled_usd) && centsOf(block.unreconciled_usd) !== 0n
     ? amount('unreconciled', 'Unreconciled difference', block.unreconciled_usd, 'not yet matched to a position or account activity') : null;
   return {
@@ -446,11 +449,11 @@ export function positionsLedger(checkpoint, now = Date.now()) {
       share: profit === null || centsOf(profit) === 0n ? '—' : '100.0%' },
   };
 }
-// "1 open · 3 closed · 12 earlier".
+// "1 open · 3 closed · 12 not listed".
 export function positionsLine(ledger) {
   if (!ledger) return '';
   const parts = [`${ledger.open.length} open`, `${ledger.closed.length} closed`];
-  if (ledger.earlier) parts.push(`${ledger.earlier.count.toLocaleString('en-US')} earlier`);
+  if (ledger.earlier) parts.push(`${ledger.earlier.count.toLocaleString('en-US')} not listed`);
   return parts.join(' · ');
 }
 
@@ -917,9 +920,7 @@ function positionsPanel(checkpoint, now = Date.now()) {
   head.append(headings);
   table.append(head);
   if (ledger.open.length) table.append(groupBody('Open', ledger.open.map(positionRow)));
-  if (ledger.closed.length || ledger.earlier) {
-    table.append(groupBody('Closed', [...ledger.closed.map(positionRow), ...(ledger.earlier ? [sumRow(ledger.earlier)] : [])]));
-  }
+  if (ledger.closed.length) table.append(groupBody('Closed', ledger.closed.map(positionRow)));
   if (!ledger.open.length && !ledger.closed.length && !ledger.earlier) {
     const body = element('tbody', null, 'pos-body pos-body-empty');
     const row = element('tr', null, 'pos-empty');
@@ -930,7 +931,10 @@ function positionsPanel(checkpoint, now = Date.now()) {
     table.append(body);
   }
   const foot = element('tfoot');
-  foot.append(sumRow(ledger.other), ...(ledger.unreconciled ? [sumRow(ledger.unreconciled)] : []), sumRow(ledger.total));
+  // The positions not listed sit with the other lines that are not one position: never under Closed, since an open
+  // position the table cannot describe is counted there too.
+  foot.append(...(ledger.earlier ? [sumRow(ledger.earlier)] : []), sumRow(ledger.other), ...(ledger.unreconciled ? [sumRow(ledger.unreconciled)] : []),
+    sumRow(ledger.total));
   foot.setAttribute('title', 'Every line above adds up to Profit, to the cent.');
   table.append(foot);
   const scroll = element('div', null, 'positions-scroll');

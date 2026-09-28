@@ -6,11 +6,12 @@ training and orders; visiting this page starts none of those things.
 ## The page
 
 1. **Profit and Running.** Exactly two headline numbers. Profit is the Brokerage Account's complete real
-   P&L since the reset, supplied in `trading {as_of, pnl_usd}`: every real options position (the agents'
-   and the House's own calibration round trips), open ones at the House's current value, plus the
-   account's other activity (broker fees beyond the book's estimates, crypto, interest). Deposits,
-   compute and simulated returns do not enter it. A missing, null or stale total is a dash. Running
-   ticks from the House's first start on its new record.
+   options P&L since the reset, supplied in `trading {as_of, pnl_usd}`: every real options position after
+   its fees (the agents' and the House's own calibration round trips), open ones at the House's current
+   value, plus the account's other activity (fees no position carries, crypto fees, interest). Deposits,
+   compute and simulated returns do not enter it, nor does the leftover crypto dust of the coins sold at
+   the reset (worth cents; its value at the reset was never recorded). A missing, null or stale total is
+   a dash. Running ticks from the House's first start on its new record.
 2. **Thoughts first.** A generous, legible space for an actual published note, the agent's name, a
    subtle band and when it was written. New notes wait long enough for the current one to be read.
    Long thoughts expand and remain until the reader closes them. The feed below carries actual
@@ -22,11 +23,13 @@ training and orders; visiting this page starts none of those things.
 4. **Positions.** Directly below the chart, one quiet table of every real position on the Brokerage
    Account since the reset: open first, then closed, newest first. Each row says who traded it (the
    agent's partner name, or House calibration), what it is in words ("SPY call debit vertical", "QQQ long
-   put"), the contracts, the expiry, when it opened and closed, its P&L after fees (realized, or at the
-   current value while open) and its share of Profit. The footer carries "Other account activity" and
-   the Profit total. **The lines sum to the Profit headline exactly, to the cent**: the rows, the oldest
-   closed rows folded into one "earlier positions" line past 300, other account activity, and any
-   unreconciled difference, which is shown as its own line whenever it is not zero and never hidden. A
+   put"), the contracts, the expiry, when it opened and closed (to the minute), its P&L after fees
+   (realized, or at the current value while open) and its share of Profit. The footer carries the
+   positions not listed, "Other account activity" and the Profit total. **The lines sum to the Profit
+   headline exactly, to the cent**: the rows, one "N positions not listed" line (the oldest closed past
+   300, and any position the table's fields cannot describe, open or closed: the House alerts on those),
+   other account activity, and any unreconciled difference, which is shown as its own line whenever it
+   is not zero and never hidden. A
    stale or unknown Profit leaves the total and every share a dash, as in the headline. Shares add up to
    100%; a negative share moved against the total; a zero Profit has no shares. With no positions the
    table says "No real positions yet." and still shows the footer. On a phone each row stacks into a short
@@ -84,13 +87,20 @@ exactly `{id, source, agent, underlying, structure, right, legs, quantity, open_
 opened_at, closed_at, pnl_usd}`: `id` is `real:<n>`, `source` is agent, calibration or house (only an
 agent row names an agent), `right` is call, put or both and must fit the structure, and every dollar
 amount is whole cents. The schema checks each row's own consistency (open holds contracts and has no close;
-closed holds none and closed after it opened). `other` is `{as_of, fees_usd, crypto_usd, interest_usd,
-misc_usd}`. The block needs `trading` at the same `as_of`. When Profit is known, every line is known and
-their exact sum equals it, or the whole checkpoint is refused. No row has a strike, a fill price, a
-current value per contract, a quote or a leg code; the page derives each share itself. Public reads add a
-strict `display_name` to agent rows only. The page asks for `?progress=1&positions=1`; default and
-`?progress=1` reads omit the block so already open pages keep their exact keys. Deploy the site before
-the House publishes the block: an older Worker refuses a checkpoint with a key it does not know.
+closed holds none and closed after it opened; both times to the minute). `earlier` is `{positions,
+pnl_usd}`, the positions not listed. `other` is `{as_of, fees_usd, crypto_usd, interest_usd, misc_usd}`.
+The block needs `trading` at the same `as_of`. When Profit is known, every line is known and their exact
+sum equals it, or the whole checkpoint is refused; while it is unknown, any line may be null. No field is
+a strike, a fill price, a mark, a quote or a leg code; the page derives each share itself. An open row's
+P&L is at the House's current value, though, so read with its maximum loss (a structure's `max_loss_usd`,
+and the tape's trade) it implies that value per contract: the ledger's public-data rules allow a
+position's dollar P&L, and valuing open rows from a quote at least fifteen minutes old instead is the
+owner's decision. Public reads add a strict `display_name` to agent rows only. The page asks for
+`?progress=1&positions=1`; default and `?progress=1` reads omit the block so already open pages keep
+their exact keys. Either repository may deploy first: an older Worker refuses a checkpoint carrying the
+block, and the House then sends the same checkpoint without it, with a warning quoting the refusal, and
+offers the block again half an hour later. The planned order for this first release is the House, then the
+site; until the site is out, the page shows Profit as the House now computes it under the older tooltip.
 
 The `trading` block is optional for schema-2 compatibility. Its signed dollar string can be null
 when the complete real book cannot be priced. Profit requires an as-of time within ten minutes of
