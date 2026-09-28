@@ -31,7 +31,7 @@ curl -fsS -X POST -H "Authorization: Bearer $CAPITAL_PUBLISH_TOKEN" -H 'Content-
   'https://blakewoods.us/api/capital/reset?confirm=erase-everything'
 ```
 
-and the same under `/api/capital/t/test/reset` and `/api/capital/t/canary/reset`. Afterwards `GET /api/capital/checkpoint` answers 404 until the House publishes again; the page reads "stopped" with every number a dash. Deploy the schema-2 site before the House publishes schema 2: an older site refuses the whole checkpoint.
+and the same under `/api/capital/t/test/reset` and `/api/capital/t/canary/reset`. Afterwards `GET /api/capital/checkpoint` answers 404 until the House publishes again; the page reads "stopped" with every number a dash. Deploy the schema-2 site before the House publishes schema 2: an older site refuses the whole checkpoint. The same holds for the positions ledger (Sept 28, 2026): deploy the site release that accepts `positions` before the House release that publishes it, or every checkpoint POST answers 400 until the site catches up. Already-open pages are unaffected either way: only `?progress=1&positions=1` reads carry the block.
 
 ### What the publisher must send
 

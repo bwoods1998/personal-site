@@ -363,8 +363,8 @@ test('no venue is named anywhere a visitor can read, and the page says what it i
   assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI agents trading options, in public\./);
 });
 
-const SECTION_IDS = ['masthead', 'live', 'account', 'agents'];
-test('the page carries thoughts, a quiet chart and Agents, with only Profit and Running above', async () => {
+const SECTION_IDS = ['masthead', 'live', 'account', 'positions', 'agents'];
+test('the page carries thoughts, a quiet chart, the positions under it and Agents, with only Profit and Running above', async () => {
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   assert.doesNotMatch(source, /createElement\('a'\)|element\('a'|github\.com/, 'the script builds no link');
@@ -375,12 +375,14 @@ test('the page carries thoughts, a quiet chart and Agents, with only Profit and 
   assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((html.match(/<a[\s>]/gi) || []).length, 2);
   assert.deepEqual([...html.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
-  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Agents']);
+  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Positions', 'Agents']);
   assert.match(html, /<h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"><\/span><span>stopped<\/span><\/span><\/h2>/);
   assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Profit', 'Running']);
   const order = FLOOR_IDS.map(id => html.indexOf(`id="${id}"`));
-  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, status, thought, feed, account, agents');
-  for (const gone of ['floor-improvement', 'floor-positions', 'floor-closed', 'floor-practice', 'floor-portfolio', 'floor-structures', 'floor-swarm']) assert.doesNotMatch(html, new RegExp(`id="${gone}"`), gone);
+  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, status, thought, feed, account, positions, agents');
+  // The positions sit directly under the balance chart (the owner, Sept 28, 2026).
+  assert.match(html, /<div id="floor-account" aria-busy="true"><\/div>\s*<\/section>\s*<section id="positions"/);
+  for (const gone of ['floor-improvement', 'floor-closed', 'floor-practice', 'floor-portfolio', 'floor-structures', 'floor-swarm']) assert.doesNotMatch(html, new RegExp(`id="${gone}"`), gone);
   assert.doesNotMatch(html, /<footer|investment advice|ladder|Level \d/i);
   // The word budget: at most 40 static words above the live feed, 90 on the whole page.
   const staticWords = text => text.replace(/<[^>]+>/g, ' ').replace(/[—…$]/g, ' ').split(/\s+/).filter(word => /[A-Za-z]/.test(word));

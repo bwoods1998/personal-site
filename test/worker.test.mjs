@@ -4,7 +4,7 @@ import { registerHooks } from 'node:module';
 import { capitalRoute, CAPITAL_OBJECT, tapeObject } from '../lib/capital.mjs';
 import { tapeName, TAPES } from '../capital/schema.js';
 import { floor, token, NOW } from './harness.mjs';
-import { agent, swarmCheckpoint } from './swarm-fixture.mjs';
+import { agent, swarmCheckpoint, ledgerCheckpoint } from './swarm-fixture.mjs';
 
 // worker.mjs imports the Workers runtime's base class. Outside workerd a bare class stands in, so
 // the dispatch under test is the deployed file itself and not a copy of it.
@@ -186,6 +186,27 @@ test('legacy and progress reads stay distinct in the edge cache for the real flo
           assert.equal((await send('GET', path, { auth: null, headers: { 'If-None-Match': otherTag } })).response.status, 200);
         }
       }
+    }
+  } finally { restore(); }
+});
+
+test('the positions ledger is its own edge-cache entry, on the real floor and both tapes; older reads never carry it', async () => {
+  const { send, cache, restore } = bench();
+  try {
+    for (const base of ['/api/capital', '/api/capital/t/test', '/api/capital/t/canary']) {
+      assert.equal((await send('POST', base + '/checkpoint', { body: ledgerCheckpoint() })).response.status, 200, base);
+      const reads = {};
+      for (const query of ['', '?progress=1', '?progress=1&positions=1']) {
+        const { response } = await send('GET', `${base}/checkpoint${query}`, { auth: null });
+        assert.equal(response.status, 200, base + query);
+        reads[query] = { tag: response.headers.get('ETag'), body: await response.json() };
+        assert.ok(cache.has(`https://blakewoods.us${base}/checkpoint${query}`), base + query);
+      }
+      assert.equal(Object.hasOwn(reads[''].body, 'positions'), false);
+      assert.equal(Object.hasOwn(reads['?progress=1'].body, 'positions'), false);
+      assert.equal(reads['?progress=1&positions=1'].body.positions.rows.length, 6);
+      for (const older of ['', '?progress=1']) assert.notEqual(reads[older].tag, reads['?progress=1&positions=1'].tag, older);
+      assert.equal((await send('GET', `${base}/checkpoint?positions=1`, { auth: null })).response.status, 404);
     }
   } finally { restore(); }
 });

@@ -61,7 +61,7 @@ export class StubElement {
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 export const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-agents'];
+export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-positions', 'floor-agents'];
 export function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;
