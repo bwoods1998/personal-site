@@ -66,6 +66,34 @@ export function swarmCheckpoint(overrides = {}) {
     agents: AGENTS, structures: STRUCTURES, ...overrides,
   };
 }
+// The positions ledger: every real position since the reset, open and closed, whose it was and its dollar P&L,
+// adding up with the account's other activity to `trading.pnl_usd` (220.40) to the cent. Invented numbers; times to the
+// minute, as the House publishes them.
+export function position(id, overrides = {}) {
+  return {
+    id, source: 'agent', agent: 'condor-vrp-3', underlying: 'XSP', structure: 'iron_condor', right: 'both', legs: 4, quantity: 1, open_quantity: 1,
+    status: 'open', expiry: '2026-09-28', opened_at: '2026-09-28T14:02:00.000Z', closed_at: null, pnl_usd: '12.50', ...overrides,
+  };
+}
+const closed = (opened, closedAt) => ({ status: 'closed', open_quantity: 0, opened_at: opened, closed_at: closedAt });
+export const POSITIONS = [
+  position('real:7'),
+  position('real:6', { agent: 'orb-4', underlying: 'SPY', structure: 'debit_vertical', right: 'call', legs: 2, quantity: 2, open_quantity: 2,
+    opened_at: '2026-09-28T14:10:00.000Z', pnl_usd: '-8.00' }),
+  position('real:5', { agent: 'orb-4', underlying: 'SPY', structure: 'debit_vertical', right: 'call', legs: 2, quantity: 2,
+    ...closed('2026-09-28T13:41:00.000Z', '2026-09-28T14:30:00.000Z'), pnl_usd: '31.00' }),
+  position('real:4', { agent: 'putspread-dip-2', underlying: 'QQQ', structure: 'debit_vertical', right: 'put', legs: 2, expiry: '2026-10-09',
+    ...closed('2026-09-28T13:35:00.000Z', '2026-09-28T14:20:00.000Z'), pnl_usd: '-18.30' }),
+  position('real:3', { ...closed('2026-09-28T13:32:00.000Z', '2026-09-28T13:58:00.000Z'), pnl_usd: '205.40' }),
+  position('real:1', { source: 'calibration', agent: null, underlying: 'SPY', structure: 'debit_vertical', right: 'call', legs: 2, expiry: '2026-09-29',
+    ...closed('2026-09-28T14:10:00.000Z', '2026-09-28T14:10:00.000Z'), pnl_usd: '-2.20' }),
+];
+export const ledger = (overrides = {}) => ({
+  as_of: PUBLISHED_AT, rows: POSITIONS, earlier: null,
+  other: { as_of: '2026-09-28T14:55:00.000Z', fees_usd: '0.08', crypto_usd: '-0.08', interest_usd: '0.00', misc_usd: '0.00' },
+  unreconciled_usd: '0.00', ...overrides,
+});
+export const ledgerCheckpoint = (overrides = {}) => swarmCheckpoint({ positions: ledger(), ...overrides });
 export const emptyCheckpoint = (overrides = {}) => ({
   schema_version: 2, published_at: '2026-09-26T07:03:00.000Z', run: { started_at: '2026-09-26T07:02:18.000Z' },
   account: null, performance: null, compute: null, gym: null, agents: [], structures: [], ...overrides,

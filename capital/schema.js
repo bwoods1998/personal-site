@@ -4,7 +4,8 @@
 // Worker, the test runner and the page import the same rules.
 //
 // Schema 2 (Sept 26, 2026, the options swarm). The page starts over: one Brokerage Account, a swarm
-// of agents in five bands, the Gym's pace, open structures, and the tape of the agents' decisions.
+// of agents in five bands, the Gym's pace, open structures, the ledger of real positions (Sept 28), and
+// the tape of the agents' decisions.
 // Every block is an allowlist: exact keys, typed values, nothing else. The data licenses behind the
 // swarm (the option quote feeds) forbid publishing quotes, bids, asks, spreads, implied vols, greeks,
 // surfaces or fitted parameters, so no block has a field for any of them, and every sentence an agent
@@ -340,9 +341,96 @@ export function validStructure(value, publishedAt) {
     && structureType(value.structure) && integer(value.legs, 1, 4) && calendarDay(value.expiry) && integer(value.quantity, 1, 10000)
     && typeof value.real === 'boolean' && notAfter(value.opened_at, publishedAt) && money(value.max_loss_usd) && nullable(value.pnl_usd, signedMoney);
 }
+// ----------------------------------------------------------------------- the positions ledger
+// Every real position on the Brokerage Account since the reset, open and closed: whose it was (an agent,
+// or the House's own calibration round trips), what it was in words (root, structure kind, call or put),
+// how many contracts, its expiry, when it opened and closed (to the minute), and its dollar P&L after fees
+// (realized when closed, at the House's current value when open). No field is a strike, a fill price, a
+// mark, a quote or anything else the quote feed said: the dollar result is the only number a row carries
+// about money. An open row's P&L read with its maximum loss (published in `structures` and on the tape)
+// implies its current value per contract: the ledger's public-data rules allow a position's dollar P&L.
+//
+// The rows, `earlier` (the positions not listed: the oldest closed past the table's length, and any the
+// table's fields cannot describe), the account's other activity (fees no position carries, crypto fees,
+// interest and the rest) and any unreconciled difference sum to `trading.pnl_usd` exactly, to the cent.
+// A checkpoint whose ledger does not add up is refused whole, like any other malformed block: the House
+// shows a difference it cannot explain as `unreconciled_usd`, never by leaving it out. While Profit is
+// unknown, any line may be unknown too (an unpriced row, and so `earlier` holding it).
+export const MAX_POSITIONS = 300;
+export const POSITION_SOURCES = ['agent', 'calibration', 'house'];
+export const POSITION_RIGHTS = ['call', 'put', 'both'];
+export const POSITION_STATUSES = ['open', 'closed'];
+export const POSITION_FIELDS = ['id', 'source', 'agent', 'underlying', 'structure', 'right', 'legs', 'quantity', 'open_quantity', 'status',
+  'expiry', 'opened_at', 'closed_at', 'pnl_usd'];
+export const POSITIONS_FIELDS = ['as_of', 'rows', 'earlier', 'other', 'unreconciled_usd'];
+export const EARLIER_FIELDS = ['positions', 'pnl_usd'];
+export const OTHER_PARTS = ['fees_usd', 'crypto_usd', 'interest_usd', 'misc_usd'];
+// Which side a structure can be on: a vertical, a butterfly, a calendar or a diagonal is all calls or all
+// puts; a condor, an iron butterfly, a straddle and a strangle are both.
+const SINGLE_RIGHT = ['call', 'put'];
+export const STRUCTURE_RIGHTS = {
+  long_call: ['call'], long_put: ['put'], debit_vertical: SINGLE_RIGHT, credit_vertical: SINGLE_RIGHT, iron_condor: ['both'],
+  iron_butterfly: ['both'], long_butterfly: SINGLE_RIGHT, long_straddle: ['both'], long_strangle: ['both'], calendar: SINGLE_RIGHT,
+  diagonal: SINGLE_RIGHT,
+};
+// A ledger amount is whole cents, so its sum is exact.
+export const centsAmount = value => signedMoney(value) && /^-?\d+(?:\.\d{1,2})?$/.test(value);
+// A published decimal as an exact integer of 10^-8 dollars, for sums that never touch a float.
+export function scaledAmount(value) {
+  const negative = value.startsWith('-');
+  const [whole, fraction = ''] = (negative ? value.slice(1) : value).split('.');
+  const amount = BigInt(whole) * 100000000n + BigInt((fraction + '00000000').slice(0, 8));
+  return negative ? -amount : amount;
+}
+export const positionId = value => typeof value === 'string' && /^real:\d{1,12}$/.test(value);
+// A ledger time is to the minute: the page shows minutes, and a broker's fill time to the millisecond would be a
+// lookup key into the public time and sales, which name the strike and the price.
+export const minuteInstant = value => instant(value) && value.endsWith(':00.000Z');
+export function validPosition(value, publishedAt, { publicRead = false } = {}) {
+  if (!plainObject(value)) return false;
+  // The site's partner name rides a public read, and only on an agent's row.
+  const named = publicRead && Object.hasOwn(value, 'display_name');
+  if (!exact(value, named ? [...POSITION_FIELDS, 'display_name'] : POSITION_FIELDS)) return false;
+  if (named && (value.source !== 'agent' || !validDisplayName(value.display_name))) return false;
+  const open = value.status === 'open';
+  return positionId(value.id) && POSITION_SOURCES.includes(value.source)
+    && (value.source === 'agent' ? agentId(value.agent) : value.agent === null)
+    && underlying(value.underlying) && structureType(value.structure) && STRUCTURE_RIGHTS[value.structure].includes(value.right)
+    && integer(value.legs, 1, 4) && integer(value.quantity, 1, 10000) && integer(value.open_quantity, 0, value.quantity)
+    && POSITION_STATUSES.includes(value.status) && calendarDay(value.expiry) && notAfter(value.opened_at, publishedAt) && minuteInstant(value.opened_at)
+    // Open holds at least one contract and has not closed; closed holds none and closed after it opened.
+    && (open ? value.open_quantity >= 1 && value.closed_at === null
+      : value.open_quantity === 0 && notAfter(value.closed_at, publishedAt) && minuteInstant(value.closed_at)
+        && Date.parse(value.closed_at) >= Date.parse(value.opened_at))
+    && nullable(value.pnl_usd, centsAmount);
+}
+// Unknown (null) only while Profit is: `validPositions` requires every line once Profit is known.
+export const validEarlier = value => exact(value, EARLIER_FIELDS) && integer(value.positions, 1, 1000000000) && nullable(value.pnl_usd, centsAmount);
+export const validOther = (value, publishedAt) => exact(value, ['as_of', ...OTHER_PARTS]) && notAfter(value.as_of, publishedAt)
+  && OTHER_PARTS.every(part => centsAmount(value[part]));
+// Every amount the ledger adds up to Profit, in the order the page lists them.
+export function ledgerAmounts(value) {
+  return [...value.rows.map(row => row.pnl_usd), value.earlier ? value.earlier.pnl_usd : '0',
+    ...OTHER_PARTS.map(part => value.other?.[part] ?? null), value.unreconciled_usd];
+}
+export function validPositions(value, trading, publishedAt, { publicRead = false } = {}) {
+  if (!exact(value, POSITIONS_FIELDS) || !plainObject(trading) || value.as_of !== trading.as_of || !notAfter(value.as_of, publishedAt)) return false;
+  const { rows } = value;
+  if (!Array.isArray(rows) || rows.length > MAX_POSITIONS || new Set(rows.map(row => row?.id)).size !== rows.length
+    || !rows.every(row => validPosition(row, publishedAt, { publicRead }))) return false;
+  if (!nullable(value.earlier, validEarlier) || !nullable(value.other, other => validOther(other, publishedAt))
+    || !nullable(value.unreconciled_usd, centsAmount)) return false;
+  // An unknown Profit leaves unknown lines unknown. A known one is their exact sum, and every line is known.
+  if (trading.pnl_usd === null) return true;
+  const amounts = ledgerAmounts(value);
+  if (amounts.some(amount => amount === null)) return false;
+  return amounts.reduce((sum, amount) => sum + scaledAmount(amount), 0n) === scaledAmount(trading.pnl_usd);
+}
+
 export function validCheckpoint(checkpoint, { publicRead = false } = {}) {
   try {
-    if (!exact(checkpoint, CHECKPOINT_FIELDS) && !exact(checkpoint, [...CHECKPOINT_FIELDS, 'trading'])) return false;
+    if (!exact(checkpoint, CHECKPOINT_FIELDS) && !exact(checkpoint, [...CHECKPOINT_FIELDS, 'trading'])
+      && !exact(checkpoint, [...CHECKPOINT_FIELDS, 'trading', 'positions'])) return false;
     const at = checkpoint.published_at;
     if (checkpoint.schema_version !== SCHEMA_VERSION || !instant(at)) return false;
     if (!validRun(checkpoint.run, at)) return false;
@@ -351,6 +439,9 @@ export function validCheckpoint(checkpoint, { publicRead = false } = {}) {
     if (!nullable(checkpoint.compute, value => validCompute(value, at))) return false;
     if (!nullable(checkpoint.gym, value => validGym(value, at))) return false;
     if (Object.hasOwn(checkpoint, 'trading') && !nullable(checkpoint.trading, value => validTrading(value, at))) return false;
+    // The ledger is optional (a House that predates it sends none) and needs the Profit it sums to.
+    if (Object.hasOwn(checkpoint, 'positions')
+      && !nullable(checkpoint.positions, value => validPositions(value, checkpoint.trading, at, { publicRead }))) return false;
     const { agents, structures } = checkpoint;
     if (!Array.isArray(agents) || agents.length > MAX_AGENTS || new Set(agents.map(agent => agent?.id)).size !== agents.length
       || !agents.every(agent => validAgent(agent, at, { publicRead }))) return false;

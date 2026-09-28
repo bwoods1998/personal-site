@@ -1,5 +1,6 @@
 import {
-  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, validProgress, socketMatches, tapeName,
+  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, OTHER_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, validProgress,
+  socketMatches, tapeName,
 } from './schema.js';
 
 // AI agents trading options on the Brokerage Account, drawn from the House's own record with text
@@ -113,7 +114,8 @@ export function signedMoney(value, places = 2) {
 function date(value, style = 'datetime') {
   const options = style === 'hm' ? { hour: '2-digit', minute: '2-digit', hour12: false }
     : style === 'day' ? { month: 'short', day: 'numeric' }
-      : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' };
+        : style === 'short' ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+          : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' };
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', ...options }).format(new Date(value));
 }
 // "14 min ago", "2 h ago", "3 d ago".
@@ -196,12 +198,19 @@ export function startedAt(checkpoint) {
   const basis = Date.parse(profitBasis(checkpoint).start_at);
   return Number.isFinite(basis) ? basis : null;
 }
+// With the positions ledger (Sept 28, 2026) Profit is the whole account's real P&L since the reset, and the
+// ledger below the chart adds up to it; a House that predates the ledger still publishes options alone.
+export const PROFIT_TITLES = {
+  ledger: 'Real options P&L on the Brokerage Account since the reset: every options position after fees, open ones at their current value, plus fees no position carries, crypto fees and interest. Not deposits, not compute, not the leftover crypto dust. The positions below add up to it.',
+  options: 'Live options trading P&L, including open positions.',
+};
 export function mastheadNumbers(checkpoint, now = Date.now()) {
   const profit = tradingProfit(checkpoint, now);
   const started = startedAt(checkpoint);
   const elapsed = started === null ? { main: '—', tick: '' } : runningParts(Math.max(0, (now - started) / 1000));
+  const title = checkpoint?.positions ? PROFIT_TITLES.ledger : PROFIT_TITLES.options;
   return [
-    { key: 'profit', label: 'Profit', value: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit), title: 'Live options trading P&L, including open positions.' },
+    { key: 'profit', label: 'Profit', value: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit), title },
     { key: 'clock', label: 'Running', value: elapsed.main, tick: elapsed.tick, tone: '', startedAt: started },
   ];
 }
@@ -368,6 +377,86 @@ export function structureLine(rows) {
   return parts.join(' · ');
 }
 
+// ---- the positions ledger
+// Every real position on the Brokerage Account since the reset (Sept 28, 2026, the owner: "line of sight into what the
+// agents are trading"): open ones first, then closed, newest first, and the lines that add them up to Profit exactly,
+// to the cent: the positions not listed (the oldest closed, and any the table cannot describe) as one line, the account's
+// other activity, and any difference the House could not reconcile. A dollar result per line, never a price.
+export const SOURCE_WORDS = { calibration: 'House calibration', house: 'The House' };
+// Crypto is its fees only: the leftover dust of the coins sold at the reset is not counted (the House, account_activity.py).
+export const OTHER_WORDS = { fees_usd: 'fees', crypto_usd: 'crypto fees', interest_usd: 'interest', misc_usd: 'other' };
+export const NOT_LISTED = 'the oldest closed, and any the table can’t describe';
+const RIGHT_FIRST = ['debit_vertical', 'credit_vertical', 'calendar', 'diagonal'];
+// "SPY call debit vertical", "QQQ long put", "XSP iron condor", "SPY long put butterfly".
+export function positionWhat(row) {
+  const root = show(row?.underlying);
+  const right = row?.right === 'call' || row?.right === 'put' ? row.right : '';
+  if (row?.structure === 'long_butterfly' && right) return `${root} long ${right} butterfly`;
+  if (RIGHT_FIRST.includes(row?.structure) && right) return `${root} ${right} ${STRUCTURE_WORDS[row.structure]}`;
+  return structureText(root, row?.structure);
+}
+// A line's share of Profit to a tenth of a percent, rounded half away from zero: "100.0%", "−3.6%". The shares of every
+// line add up to 100%; a negative share moved against the total. A dash while Profit is unknown, or zero.
+export function shareOf(amount, profit) {
+  const part = centsOf(amount);
+  const whole = centsOf(profit);
+  if (part === null || whole === null || whole === 0n) return '—';
+  const size = part < 0n ? -part : part;
+  const base = whole < 0n ? -whole : whole;
+  const tenths = (size * 2000n + base) / (2n * base);
+  const negative = tenths > 0n && (part < 0n) !== (whole < 0n);
+  const digits = (tenths / 10n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${negative ? '−' : ''}${digits}.${tenths % 10n}%`;
+}
+const pidOf = row => Number(show(row?.id).slice(5)) || 0;
+const stampOf = value => Date.parse(value) || 0;
+export function positionsLedger(checkpoint, now = Date.now()) {
+  const block = checkpoint?.positions;
+  if (!block || typeof block !== 'object' || !Array.isArray(block.rows)) return null;
+  const profit = tradingProfit(checkpoint, now);
+  const names = new Map((Array.isArray(checkpoint.agents) ? checkpoint.agents : []).map(agent => [agent?.id, agentName(agent)]));
+  const who = row => (row.source === 'agent'
+    ? (validDisplayName(row.display_name) ? row.display_name : names.get(row.agent) || titleCase(row.agent))
+    : SOURCE_WORDS[row.source] || '');
+  const rows = block.rows.filter(row => row && typeof row === 'object');
+  const open = rows.filter(row => row.status === 'open')
+    .sort((left, right) => stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left));
+  const closed = rows.filter(row => row.status === 'closed')
+    .sort((left, right) => stampOf(right.closed_at) - stampOf(left.closed_at) || stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left));
+  const line = row => ({
+    id: show(row.id), source: show(row.source), agent: row.source === 'agent' ? show(row.agent) : null, who: who(row), what: positionWhat(row),
+    open: row.status === 'open',
+    quantity: row.status === 'open' && row.open_quantity < row.quantity ? `×${row.open_quantity} of ${row.quantity}` : `×${row.quantity}`,
+    expiry: expiryText(row.expiry), openedAt: show(row.opened_at), closedAt: row.status === 'closed' ? show(row.closed_at) : null,
+    usd: numeric(row.pnl_usd) ? row.pnl_usd : null, pnl: numeric(row.pnl_usd) ? signedMoney(row.pnl_usd) : '—', tone: signOf(row.pnl_usd),
+    share: shareOf(row.pnl_usd, profit),
+  });
+  const amount = (key, label, value, detail) => ({ key, label, detail, usd: numeric(value) ? value : null,
+    pnl: numeric(value) ? signedMoney(value) : '—', tone: signOf(value), share: shareOf(value, profit) });
+  const other = block.other && typeof block.other === 'object' ? block.other : null;
+  const known = other && OTHER_PARTS.every(part => numeric(other[part]));
+  const otherUsd = known ? decimalOf(OTHER_PARTS.reduce((sum, part) => sum + centsOf(other[part]), 0n)) : null;
+  const parts = known ? OTHER_PARTS.filter(part => centsOf(other[part]) !== 0n).map(part => `${OTHER_WORDS[part]} ${signedMoney(other[part])}`) : [];
+  // Never hidden: shown whenever the House sends it, a dash while its amount is unknown.
+  const earlier = block.earlier && typeof block.earlier === 'object' ? { count: Number(block.earlier.positions) || 0,
+    ...amount('earlier', `${plural(block.earlier.positions, 'position')} not listed`, block.earlier.pnl_usd, NOT_LISTED) } : null;
+  const unreconciled = numeric(block.unreconciled_usd) && centsOf(block.unreconciled_usd) !== 0n
+    ? amount('unreconciled', 'Unreconciled difference', block.unreconciled_usd, 'not yet matched to a position or account activity') : null;
+  return {
+    asOf: show(block.as_of), open: open.map(line), closed: closed.map(line), earlier, unreconciled,
+    other: amount('other', 'Other account activity', otherUsd, known ? parts.join(' · ') || 'none' : ''),
+    total: { key: 'total', label: 'Profit', detail: '', usd: profit, pnl: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit),
+      share: profit === null || centsOf(profit) === 0n ? '—' : '100.0%' },
+  };
+}
+// "1 open · 3 closed · 12 not listed".
+export function positionsLine(ledger) {
+  if (!ledger) return '';
+  const parts = [`${ledger.open.length} open`, `${ledger.closed.length} closed`];
+  if (ledger.earlier) parts.push(`${ledger.earlier.count.toLocaleString('en-US')} not listed`);
+  return parts.join(' · ');
+}
+
 // ---- the tape: the agents' decisions in their own words, their trades, the swarm's news
 export const FEED_KINDS = ['agent.note', 'agent.trade', 'swarm.news'];
 const streamAgentOf = stream => (typeof stream === 'string' && stream.startsWith('agent:') ? stream.slice(6) : null);
@@ -472,7 +561,8 @@ async function loadEvents(query) {
   return data;
 }
 async function loadCheckpoint() {
-  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint?progress=1`, MAX_CHECKPOINT_BYTES);
+  // Both opt-ins: the promotion checklist and the positions ledger. Pages already open ask for less and keep working.
+  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint?progress=1&positions=1`, MAX_CHECKPOINT_BYTES);
   if (!validCheckpoint(data, { publicRead: true })) throw new Error('Invalid checkpoint.');
   return data;
 }
@@ -764,6 +854,94 @@ function accountPanel(checkpoint, marks) {
   nodes.push(caption);
   return nodes;
 }
+// The ledger under the chart: one table, open positions then closed, and the lines that make up Profit in its footer.
+// On a phone each row stacks into a short block (capital.css); the table never widens the page.
+export const POSITION_COLUMNS = [['who', 'Who'], ['what', 'Position'], ['qty', 'Qty'], ['expiry', 'Expiry'], ['opened', 'Opened'],
+  ['closed', 'Closed'], ['pnl', 'P&L'], ['share', 'Share']];
+const COLUMN_TITLES = {
+  opened: 'New York time.', closed: 'New York time.', pnl: 'After fees: realized when closed, at the current value while open.',
+  share: 'The line’s P&L as a share of Profit. Shares add up to 100%; a negative share moved against the total.',
+};
+function cell(tag, className, content) {
+  const node = element(tag, content, `pos-${className}`);
+  if (tag === 'th') node.setAttribute('scope', 'row');
+  return node;
+}
+function stampCell(className, value) {
+  const node = cell('td', className);
+  if (!value) return node;
+  const time = element('time', date(value, 'short'));
+  time.dateTime = value;
+  time.setAttribute('title', date(value));
+  node.append(time);
+  return node;
+}
+function positionRow(line) {
+  const row = element('tr', null, `pos-row pos-${line.source}${line.open ? ' pos-open' : ''}`);
+  row.dataset.position = line.id;
+  const closed = line.open ? cell('td', 'closed pos-still-open', 'open') : stampCell('closed', line.closedAt);
+  row.append(cell('th', 'who', line.who), cell('td', 'what', line.what), cell('td', 'qty', line.quantity), cell('td', 'expiry', line.expiry),
+    stampCell('opened', line.openedAt), closed, cell('td', `pnl ${line.tone}`.trim(), line.pnl), cell('td', 'share', line.share));
+  return row;
+}
+function sumRow(line) {
+  const row = element('tr', null, `pos-sum pos-${line.key}`);
+  const detail = cell('td', 'what pos-detail', line.detail);
+  detail.setAttribute('colspan', '5');
+  row.append(cell('th', 'who', line.label), detail, cell('td', `pnl ${line.tone}`.trim(), line.pnl), cell('td', 'share', line.share));
+  return row;
+}
+function groupBody(label, rows) {
+  const body = element('tbody', null, `pos-body pos-body-${label.toLowerCase()}`);
+  const head = element('tr', null, 'pos-group');
+  const title = element('th', label);
+  title.setAttribute('scope', 'rowgroup');
+  title.setAttribute('colspan', String(POSITION_COLUMNS.length));
+  head.append(title);
+  body.append(head, ...rows);
+  return body;
+}
+function positionsPanel(checkpoint, now = Date.now()) {
+  const ledger = positionsLedger(checkpoint, now);
+  if (!ledger) return [element('p', 'No positions have been published yet.', 'empty-state')];
+  const caption = element('p', null, 'positions-caption');
+  caption.append(element('span', positionsLine(ledger)));
+  if (Number.isFinite(Date.parse(ledger.asOf))) caption.append(element('span', '·'), element('span', 'as of'), timeNode(ledger.asOf));
+  const table = element('table', null, 'positions-table');
+  table.append(element('caption', 'Real positions on the Brokerage Account since the reset, and the lines that add up to Profit.', 'visually-hidden'));
+  const head = element('thead');
+  const headings = element('tr');
+  for (const [key, label] of POSITION_COLUMNS) {
+    const heading = element('th', label, `pos-${key}`);
+    heading.setAttribute('scope', 'col');
+    if (COLUMN_TITLES[key]) heading.setAttribute('title', COLUMN_TITLES[key]);
+    headings.append(heading);
+  }
+  head.append(headings);
+  table.append(head);
+  if (ledger.open.length) table.append(groupBody('Open', ledger.open.map(positionRow)));
+  if (ledger.closed.length) table.append(groupBody('Closed', ledger.closed.map(positionRow)));
+  if (!ledger.open.length && !ledger.closed.length && !ledger.earlier) {
+    const body = element('tbody', null, 'pos-body pos-body-empty');
+    const row = element('tr', null, 'pos-empty');
+    const empty = element('td', 'No real positions yet.', 'empty-state');
+    empty.setAttribute('colspan', String(POSITION_COLUMNS.length));
+    row.append(empty);
+    body.append(row);
+    table.append(body);
+  }
+  const foot = element('tfoot');
+  // The positions not listed sit with the other lines that are not one position: never under Closed, since an open
+  // position the table cannot describe is counted there too.
+  foot.append(...(ledger.earlier ? [sumRow(ledger.earlier)] : []), sumRow(ledger.other), ...(ledger.unreconciled ? [sumRow(ledger.unreconciled)] : []),
+    sumRow(ledger.total));
+  foot.setAttribute('title', 'Every line above adds up to Profit, to the cent.');
+  table.append(foot);
+  const scroll = element('div', null, 'positions-scroll');
+  scroll.append(table);
+  return [caption, scroll];
+}
+
 // The three stages of the earlier agent board, driven only by the published band. A Candidate
 // stays in practice until the House grants real trading; a dot never implies a future promotion.
 export const AGENT_STAGES = [
@@ -983,7 +1161,7 @@ async function startPage(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
     numbers: find('floor-numbers'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
-    account: find('floor-account'), agents: find('floor-agents'),
+    account: find('floor-account'), positions: find('floor-positions'), agents: find('floor-agents'),
   };
   const state = {
     checkpoint: null, agents: new Map(), names: new Map(), feed: [], marks: [], mode: 'loading',
@@ -1019,6 +1197,8 @@ async function startPage(root) {
     drawn(box.numbers, numbersPanel(state.checkpoint, state));
     drawn(box.account, accountPanel(state.checkpoint, state.marks));
   };
+  // Redrawn on every refresh, like the headline, so a stale Profit leaves the ledger's total a dash as well.
+  const drawPositions = () => { if (state.checkpoint) drawn(box.positions, positionsPanel(state.checkpoint)); };
   const keepFeed = events => {
     const byId = new Map([...state.feed, ...events].map(event => [event.id, event]));
     state.feed = [...byId.values()].sort((left, right) => (Number(right.seq) || 0) - (Number(left.seq) || 0)).slice(0, 400);
@@ -1037,6 +1217,7 @@ async function startPage(root) {
       // every section says plainly that it is empty.
       ready(box.numbers);
       drawn(box.account, [element('p', 'No balance has been published yet.', 'empty-state')]);
+      drawn(box.positions, [element('p', 'No positions have been published yet.', 'empty-state')]);
       drawn(box.agents, [element('p', 'Waiting for the agents.', 'empty-state')]);
     } finally {
       state.asked = true;
@@ -1045,6 +1226,7 @@ async function startPage(root) {
       drawStatus();
       if (state.checkpoint) {
         drawn(box.numbers, numbersPanel(state.checkpoint, state));
+        drawPositions();
         state.drawAgents(); // failed refreshes must also expire old promotion evidence
       }
     }
