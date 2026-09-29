@@ -382,7 +382,9 @@ export function structureLine(rows) {
 // agents are trading"): open ones first, then closed, newest first, and the lines that add them up to Profit exactly,
 // to the cent: the positions not listed (the oldest closed, and any the table cannot describe) as one line, the account's
 // other activity, and any difference the House could not reconcile. A dollar result per line, never a price.
-export const SOURCE_WORDS = { calibration: 'House calibration', house: 'The House' };
+// `house`: the House's own positions other than the calibration's; since Sept 28, 2026 the House live test (the House's
+// `league/live/house_test.py`, family house:rebound-live) is the only one.
+export const SOURCE_WORDS = { calibration: 'House calibration', house: 'House live test' };
 // Crypto is its fees only: the leftover dust of the coins sold at the reset is not counted (the House, account_activity.py).
 export const OTHER_WORDS = { fees_usd: 'fees', crypto_usd: 'crypto fees', interest_usd: 'interest', misc_usd: 'other' };
 export const NOT_LISTED = 'the oldest closed, and any the table can’t describe';

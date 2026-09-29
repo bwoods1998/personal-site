@@ -211,6 +211,20 @@ test('the House’s first real day: one calibration round trip with the broker�
   assert.deepEqual([book.total.pnl, book.total.share], ['−$2.20', '100.0%']);
 });
 
+test('the House live test’s positions read as its own, beside the calibration’s, and add up to Profit', () => {
+  const test_ = position('real:2', { source: 'house', agent: null, underlying: 'QQQ', structure: 'debit_vertical', right: 'put', legs: 2,
+    expiry: '2026-10-02', status: 'closed', open_quantity: 0, opened_at: '2026-09-28T13:40:00.000Z', closed_at: '2026-09-28T14:30:00.000Z', pnl_usd: '7.40' });
+  const calibration = position('real:1', { source: 'calibration', agent: null, underlying: 'SPY', structure: 'debit_vertical', right: 'call', legs: 2,
+    expiry: '2026-09-29', status: 'closed', open_quantity: 0, opened_at: '2026-09-28T14:10:00.000Z', closed_at: '2026-09-28T14:10:00.000Z', pnl_usd: '-2.12' });
+  const day = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '5.20' },
+    positions: ledger({ rows: [test_, calibration], other: { ...ledger().other, fees_usd: '0.00' } }) });
+  assert.equal(validCheckpoint(day), true);
+  const book = positionsLedger(day, at);
+  assert.deepEqual(book.closed.map(line => [line.who, line.what, line.pnl]),
+    [['House live test', 'QQQ put debit vertical', '+$7.40'], ['House calibration', 'SPY call debit vertical', '−$2.12']]);
+  assert.equal([...book.closed, book.other].reduce((sum, line) => sum + cents(line.usd), 0n), cents(book.total.usd));
+});
+
 test('structures read in words, and shares are exact tenths of a percent', () => {
   const what = (structure, right) => positionWhat({ underlying: 'SPY', structure, right });
   assert.deepEqual([what('long_call', 'call'), what('long_put', 'put'), what('debit_vertical', 'put'), what('credit_vertical', 'call'),
