@@ -1,6 +1,6 @@
 import {
-  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, OTHER_PARTS, agentId, validCheckpoint, validPublicEvent, validDisplayName, validProgress,
-  socketMatches, tapeName,
+  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, OTHER_PARTS, AGENT_SOURCES, agentId, computeParts, validCheckpoint, validPublicEvent,
+  validDisplayName, validProgress, socketMatches, tapeName,
 } from './schema.js';
 
 // AI agents trading options on the Brokerage Account, drawn from the House's own record with text
@@ -22,6 +22,9 @@ const MAX_CHECKPOINT_BYTES = 512 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
 const HISTORY_LIMIT = 2048;
 const MARK = 'account.mark';
+// The checkpoint read this page validates (the Worker's `CURRENT_READ`): progress, the positions ledger, the practice
+// league, Claude as its own cost and the incubator route.
+export const CHECKPOINT_READ = '?progress=1&positions=1&practice=1';
 
 // ---- the reset (Sept 26, 2026, the options swarm)
 // The profit basis is the checkpoint's own `performance` block: the Brokerage Account's equity when the
@@ -60,7 +63,7 @@ export const STRUCTURE_WORDS = {
   iron_condor: 'iron condor', iron_butterfly: 'iron butterfly', long_butterfly: 'long butterfly', long_straddle: 'long straddle',
   long_strangle: 'long strangle', calendar: 'calendar', diagonal: 'diagonal',
 };
-export const COMPUTE_WORDS = { sail_usd: 'Sail', openai_usd: 'OpenAI', thetadata_usd: 'ThetaData', market_data_usd: 'market data', other_usd: 'other' };
+export const COMPUTE_WORDS = { sail_usd: 'Sail', claude_usd: 'Claude', openai_usd: 'OpenAI', thetadata_usd: 'ThetaData', market_data_usd: 'market data', other_usd: 'other' };
 const show = value => typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 const plural = (count, word, many = `${word}s`) => `${Number(count).toLocaleString('en-US')} ${count === 1 ? word : many}`;
 // "condor-vrp-3" reads as "Condor Vrp 3".
@@ -168,13 +171,36 @@ export function totalProfit(checkpoint) {
   if (!basis.published || basis.net_flows === null || !within(basis.verified_at, checkpoint.published_at)) return null;
   return decimalOf(centsOf(account.equity) - centsOf(basis.start_equity) - centsOf(basis.net_flows));
 }
-// What the swarm has cost since the reset, part by part, and their total only when every part is known.
+// What the swarm has cost since the reset, part by part, and their total only when every part is known. `itemized`: the
+// House names Claude as its own part (Sept 30, 2026), with Sail as billed; an older House's five parts are not itemized.
 export function computeSpend(checkpoint) {
   const compute = checkpoint?.compute;
-  if (!compute) return { parts: [], total: null };
-  const parts = COMPUTE_PARTS.map(part => ({ part, label: COMPUTE_WORDS[part], usd: compute[part] }));
+  if (!compute) return { parts: [], total: null, itemized: false };
+  const parts = computeParts(compute).map(part => ({ part, label: COMPUTE_WORDS[part], usd: compute[part] }));
   const known = parts.every(row => numeric(row.usd));
-  return { parts, total: known ? decimalOf(parts.reduce((sum, row) => sum + centsOf(row.usd), 0n)) : null };
+  return { parts, total: known ? decimalOf(parts.reduce((sum, row) => sum + centsOf(row.usd), 0n)) : null, itemized: parts.length === COMPUTE_PARTS.length };
+}
+// Every input cost since the reset, by service: only an itemized bill (Claude named, Sail as billed) read fresh against
+// the checkpoint and the browser's clock. `total` is null unless every part is known: the page shows no Net then.
+export function inputCosts(checkpoint, now = Date.now()) {
+  const spend = computeSpend(checkpoint);
+  const asOf = checkpoint?.compute?.as_of;
+  const fresh = spend.itemized && within(asOf, checkpoint.published_at) && within(asOf, new Date(now).toISOString());
+  return { parts: spend.itemized ? spend.parts : [], total: fresh ? spend.total : null, itemized: spend.itemized, asOf: fresh ? asOf : null };
+}
+// Net: realized options P&L since the reset, after fees, less every input cost since the reset. Realized is Profit's own
+// ledger with every open position's gain taken out (a loss still counts: an open loss never flatters Net) and an
+// unreconciled difference counted only when it is a loss. Deposits never enter it. A dash unless Profit, its ledger and
+// an itemized bill are all known and fresh.
+export function netNumber(checkpoint, now = Date.now()) {
+  const profit = tradingProfit(checkpoint, now);
+  const block = checkpoint?.positions;
+  const costs = inputCosts(checkpoint, now);
+  if (profit === null || costs.total === null || !block || !Array.isArray(block.rows) || block.as_of !== checkpoint.trading?.as_of) return null;
+  const gains = [...block.rows.filter(row => row?.status === 'open').map(row => row.pnl_usd), block.unreconciled_usd];
+  if (gains.some(value => !numeric(value))) return null;
+  const unrealized = gains.reduce((sum, value) => sum + (centsOf(value) > 0n ? centsOf(value) : 0n), 0n);
+  return decimalOf(centsOf(profit) - unrealized - centsOf(costs.total));
 }
 // The one number: total profit after every input cost. A dash unless both sides are known.
 export function profitAfterCompute(checkpoint) {
@@ -204,15 +230,28 @@ export const PROFIT_TITLES = {
   ledger: 'Real options P&L on the Brokerage Account since the reset: every options position after fees, open ones at their current value, plus fees no position carries, crypto fees and interest. Not deposits, not compute, not the leftover crypto dust. The positions below add up to it.',
   options: 'Live options trading P&L, including open positions.',
 };
+export const NET_TITLE = 'Realized options P&L since the reset, after fees, less every input cost since the reset (below). An open position counts only while it is losing. Deposits are not P&L.';
 export function mastheadNumbers(checkpoint, now = Date.now()) {
   const profit = tradingProfit(checkpoint, now);
+  const net = netNumber(checkpoint, now);
   const started = startedAt(checkpoint);
   const elapsed = started === null ? { main: '—', tick: '' } : runningParts(Math.max(0, (now - started) / 1000));
   const title = checkpoint?.positions ? PROFIT_TITLES.ledger : PROFIT_TITLES.options;
   return [
     { key: 'profit', label: 'Profit', value: profit === null ? '—' : signedMoney(profit), tone: profit === null ? '' : signOf(profit), title },
+    { key: 'net', label: 'Net', value: net === null ? '—' : signedMoney(net), tone: net === null ? '' : signOf(net), title: NET_TITLE },
     { key: 'clock', label: 'Running', value: elapsed.main, tick: elapsed.tick, tone: '', startedAt: started },
   ];
+}
+// The one line under the numbers: every input cost since the reset, by service ("Costs since the reset $528.20: Sail
+// $294.15 · Claude $160.42 · …"). A part not yet metered says so. An older House's bill is not itemized (Claude unnamed,
+// Sail booked rather than billed), so the line says only that.
+export function costsLine(checkpoint, now = Date.now()) {
+  const costs = inputCosts(checkpoint, now);
+  if (!checkpoint?.compute) return 'Costs are not published yet.';
+  if (!costs.itemized) return 'Costs are not itemized yet.';
+  const named = costs.parts.map(row => `${row.label} ${numeric(row.usd) ? money(row.usd) : 'not yet metered'}`).join(' · ');
+  return `Costs since the reset${costs.total === null ? '' : ` ${money(costs.total)}`}: ${named}.`;
 }
 // The reconciliation under the chart: every number the masthead shows, and where each comes from.
 export function accountLines(checkpoint) {
@@ -363,7 +402,7 @@ export function structureRows(checkpoint) {
     .sort((left, right) => Number(right.row.real) - Number(left.row.real) || Number(right.row.max_loss_usd) - Number(left.row.max_loss_usd) || left.index - right.index)
     .map(({ row }) => ({
       id: show(row.id), agent: show(row.agent), name: names.get(row.agent) || titleCase(row.agent), real: row.real === true,
-      what: structureText(row.underlying, row.structure), detail: [`${row.legs} ${row.legs === 1 ? 'leg' : 'legs'}`, expiryText(row.expiry), `×${row.quantity}`].filter(Boolean).join(' · '),
+      incubator: row.real === true && row.route === 'incubator', what: structureText(row.underlying, row.structure), detail: [`${row.legs} ${row.legs === 1 ? 'leg' : 'legs'}`, expiryText(row.expiry), `×${row.quantity}`].filter(Boolean).join(' · '),
       maxLossUsd: show(row.max_loss_usd), maxLoss: money(row.max_loss_usd), pnl: numeric(row.pnl_usd) ? signedMoney(row.pnl_usd) : '—', tone: signOf(row.pnl_usd),
     }));
 }
@@ -385,6 +424,10 @@ export function structureLine(rows) {
 // `house`: the House's own positions other than the calibration's; since Sept 28, 2026 the House live test (the House's
 // `league/live/house_test.py`, family house:rebound-live) is the only one.
 export const SOURCE_WORDS = { calibration: 'House calibration', house: 'House live test' };
+// The incubator route (from Oct 1, 2026): an agent's real position at tuition size. It is in Profit, and it is never
+// evidence: the row keeps its agent's name and carries this label.
+export const INCUBATOR_WORDS = 'Incubator';
+export const INCUBATOR_TITLE = 'Incubator: real money at tuition size, never evidence.';
 // Crypto is its fees only: the leftover dust of the coins sold at the reset is not counted (the House, account_activity.py).
 export const OTHER_WORDS = { fees_usd: 'fees', crypto_usd: 'crypto fees', interest_usd: 'interest', misc_usd: 'other' };
 export const NOT_LISTED = 'the oldest closed, and any the table can’t describe';
@@ -417,7 +460,7 @@ export function positionsLedger(checkpoint, now = Date.now()) {
   if (!block || typeof block !== 'object' || !Array.isArray(block.rows)) return null;
   const profit = tradingProfit(checkpoint, now);
   const names = new Map((Array.isArray(checkpoint.agents) ? checkpoint.agents : []).map(agent => [agent?.id, agentName(agent)]));
-  const who = row => (row.source === 'agent'
+  const who = row => (AGENT_SOURCES.includes(row.source)
     ? (validDisplayName(row.display_name) ? row.display_name : names.get(row.agent) || titleCase(row.agent))
     : SOURCE_WORDS[row.source] || '');
   const rows = block.rows.filter(row => row && typeof row === 'object');
@@ -426,8 +469,8 @@ export function positionsLedger(checkpoint, now = Date.now()) {
   const closed = rows.filter(row => row.status === 'closed')
     .sort((left, right) => stampOf(right.closed_at) - stampOf(left.closed_at) || stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left));
   const line = row => ({
-    id: show(row.id), source: show(row.source), agent: row.source === 'agent' ? show(row.agent) : null, who: who(row), what: positionWhat(row),
-    open: row.status === 'open',
+    id: show(row.id), source: show(row.source), agent: AGENT_SOURCES.includes(row.source) ? show(row.agent) : null, who: who(row), what: positionWhat(row),
+    route: row.source === 'incubator' ? INCUBATOR_WORDS : '', open: row.status === 'open',
     quantity: row.status === 'open' && row.open_quantity < row.quantity ? `×${row.open_quantity} of ${row.quantity}` : `×${row.quantity}`,
     expiry: expiryText(row.expiry), openedAt: show(row.opened_at), closedAt: row.status === 'closed' ? show(row.closed_at) : null,
     usd: numeric(row.pnl_usd) ? row.pnl_usd : null, pnl: numeric(row.pnl_usd) ? signedMoney(row.pnl_usd) : '—', tone: signOf(row.pnl_usd),
@@ -457,6 +500,39 @@ export function positionsLine(ledger) {
   const parts = [`${ledger.open.length} open`, `${ledger.closed.length} closed`];
   if (ledger.earlier) parts.push(`${ledger.earlier.count.toLocaleString('en-US')} not listed`);
   return parts.join(' · ');
+}
+
+// ---- the practice league (Sept 29, 2026)
+// Shadow trades on live quotes under the Gym's fill rules, never real money: never Profit, never Net, never a
+// position above. One row per family as the House sends them (the alive by trades, then the retired), and the totals
+// over every family, shown or not. Null while the House publishes no block: the section stays hidden.
+export const PRACTICE_CAPTION = 'Shadow trades on live quotes, never real money. Not in Profit or Net.';
+export const PRACTICE_COLUMNS = [['who', 'Agent'], ['what', 'Structure'], ['tier', 'Version'], ['sessions', 'Sessions'], ['trades', 'Trades'],
+  ['wins', 'Won'], ['pnl', 'P&L'], ['ror', 'On risk']];
+export const PRACTICE_TIER_WORDS = { validated: 'validated', train: 'Train' };
+export function practiceTable(checkpoint) {
+  const block = checkpoint?.practice;
+  if (!block || typeof block !== 'object' || !Array.isArray(block.rows) || !block.totals) return null;
+  const names = new Map((Array.isArray(checkpoint.agents) ? checkpoint.agents : []).map(agent => [agent?.id, agentName(agent)]));
+  const percent = value => {
+    if (!numeric(value)) return '—';
+    const hundredths = centsOf(value);
+    const size = hundredths < 0n ? -hundredths : hundredths;
+    return `${hundredths < 0n ? '−' : hundredths > 0n ? '+' : ''}${size}%`;
+  };
+  const rows = block.rows.filter(row => row && typeof row === 'object').map(row => ({
+    agent: show(row.agent), who: validDisplayName(row.display_name) ? row.display_name : names.get(row.agent) || titleCase(row.agent),
+    retired: row.status === 'retired', what: STRUCTURE_WORDS[row.structure] || '—', tier: PRACTICE_TIER_WORDS[row.tier] || '',
+    sessions: show(row.sessions), trades: show(row.trades), wins: show(row.wins),
+    pnl: numeric(row.pnl_usd) ? signedMoney(row.pnl_usd) : '—', tone: signOf(row.pnl_usd), ror: percent(row.return_on_risk), rorTone: signOf(row.return_on_risk),
+  }));
+  const totals = block.totals;
+  const hidden = Math.max(0, Number(totals.families) - rows.length);
+  return {
+    asOf: show(block.as_of), sessions: Number(block.sessions) || 0, capital: money(block.capital_usd, 0), rows, hidden,
+    total: { label: `${plural(totals.families, 'family', 'families')}`, trades: show(totals.trades), wins: show(totals.wins),
+      pnl: numeric(totals.pnl_usd) ? signedMoney(totals.pnl_usd) : '—', tone: signOf(totals.pnl_usd) },
+  };
 }
 
 // ---- the tape: the agents' decisions in their own words, their trades, the swarm's news
@@ -564,7 +640,7 @@ async function loadEvents(query) {
 }
 async function loadCheckpoint() {
   // Both opt-ins: the promotion checklist and the positions ledger. Pages already open ask for less and keep working.
-  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint?progress=1&positions=1`, MAX_CHECKPOINT_BYTES);
+  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint${CHECKPOINT_READ}`, MAX_CHECKPOINT_BYTES);
   if (!validCheckpoint(data, { publicRead: true })) throw new Error('Invalid checkpoint.');
   return data;
 }
@@ -676,7 +752,12 @@ function svgElement(tag, attributes) {
   return node;
 }
 const tagNode = (text, kind) => element('span', text, `tag tag-${kind}`);
-const moneyTag = real => tagNode(real ? 'real money' : 'shadow', real ? 'real' : 'shadow');
+const moneyTag = (real, incubator = false) => {
+  if (!incubator) return tagNode(real ? 'real money' : 'shadow', real ? 'real' : 'shadow');
+  const tag = tagNode(INCUBATOR_WORDS.toLowerCase(), 'incubator');
+  tag.setAttribute('title', INCUBATOR_TITLE);
+  return tag;
+};
 const bandTag = band => tagNode(BAND_WORDS[band] || 'unknown', REAL_BANDS.includes(band) ? 'real' : band === 'retired' ? 'retired' : 'band');
 function pulse(className = 'pulse') {
   const dot = element('span', null, className);
@@ -882,7 +963,14 @@ function positionRow(line) {
   const row = element('tr', null, `pos-row pos-${line.source}${line.open ? ' pos-open' : ''}`);
   row.dataset.position = line.id;
   const closed = line.open ? cell('td', 'closed pos-still-open', 'open') : stampCell('closed', line.closedAt);
-  row.append(cell('th', 'who', line.who), cell('td', 'what', line.what), cell('td', 'qty', line.quantity), cell('td', 'expiry', line.expiry),
+  // An incubator row keeps its agent's name, with its label beside it.
+  const who = cell('th', 'who', line.route ? null : line.who);
+  if (line.route) {
+    const tag = tagNode(line.route, 'incubator');
+    tag.setAttribute('title', INCUBATOR_TITLE);
+    who.append(element('span', line.who), tag);
+  }
+  row.append(who, cell('td', 'what', line.what), cell('td', 'qty', line.quantity), cell('td', 'expiry', line.expiry),
     stampCell('opened', line.openedAt), closed, cell('td', `pnl ${line.tone}`.trim(), line.pnl), cell('td', 'share', line.share));
   return row;
 }
@@ -939,6 +1027,58 @@ function positionsPanel(checkpoint, now = Date.now()) {
     sumRow(ledger.total));
   foot.setAttribute('title', 'Every line above adds up to Profit, to the cent.');
   table.append(foot);
+  const scroll = element('div', null, 'positions-scroll');
+  scroll.append(table);
+  return [caption, scroll];
+}
+
+// The practice league under the agents: one quiet table, the House's rows in its order, and the totals over every family.
+// Hidden while the House publishes no block.
+function practicePanel(checkpoint) {
+  const league = practiceTable(checkpoint);
+  if (!league) return null;
+  const caption = element('p', null, 'positions-caption practice-caption');
+  caption.append(element('span', PRACTICE_CAPTION));
+  if (Number.isFinite(Date.parse(league.asOf))) caption.append(element('span', '·'), element('span', 'as of'), timeNode(league.asOf));
+  const table = element('table', null, 'positions-table practice-table');
+  table.append(element('caption', `The practice league: ${PRACTICE_CAPTION}`, 'visually-hidden'));
+  const head = element('thead');
+  const headings = element('tr');
+  for (const [key, label] of PRACTICE_COLUMNS) {
+    const heading = element('th', label, `pr-${key}`);
+    heading.setAttribute('scope', 'col');
+    headings.append(heading);
+  }
+  head.append(headings);
+  const body = element('tbody', null, 'pos-body');
+  for (const line of league.rows) {
+    const row = element('tr', null, `pr-row${line.retired ? ' pr-retired' : ''}`);
+    row.dataset.agent = line.agent;
+    const who = element('th', line.retired ? null : line.who, 'pr-who');
+    who.setAttribute('scope', 'row');
+    if (line.retired) who.append(element('span', line.who), tagNode('retired', 'retired'));
+    row.append(who, element('td', line.what, 'pr-what'), element('td', line.tier, 'pr-tier'), element('td', line.sessions, 'pr-sessions'),
+      element('td', line.trades, 'pr-trades'), element('td', line.wins, 'pr-wins'), element('td', line.pnl, `pr-pnl ${line.tone}`.trim()),
+      element('td', line.ror, `pr-ror ${line.rorTone}`.trim()));
+    body.append(row);
+  }
+  if (!league.rows.length) {
+    const row = element('tr', null, 'pos-empty');
+    const empty = element('td', 'No practice trades yet.', 'empty-state');
+    empty.setAttribute('colspan', String(PRACTICE_COLUMNS.length));
+    row.append(empty);
+    body.append(row);
+  }
+  const foot = element('tfoot');
+  const total = element('tr', null, 'pos-sum pr-total');
+  const label = element('th', league.hidden ? `${league.total.label} (${league.hidden} not listed)` : league.total.label, 'pr-who');
+  label.setAttribute('scope', 'row');
+  const blank = element('td', '', 'pr-what');
+  blank.setAttribute('colspan', '3');
+  total.append(label, blank, element('td', league.total.trades, 'pr-trades'), element('td', league.total.wins, 'pr-wins'),
+    element('td', league.total.pnl, `pr-pnl ${league.total.tone}`.trim()), element('td', '', 'pr-ror'));
+  foot.append(total);
+  table.append(head, body, foot);
   const scroll = element('div', null, 'positions-scroll');
   scroll.append(table);
   return [caption, scroll];
@@ -1019,7 +1159,7 @@ function agentDetail(row, checkpoint, state) {
     const list = element('ul', null, 'agent-positions');
     for (const position of positions) {
       const item = element('li');
-      item.append(moneyTag(position.real), element('span', `${position.what} · ${position.detail}`),
+      item.append(moneyTag(position.real, position.incubator), element('span', `${position.what} · ${position.detail}`),
         element('span', `max loss ${position.maxLoss}`), element('span', position.pnl, position.tone));
       list.append(item);
     }
@@ -1162,8 +1302,9 @@ function settleAgents(state) {
 async function startPage(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
-    numbers: find('floor-numbers'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
-    account: find('floor-account'), positions: find('floor-positions'), agents: find('floor-agents'),
+    numbers: find('floor-numbers'), costs: find('floor-costs'), status: find('floor-status'), now: find('floor-now'), feed: find('floor-feed'),
+    account: find('floor-account'), positions: find('floor-positions'), agents: find('floor-agents'), practice: find('floor-league'),
+    practiceSection: find('practice-league'),
   };
   const state = {
     checkpoint: null, agents: new Map(), names: new Map(), feed: [], marks: [], mode: 'loading',
@@ -1194,13 +1335,22 @@ async function startPage(root) {
     if (focusedAgent) box.agents?.querySelector(`[data-agent="${focusedAgent}"]`)?.focus?.({ preventScroll: true });
     else if (focusedClose) box.agents?.querySelector('.agent-close')?.focus?.({ preventScroll: true });
   };
+  const drawCosts = () => { if (state.checkpoint && box.costs) box.costs.textContent = costsLine(state.checkpoint); };
   const drawMoney = () => {
     if (!state.checkpoint) return;
     drawn(box.numbers, numbersPanel(state.checkpoint, state));
+    drawCosts();
     drawn(box.account, accountPanel(state.checkpoint, state.marks));
   };
   // Redrawn on every refresh, like the headline, so a stale Profit leaves the ledger's total a dash as well.
   const drawPositions = () => { if (state.checkpoint) drawn(box.positions, positionsPanel(state.checkpoint)); };
+  // The practice league shows only while the House publishes it.
+  const drawPractice = () => {
+    if (!state.checkpoint || !box.practice) return;
+    const panel = practicePanel(state.checkpoint);
+    if (box.practiceSection) box.practiceSection.hidden = panel === null;
+    drawn(box.practice, panel || []);
+  };
   const keepFeed = events => {
     const byId = new Map([...state.feed, ...events].map(event => [event.id, event]));
     state.feed = [...byId.values()].sort((left, right) => (Number(right.seq) || 0) - (Number(left.seq) || 0)).slice(0, 400);
@@ -1228,7 +1378,9 @@ async function startPage(root) {
       drawStatus();
       if (state.checkpoint) {
         drawn(box.numbers, numbersPanel(state.checkpoint, state));
+        drawCosts();
         drawPositions();
+        drawPractice();
         state.drawAgents(); // failed refreshes must also expire old promotion evidence
       }
     }
