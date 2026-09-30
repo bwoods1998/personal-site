@@ -363,8 +363,8 @@ test('no venue is named anywhere a visitor can read, and the page says what it i
   assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI agents trading options, in public\./);
 });
 
-const SECTION_IDS = ['masthead', 'live', 'account', 'positions', 'agents'];
-test('the page carries thoughts, a quiet chart, the positions under it and Agents, with only Profit and Running above', async () => {
+const SECTION_IDS = ['masthead', 'live', 'account', 'positions', 'agents', 'practice-league'];
+test('the page carries thoughts, a quiet chart, the positions under it, Agents and the practice league, with only Profit, Net and Running above', async () => {
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   assert.doesNotMatch(source, /createElement\('a'\)|element\('a'|github\.com/, 'the script builds no link');
@@ -375,9 +375,9 @@ test('the page carries thoughts, a quiet chart, the positions under it and Agent
   assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((html.match(/<a[\s>]/gi) || []).length, 2);
   assert.deepEqual([...html.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
-  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Positions', 'Agents']);
+  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Positions', 'Agents', 'Practice league']);
   assert.match(html, /<h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"><\/span><span>stopped<\/span><\/span><\/h2>/);
-  assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Profit', 'Running']);
+  assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Profit', 'Net', 'Running']);
   const order = FLOOR_IDS.map(id => html.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, status, thought, feed, account, positions, agents');
   // The positions sit directly under the balance chart (the owner, Sept 28, 2026).
@@ -447,11 +447,12 @@ test('the one number is total profit after every input cost, and a dash while an
   assert.equal(profitAfterCompute(swarmCheckpoint({ compute: { ...good.compute, openai_usd: null } })), null);
   assert.equal(computeSpend(swarmCheckpoint({ compute: null })).total, null);
   assert.equal(profitAfterCompute(swarmCheckpoint({ account: { ...good.account, stale: true } })), null);
-  const [profit, clock] = mastheadNumbers(good, Date.parse(PUBLISHED_AT));
+  const [profit, net, clock] = mastheadNumbers(good, Date.parse(PUBLISHED_AT));
   assert.deepEqual([profit.label, profit.value, profit.tone], ['Profit', '+$220.40', 'positive']);
+  assert.deepEqual([net.label, net.value], ['Net', '—'], 'an older House names no Claude part: no Net');
   assert.deepEqual([clock.label, clock.value, clock.tick], ['Running', '55h 55m', '42s'], 'from run.started_at');
-  assert.deepEqual(mastheadNumbers(emptyCheckpoint(), Date.parse('2026-09-26T07:03:00.000Z')).map(item => item.value), ['—', '0m']);
-  assert.deepEqual(mastheadNumbers(null).map(item => item.value), ['—', '—'], 'no checkpoint: no clock either');
+  assert.deepEqual(mastheadNumbers(emptyCheckpoint(), Date.parse('2026-09-26T07:03:00.000Z')).map(item => item.value), ['—', '—', '0m']);
+  assert.deepEqual(mastheadNumbers(null).map(item => item.value), ['—', '—', '—'], 'no checkpoint: no clock either');
   assert.equal(startedAt(emptyCheckpoint({ run: { started_at: null } })), Date.parse(PERFORMANCE_START_AT), 'the reset, while the House has not said');
   assert.deepEqual(runningParts(3 * 86400 + 7 * 3600 + 5), { main: '79h 00m', tick: '05s' });
   assert.deepEqual(runningParts(200 * 3600), { main: '8d 8h', tick: '' });
@@ -565,7 +566,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     const feed = await startCapital(root);
     feed.stop();
     for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
-    assert.match(textOf(root.querySelector('#floor-numbers')), /^Profit \+\$220\.40 Running (?:\d+h \d\dm \d\ds|\d+m \d\ds|\d+d \d+h)$/);
+    assert.match(textOf(root.querySelector('#floor-numbers')), /^Profit \+\$220\.40 Net — Running (?:\d+h \d\dm \d\ds|\d+m \d\ds|\d+d \d+h)$/);
     const now = root.querySelector('#floor-now');
     assert.match(textOf(now), /^Meriwether Sized /);
     assert.match(now.withClass('now-thought')[0].textContent, /^Realized volatility since the open/);
@@ -625,7 +626,7 @@ test('after the reset, before the House publishes, every section says so and the
   await withBrowser('', path => fresh.fetch(new Request('https://blakewoods.us' + path)), async () => {
     const feed = await startCapital(first);
     feed.stop();
-    assert.match(textOf(first.querySelector('#floor-numbers')), /^Profit — Running /);
+    assert.match(textOf(first.querySelector('#floor-numbers')), /^Profit — Net — Running /);
     assert.deepEqual(first.querySelector('#floor-agents').withClass('stage-heading').map(textOf), ['3 Increased capital 0', '2 Live trading 0', '1 Practice 0']);
     assert.equal(textOf(first.querySelector('#floor-now')), 'No agent has written a note yet.');
   });

@@ -1,5 +1,5 @@
 /* Long-Term Capital Management: AI agents trading options. Dark editorial, Courier New for every
-   number and label, one column, two headline numbers. No webfont, no external request. */
+   number and label, one column, three headline numbers. No webfont, no external request. */
 :root {
   color-scheme: dark;
   --background: #171916;
@@ -67,8 +67,10 @@ section { min-width: 0; }
 .tag-practice, .tag-shadow { border-style: dashed; }
 .tag-band { color: var(--tone-thought); }
 .tag-retired { color: var(--muted); opacity: .7; }
+.tag-incubator { color: var(--accent); border-style: dotted; cursor: help; }
+.pos-who .tag, .pr-who .tag { margin-left: 8px; vertical-align: 1px; }
 
-/* The masthead: Profit and Running. */
+/* The masthead: Profit, Net and Running, and the costs by service in one line under them. */
 .masthead { padding: 48px 0 34px; }
 .navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; }
 .navigation a { color: var(--muted); text-decoration: none; }
@@ -85,7 +87,10 @@ section { min-width: 0; }
 .live-heading { margin: 0; font: inherit; }
 .live-heading .live-status { font: 13px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .8px; }
 .live-heading .pulse { width: 9px; height: 9px; }
-.numbers { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 18px 72px; margin: 30px 0 0; }
+.numbers { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: 18px 72px; margin: 30px 0 0; }
+.number[title] dt { cursor: help; }
+.costs { max-width: 760px; margin: 16px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
+.costs:empty { display: none; }
 .number { min-width: 0; }
 .number dt { font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: .3px; }
 .number dd { margin: 4px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; min-width: 0; }
@@ -192,6 +197,18 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .positions-table .pos-group th[scope] { padding: 16px 0 6px; }
 .positions-table .pos-body:first-of-type .pos-group th[scope] { padding-top: 6px; }
 .positions-table .pos-empty td { padding: 12px 0; margin: 0; color: var(--muted); }
+/* The practice league: shadow trades, so every figure is quiet; never real money. */
+.practice-table .pr-what, .practice-table .pr-tier, .practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins {
+  font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap;
+}
+.practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins, .practice-table .pr-pnl, .practice-table .pr-ror { text-align: right; }
+.practice-table .pr-pnl, .practice-table .pr-ror { white-space: nowrap; font: 12px/1.5 'Courier New', Courier, monospace; color: var(--muted); }
+.practice-table .pr-ror { padding-right: 0; }
+.practice-table .pr-pnl.positive, .practice-table .pr-ror.positive { color: var(--positive); opacity: .8; }
+.practice-table .pr-pnl.negative, .practice-table .pr-ror.negative { color: var(--negative); opacity: .8; }
+.practice-table .pr-retired .pr-who { color: var(--muted); }
+.practice-table .pr-total > * { border-top: 1px solid var(--muted); border-bottom: 0; }
+.practice-table .pr-total .pr-who { color: var(--muted); }
 
 /* Three stages, one button per agent. Empty stages keep their place. */
 .agent-board { margin-top: 18px; position: relative; }
@@ -301,6 +318,16 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .positions-table .pos-total { border-top: 1px solid var(--muted); border-bottom: 0; }
   .positions-table .pos-total > * { border: 0; }
   .positions-table .pos-empty td { padding: 0; }
+  /* A practice row stacks too: agent and P&L, structure and return on risk, then its version and counts. */
+  .practice-table .pr-who { order: 1; flex: 1 1 0; overflow-wrap: anywhere; }
+  .practice-table .pr-pnl { order: 2; margin-left: auto; }
+  .practice-table .pr-what { order: 4; flex: 1 1 0; margin-top: 2px; }
+  .practice-table .pr-ror { order: 5; margin-left: auto; margin-top: 2px; }
+  .practice-table .pr-tier, .practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins { order: 7; margin-top: 3px; text-align: left; }
+  .practice-table .pr-sessions::before { content: 'sessions '; }
+  .practice-table .pr-trades::before { content: 'trades '; }
+  .practice-table .pr-wins::before { content: 'won '; }
+  .practice-table .pr-total .pr-what { display: none; }
 }
 @media (max-width: 480px) {
   .progress-checks { grid-template-columns: 1fr; gap: 5px; }

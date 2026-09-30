@@ -16,6 +16,8 @@ import { swarmCheckpoint, ledgerCheckpoint, ledger, position, POSITIONS, agent, 
 
 const at = Date.parse(PUBLISHED_AT);
 const READ = '/api/capital/checkpoint?progress=1&positions=1';
+// The page's own read since Sept 30, 2026: the ledger and the practice league, Claude's cost and the incubator route.
+const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1';
 const withRows = (rows, extra = {}) => ledgerCheckpoint({ positions: ledger({ rows, ...extra }) });
 const patchRow = (index, patch) => withRows(POSITIONS.map((row, n) => (n === index ? { ...row, ...patch } : row)));
 const cents = value => { const [whole, fraction = ''] = value.replace('-', '').split('.'); const size = BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2)); return value.startsWith('-') ? -size : size; };
@@ -264,7 +266,7 @@ const rowText = row => words(row);
 
 test('mounted, the ledger sits under the chart as one table whose total is the headline', async () => {
   await mounted(ledgerCheckpoint(), async (box, root, asked) => {
-    assert.ok(asked.includes(READ), 'the page asks for the ledger');
+    assert.ok(asked.includes(PAGE_READ), 'the page asks for the ledger');
     assert.equal(box.getAttribute('aria-busy'), 'false');
     assert.match(words(box.withClass('positions-caption')[0]), /^2 open · 4 closed · as of Sep 28, 10:58 AM EDT$/);
     const [table] = box.find('table');

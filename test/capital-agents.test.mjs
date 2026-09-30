@@ -13,7 +13,7 @@ const checkpoint = (minute, agents) => swarmCheckpoint({ published_at: `2026-09-
 test('Profit accepts only a complete, fresh live-options total; account flows, costs and clipped agents cannot change it', () => {
   const source = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '0' } });
   assert.equal(tradingProfit(source, at), '0');
-  assert.deepEqual(mastheadNumbers(source, at).map(row => [row.label, row.value]), [['Profit', '$0.00'], ['Running', '55h 55m']]);
+  assert.deepEqual(mastheadNumbers(source, at).map(row => [row.label, row.value]), [['Profit', '$0.00'], ['Net', '—'], ['Running', '55h 55m']]);
   assert.equal(tradingProfit({ ...source, agents: [], account: { ...source.account, equity: '999999' },
     performance: { ...source.performance, net_flows: '7777' }, compute: null }, at), '0');
   assert.equal(tradingProfit({ ...source, trading: { as_of: PUBLISHED_AT, pnl_usd: '-3.12' } }, at), '-3.12');

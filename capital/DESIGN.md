@@ -5,13 +5,19 @@ training and orders; visiting this page starts none of those things.
 
 ## The page
 
-1. **Profit and Running.** Exactly two headline numbers. Profit is the Brokerage Account's complete real
+1. **Profit, Net and Running.** Exactly three headline numbers. Profit is the Brokerage Account's complete real
    options P&L since the reset, supplied in `trading {as_of, pnl_usd}`: every real options position after
    its fees (the agents' and the House's own calibration round trips), open ones at the House's current
    value, plus the account's other activity (fees no position carries, crypto fees, interest). Deposits,
    compute and simulated returns do not enter it, nor does the leftover crypto dust of the coins sold at
    the reset (worth cents; its value at the reset was never recorded). A missing, null or stale total is
-   a dash. Running ticks from the House's first start on its new record.
+   a dash. Net is realized options P&L since the reset less every input cost since the reset: Profit
+   without any open position's gain (an open loss still counts) and without an unreconciled difference
+   unless it is a loss, less the itemized costs. Deposits never enter it. One quiet line under the numbers
+   names each cost by service (Sail as Sail billed it, Claude, OpenAI, ThetaData, market data, other). A
+   part not yet metered says so and Net is a dash; so is a bill that does not name Claude (an older House:
+   "Costs are not itemized yet."), or a Profit or bill that is not fresh. Running ticks from the House's
+   first start on its new record.
 2. **Thoughts first.** A generous, legible space for an actual published note, the agent's name, a
    subtle band and when it was written. New notes wait long enough for the current one to be read.
    Long thoughts expand and remain until the reader closes them. The feed below carries actual
@@ -48,6 +54,18 @@ training and orders; visiting this page starts none of those things.
    note, trade or agent news produces one short ripple, only on screen and at most four at once;
    historical playback creates none. A confirmed change of stage can glide to its new row.
    A dot's detail lists its open structures, real and shadow; the Positions table holds real money only.
+6. **Practice league.** Below the agents, only while the House publishes it: one quiet table of the
+   families practising on live quotes in the shadow book under the Gym's fill rules, captioned "Shadow
+   trades on live quotes, never real money. Not in Profit or Net." Each row is the agent's name (a quiet
+   "retired" tag once it has gone), structure kind, version tier (validated or Train), sessions, closed
+   trades, wins, realized P&L and return on maximum loss; the footer is the House's totals over every
+   family, with how many are not listed. On a phone each row stacks like a position. It never enters
+   Profit, Net or the Positions table.
+
+**The incubator** (from Oct 1, 2026) is real money at tuition size, never evidence. Its positions are in
+Profit and the Positions table under their agent's name with a quiet "Incubator" tag (title: "Incubator:
+real money at tuition size, never evidence."), and its open structures carry an "incubator" tag in the
+dot's detail instead of "real money". The label ships before the House switches the route on.
 
 No extra narrative paragraphs, footer or explanatory dashboard panels. The only links are the
 owner's home page and the repository. On a phone the stages stack; dots have 44px touch targets.
@@ -101,6 +119,18 @@ their exact keys. Either repository may deploy first: an older Worker refuses a 
 block, and the House then sends the same checkpoint without it, with a warning quoting the refusal, and
 offers the block again half an hour later. The planned order for this first release is the House, then the
 site; until the site is out, the page shows Profit as the House now computes it under the older tooltip.
+
+The `compute` block is the bill since the reset, part by part (`{as_of, sail_usd, claude_usd, openai_usd,
+thetadata_usd, market_data_usd, other_usd}`, each money or null). Since Sept 30, 2026 Sail is what Sail billed
+(its own balance meter, never the Gym's booked estimate) and Claude is its own part; an older House's five parts
+(no `claude_usd`) still validate and read as not itemized. The optional `practice {as_of, sessions, capital_usd,
+totals, rows}` block is the practice league: at most 48 rows, agents unique, exactly `{agent, family, structure,
+tier, status, sessions, trades, wins, pnl_usd, return_on_risk}`, whole cents, and totals no smaller than the rows'
+sums (equal to them when every family is listed). A position's `source` may be `incubator` (it names its agent,
+like `agent`), and a real structure may carry `route: "incubator"`. The page asks for
+`?progress=1&positions=1&practice=1`, which carries all of these. Every older read gets the shapes it validates:
+no practice block, Claude folded back into `other_usd`, an incubator row as an agent's and a structure without
+its route, so pages already open keep working and either repository may deploy first.
 
 The `trading` block is optional for schema-2 compatibility. Its signed dollar string can be null
 when the complete real book cannot be priced. Profit requires an as-of time within ten minutes of
