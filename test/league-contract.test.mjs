@@ -9,9 +9,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
-import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
-  climbModel, rationaleFor } from '../capital/capital.js';
-import { floor, post, get, words, FLOOR_IDS, BUSY_IDS, stubPage, withBrowser } from './harness.mjs';
+import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital } from '../capital/capital.js';
+import { WINDOW_READ } from '../lib/capital.mjs';
+import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 import { LEAKS, PLAIN, randomSentences } from './number-words.mjs';
 
 const FIXTURES = process.env.LTCM_FIXTURES || fileURLToPath(new URL('../../long-term-capital-management/league/tests/fixtures/', import.meta.url));
@@ -85,7 +85,8 @@ test('the House and the site read a number in words alike, sentence for sentence
   for (const text of LEAKS) assert.ok(house[corpus.indexOf(text)].join() !== 'false,true', `the House refuses: ${text}`);
   for (const text of PLAIN) assert.deepEqual(house[corpus.indexOf(text)], [false, true], `the House passes: ${text}`);
 });
-const PAGE_IDS = FLOOR_IDS;
+// The page's own sections, and the two it draws only when there is something to show.
+const PAGE_IDS = [...FLOOR_IDS, 'floor-costs', 'practice-league', 'floor-league'];
 // Every name a quote, a greek, a surface or a fitted parameter goes by. None is a key anywhere.
 const FORBIDDEN_KEYS = /^(?:bid|ask|mid|mark|last|spread|iv|implied_vol|vol|delta|gamma|theta|vega|rho|greeks?|surface|strike|strikes|price|prices|entry_price|exit_price|mark_price|underlying_price|params|parameters|quote|quotes|nbbo|program|code|legs_detail)$/i;
 function keysOf(value, found = []) {
@@ -136,14 +137,14 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     const original = { ...board, agents: board.agents.map(unnamed) };
     if (board.positions) original.positions = { ...board.positions, rows: board.positions.rows.map(unnamed) };
     if (board.practice) original.practice = { ...board.practice, rows: board.practice.rows.map(unnamed) };
-    assert.deepEqual(original, checkpoint);
-    // The window's blocks, once the publisher sends them: every agent placed, and each real position with its reason.
-    if (checkpoint.levels) {
-      const model = climbModel(board);
-      for (const entry of checkpoint.levels.agents) if (entry.level !== 'retired') assert.ok(model.dots.has(entry.id), entry.id);
-    }
-    if (checkpoint.rationale && checkpoint.positions) {
-      for (const row of checkpoint.positions.rows) assert.ok(rationaleFor(row, board), row.id);
+    // The page's read carries every block but the swarm window's: the Worker keeps `levels` and `rationale` for the window
+    // read alone (C7), so the page gets exactly the shapes it validates, and the window comes back whole on its own read.
+    const { levels, rationale, ...pageBlocks } = checkpoint;
+    assert.deepEqual(original, pageBlocks);
+    if (levels !== undefined || rationale !== undefined) {
+      const window = await (await get(capital, `/api/capital/checkpoint${WINDOW_READ}`)).json();
+      assert.deepEqual([window.levels, window.rationale], [levels, rationale]);
+      assert.equal(validCheckpoint(window, { publicRead: true }), true);
     }
     assert.equal(validCheckpoint(board, { publicRead: true }), true);
     const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;
@@ -168,22 +169,13 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
       const feed = await startCapital(root);
       feed.stop();
-      for (const id of BUSY_IDS) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
-      assert.equal(root.querySelector('#floor-agents').withClass('dot').length, climbModel(board).dots.size);
-      // The practice league is the Practice step's sheet, shown only when published.
-      root.querySelector('#floor-agents').withClass('step-label').find(node => node.dataset.step === 'practice').click();
-      const sheet = root.querySelector('#floor-sheet');
-      assert.equal(sheet.withClass('practice-list').length, checkpoint.practice ? 1 : 0);
-      if (checkpoint.practice) assert.equal(sheet.withClass('pr-item').length, checkpoint.practice.rows.length);
+      assert.equal(root.querySelector('#practice-league').hidden, !checkpoint.practice, 'the practice league shows only when published');
+      if (checkpoint.practice) assert.equal(root.querySelector('#floor-league').find('tbody')[0].find('tr').length, checkpoint.practice.rows.length);
+      for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
+      assert.equal(root.querySelector('#floor-agents').withClass('agent-dot').length, board.agents.length);
       assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
       assert.match(words(root.querySelector('#floor-numbers')), /^Profit /);
-      if (checkpoint.positions) {
-        const box = root.querySelector('#floor-positions');
-        assert.equal(box.withClass('pos-item').filter(item => item.dataset.position).length
-          + box.withClass('pos-group').reduce((sum, group) => sum + Number(/×(\d+)/.exec(words(group))?.[1] || 0), 0), checkpoint.positions.rows.length);
-        box.withClass('pos-table-toggle')[0].click();
-        assert.equal(box.find('table').length, 1);
-      }
+      if (checkpoint.positions) assert.equal(root.querySelector('#floor-positions').find('table').length, 1);
     });
   });
 }

@@ -17,7 +17,7 @@ import {
   profitBasis, totalProfit, computeSpend, profitAfterCompute, startedAt, mastheadNumbers, accountLines, accountSeries, balanceSeries,
   swarmRows, recordWords, bandCounts, gymLine, structureRows, structureLine, tradeWords, feedLine, feedLines, heroNote, floorRunning, startCapital,
 } from '../capital/capital.js';
-import { NOW, floor, request, post, get, words as textOf, FLOOR_IDS, BUSY_IDS, stubPage, withBrowser } from './harness.mjs';
+import { NOW, floor, request, post, get, words as textOf, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 import { swarmCheckpoint, emptyCheckpoint, agent, structure, note, trade, news, mark, TAPE, PUBLISHED_AT, RESET_AT } from './swarm-fixture.mjs';
 
 const withoutAlias = ({ display_name: _name, ...agent }) => agent;
@@ -363,33 +363,31 @@ test('no venue is named anywhere a visitor can read, and the page says what it i
   assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI agents trading options, in public\./);
 });
 
-const SECTION_IDS = ['live', 'climb', 'positions', 'performance', 'tape'];
-test('one screen in reading order: three numbers on top, then the thought, the Climb, positions, the chart and the tape, in about forty words', async () => {
+const SECTION_IDS = ['masthead', 'live', 'account', 'positions', 'agents', 'practice-league'];
+test('the page carries thoughts, a quiet chart, the positions under it, Agents and the practice league, with only Profit, Net and Running above', async () => {
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|outerHTML|sessionStorage|sendBeacon|document\.write|setAttribute\('style'/);
+  assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|localStorage|sessionStorage|sendBeacon|document\.write/);
   assert.doesNotMatch(source, /createElement\('a'\)|element\('a'|github\.com/, 'the script builds no link');
-  // Browser storage holds per-viewer conveniences only (theatre and theme), each read and write inside a try.
-  assert.deepEqual(source.split('\n').filter(line => /localStorage/.test(line)).map(line => /^\s*(?:function remembered|try \{)/.test(line) || /try \{/.test(line)), [true, true]);
   const html = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
   assert.match(html, /<title>Long-Term Capital Management<\/title>/);
   assert.doesNotMatch(html, /http:\/\/|<script(?![^>]*type="module" *>)[^>]*>(?!\s*<\/script>)/);
-  assert.doesNotMatch(html, / style=/, 'the policy refuses style attributes');
   const anchors = [...html.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)].map(match => [match[1], match[2]]);
   assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((html.match(/<a[\s>]/gi) || []).length, 2);
   assert.deepEqual([...html.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
-  assert.ok([...html.matchAll(/<h2 ([^>]*)>/g)].every(match => /class="visually-hidden"/.test(match[1])), 'no visible section headings');
-  assert.match(html, /<h1 id="title">Long-Term Capital Management <span id="floor-status" class="live-status live-stopped" role="status"/);
+  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/h2>/g)].map(match => match[1]), ['Positions', 'Agents', 'Practice league']);
+  assert.match(html, /<h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"><\/span><span>stopped<\/span><\/span><\/h2>/);
   assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Profit', 'Net', 'Running']);
-  // DOM order is the phone's order and the screen reader's: the thought, the Climb, positions, the chart, the tape.
-  const order = ['floor-numbers', 'floor-costs', 'floor-now', 'floor-agents', 'floor-positions', 'floor-account', 'floor-filters', 'floor-feed', 'floor-sheet'].map(id => html.indexOf(`id="${id}"`));
-  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), order.join(' '));
-  assert.match(html, /aria-label="Theatre" aria-pressed="false"/);
-  for (const gone of ['floor-improvement', 'floor-closed', 'floor-practice', 'floor-portfolio', 'floor-structures', 'floor-swarm', 'practice-league']) assert.doesNotMatch(html, new RegExp(`id="${gone}"`), gone);
-  assert.doesNotMatch(html, /<footer|investment advice|Level \d/i);
-  // The word budget: about forty static words on the whole page, headings for screen readers included.
-  const staticWords = text => text.replace(/<[^>]+>/g, ' ').replace(/[—…$◐⛶]/g, ' ').split(/\s+/).filter(word => /[A-Za-z]/.test(word));
-  assert.ok(staticWords(html.slice(html.indexOf('<body'))).length <= 40, String(staticWords(html.slice(html.indexOf('<body'))).length));
+  const order = FLOOR_IDS.map(id => html.indexOf(`id="${id}"`));
+  assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, status, thought, feed, account, positions, agents');
+  // The positions sit directly under the balance chart (the owner, Sept 28, 2026).
+  assert.match(html, /<div id="floor-account" aria-busy="true"><\/div>\s*<\/section>\s*<section id="positions"/);
+  for (const gone of ['floor-improvement', 'floor-closed', 'floor-practice', 'floor-portfolio', 'floor-structures', 'floor-swarm']) assert.doesNotMatch(html, new RegExp(`id="${gone}"`), gone);
+  assert.doesNotMatch(html, /<footer|investment advice|ladder|Level \d/i);
+  // The word budget: at most 40 static words above the live feed, 90 on the whole page.
+  const staticWords = text => text.replace(/<[^>]+>/g, ' ').replace(/[—…$]/g, ' ').split(/\s+/).filter(word => /[A-Za-z]/.test(word));
+  assert.ok(staticWords(html.slice(html.indexOf('<body'), html.indexOf('id="floor-feed"'))).length <= 40);
+  assert.ok(staticWords(html.slice(html.indexOf('<body'))).length <= 90);
 });
 
 test('the build publishes the page with hashed, self-hosted assets', async () => {
@@ -567,80 +565,70 @@ test('mounted on a published record, the page draws every section from it', asyn
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
     const feed = await startCapital(root);
     feed.stop();
-    for (const id of BUSY_IDS) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
+    for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
     assert.match(textOf(root.querySelector('#floor-numbers')), /^Profit \+\$220\.40 Net — Running (?:\d+h \d\dm \d\ds|\d+m \d\ds|\d+d \d+h)$/);
-    // The newest note, with its speaker's name, level and true age.
     const now = root.querySelector('#floor-now');
-    assert.equal(now.withClass('think-name')[0].textContent, 'Meriwether');
-    assert.equal(now.withClass('chip-level')[0].textContent, 'Sized');
-    assert.equal(now.withClass('think-age')[0].textContent, '8m');
-    assert.match(now.withClass('think-text')[0].textContent, /^Realized volatility since the open/);
-    // The tape: newest first, the note on the card not repeated, each line its verb's mark, name, words and age.
-    const lines = root.querySelector('#floor-feed').withClass('tape-line');
-    assert.deepEqual(lines.map(line => line.dataset.kind), ['thought', 'trade', 'trade', 'trade', 'moved']);
-    assert.match(textOf(lines[0]), /^Scholes The gap down held/);
-    assert.match(textOf(lines[1]), /^Hilibrand closed 2 SPY debit verticals · Target reached before the lunch lull\. \+\$31\.00 30m$/);
-    assert.match(textOf(lines[4]), /^Meriwether Probe → Sized · its forward record held over 64 trades/);
-    // The Climb: an older House, so steps the roster cannot count read "—", and the retired agent is in the graveyard.
-    const board = root.querySelector('#floor-agents');
-    assert.deepEqual(board.withClass('step-count').map(node => node.children[0] ? node._text : node.textContent),
-      ['5', '—', '0', '3', '2', '1', '—', '0']);
-    assert.equal(board.withClass('dot').length, 11);
-    assert.match(textOf(board.withClass('graveyard')[0]), /× 37/);
-    assert.deepEqual(board.withClass('step-label').map(node => node.dataset.step), ['train', 'validation', 'tuition', 'holdout', 'probe', 'sized', 'practice', 'incubator']);
-    const dot = board.withClass('dot').find(node => node.dataset.agent === 'condor-vrp-3');
-    assert.equal(dot.tag, 'button', 'native keyboard and touch interaction');
-    assert.equal(dot.getAttribute('aria-label'), 'Meriwether, Sized, real money open');
-    assert.equal(dot.getAttribute('tabindex'), '0', 'one tab stop per step');
-    const sheet = root.querySelector('#floor-sheet');
-    dot.click();
-    assert.equal(sheet.hidden, false);
-    assert.match(textOf(sheet), /^× Meriwether Sized Sells short-dated index premium/);
-    assert.match(textOf(sheet), /trials 5,812 · revisions 41 · forward 45\/64 \+\$1,284\.20 · real evidence 16\/22 \+\$212\.40/);
-    assert.match(textOf(sheet), /real money XSP iron condor · 4 legs · Sep 28 · ×1 risk \$184\.00 \+\$12\.50/);
-    assert.match(textOf(root.querySelector('#floor-filters')), /following Meriwether ×$/, 'the tape follows the agent');
-    assert.ok(root.querySelector('#floor-feed').withClass('tape-line').every(line => /^Meriwether /.test(textOf(line))));
-    sheet.withClass('sheet-close')[0].click();
-    assert.equal(sheet.hidden, true);
-    // Performance over time: Realized against Costs by default, the balance on its own chip.
+    assert.match(textOf(now), /^Meriwether Sized /);
+    assert.match(now.withClass('now-thought')[0].textContent, /^Realized volatility since the open/);
+    const lines = root.querySelector('#floor-feed').withClass('feed-line').map(textOf);
+    assert.equal(lines.length, 5, 'the note on stage is not repeated below it');
+    assert.match(lines[0], /thinking Scholes The gap down held/);
+    assert.match(lines[1], /trading Hilibrand real money closed 2 SPY debit verticals \+\$31\.00$/);
+    assert.match(lines[4], /news Meriwether moves from Probe to Sized/);
     const account = root.querySelector('#floor-account');
-    const [score, balance] = account.withClass('chip');
-    assert.deepEqual([score.textContent, score.getAttribute('aria-pressed'), balance.textContent], ['Profit & costs', 'true', 'Balance']);
-    const svgClass = name => account.descendants().filter(node => node.getAttribute('class')?.split(' ').includes(name));
-    assert.equal(svgClass('score-svg').length, 1);
-    assert.equal(svgClass('line-realized').length, 0, 'no ledger: no Realized line');
-    assert.deepEqual(svgClass('end-label').map(node => node.textContent), ['Profit +$220.40'], 'the archive’s one fresh Profit; an older bill has no Costs');
-    assert.equal(svgClass('anchor-costs').length, 1, 'costs since the reset start at $0');
-    balance.click();
+    assert.equal(account.find('svg').length, 1);
     assert.match(account.find('svg')[0].getAttribute('aria-label'), /\$1,481\.63 to \$5,694\.37/);  // the chart starts after the deposit
-    assert.match(textOf(account.withClass('balance-caption')[0]), /^\$5,694\.37 · Sep 28, 10:57 AM EDT$/);
+    assert.match(textOf(account), /^\$5,694\.37 · Sep 28, 10:57 AM EDT$/);
+    assert.equal(account.withClass('account-lines').length, 0);
+    assert.equal(account.withClass('balance-max').length, 0);
+    const board = root.querySelector('#floor-agents');
+    assert.deepEqual(board.withClass('stage-heading').map(textOf), ['3 Increased capital 1', '2 Live trading 2', '1 Practice 8']);
+    assert.equal(board.withClass('agent-dot').length, 12, 'all agents have a dot, retired ones in the closed archive');
+    assert.equal(board.find('table').length, 0);
+    assert.equal(board.querySelector('#agent-detail').hidden, true);
+    const scrolls = [];
+    board.querySelector('#agent-detail').scrollIntoView = options => scrolls.push(options);
+    const dot = board.withClass('agent-dot')[0];
+    assert.equal(dot.tag, 'button', 'native keyboard and touch interaction');
+    assert.equal(dot.getAttribute('aria-expanded'), 'false');
+    dot.click();
+    assert.equal(dot.getAttribute('aria-expanded'), 'true');
+    const detail = board.querySelector('#agent-detail');
+    assert.equal(detail.hidden, false);
+    assert.deepEqual(scrolls, [{ block: 'nearest', behavior: 'auto' }], 'an explicit selection brings its detail into view');
+    assert.match(textOf(detail), /^Meriwether Sized × iron condor Sells short-dated/);
+    assert.match(textOf(detail), /real 22 trades · 16 won · \+\$212\.40/);
+    assert.match(textOf(detail), /real money XSP iron condor · 4 legs · Sep 28 · ×1 max loss \$184\.00 \+\$12\.50/);
+    detail.withClass('agent-close')[0].click();
+    assert.equal(detail.hidden, true);
+    assert.equal(dot.getAttribute('aria-expanded'), 'false');
+    assert.equal(scrolls.length, 1, 'closing does not scroll');
     assert.doesNotMatch(root.textContent, VENUES);
     assert.deepEqual(root.find('a'), []);
   });
 });
 
-test('after the reset, before the House publishes, every section is quiet and the numbers keep their dashes', async () => {
+test('after the reset, before the House publishes, every section says so and the numbers keep their dashes', async () => {
   const { capital } = floor();
   const root = stubPage('floor', FLOOR_IDS);
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
     const feed = await startCapital(root);
     feed.stop();
     assert.equal(textOf(root.querySelector('#floor-status')), 'stopped');
-    assert.equal(textOf(root.querySelector('#floor-account')), '—');
-    assert.equal(textOf(root.querySelector('#floor-agents')), '—');
-    assert.equal(textOf(root.querySelector('#floor-positions')), 'No real positions yet.');
-    assert.equal(textOf(root.querySelector('#floor-feed')), '', 'no placeholder text');
-    assert.doesNotMatch(root.textContent, /thinking…|Connecting|Loading/);
+    assert.equal(textOf(root.querySelector('#floor-account')), 'No balance has been published yet.');
+    assert.equal(textOf(root.querySelector('#floor-agents')), 'Waiting for the agents.');
+    assert.equal(textOf(root.querySelector('#floor-now')), 'Nothing is running right now.');
+    assert.match(textOf(root.querySelector('#floor-feed')), /^Quiet for now\./);
   });
-  // The House's first checkpoint: a clock, empty steps, and no thought yet.
+  // The House's first checkpoint: a clock and nothing else yet.
   const fresh = await publishedRecord(emptyCheckpoint(), []);
   const first = stubPage('floor', FLOOR_IDS);
   await withBrowser('', path => fresh.fetch(new Request('https://blakewoods.us' + path)), async () => {
     const feed = await startCapital(first);
     feed.stop();
     assert.match(textOf(first.querySelector('#floor-numbers')), /^Profit — Net — Running /);
-    assert.deepEqual(first.querySelector('#floor-agents').withClass('step-count').map(node => node.textContent), ['0', '—', '0', '0', '0', '0', '—', '0']);
-    assert.equal(first.querySelector('#floor-now').withClass('think-name')[0].textContent, '—');
+    assert.deepEqual(first.querySelector('#floor-agents').withClass('stage-heading').map(textOf), ['3 Increased capital 0', '2 Live trading 0', '1 Practice 0']);
+    assert.equal(textOf(first.querySelector('#floor-now')), 'No agent has written a note yet.');
   });
 });
 

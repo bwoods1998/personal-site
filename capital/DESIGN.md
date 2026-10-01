@@ -1,134 +1,75 @@
-# Capital: the swarm window
+# Capital: watch the agents think
 
 The single `/capital/` page shows AI agents trading options. The runtime owns the money, models,
 training and orders; visiting this page starts none of those things.
 
 ## The page
 
-One screen on a desktop (at least 1180 × 720): no page scroll, and every panel scrolls inside itself. Narrower or shorter,
-one column at natural heights; on a phone, one column in reading order with 16px gutters and nothing wider than the screen.
-The reading order is the DOM's and the screen reader's: the top bar, the thought, the Climb, positions, the chart, the tape.
-About forty static words in all; everything else is data, a title or an aria-label. Meaning rides position, stroke and
-glyph, never colour alone: hollow researches, dashed trades the shadow book, dotted gold is the incubator, filled gold is
-real money, and right of the gold line is real money. Dashes are never gridlines. Dark by default, light on a light system,
-and a ◐ to choose; ⛶ (theatre) hides the lower panels so the Climb and the thought fill the screen, and Escape leaves it.
-Both choices are remembered per viewer only.
+1. **Profit, Net and Running.** Exactly three headline numbers. Profit is the Brokerage Account's complete real
+   options P&L since the reset, supplied in `trading {as_of, pnl_usd}`: every real options position after
+   its fees (the agents' and the House's own calibration round trips), open ones at the House's current
+   value, plus the account's other activity (fees no position carries, crypto fees, interest). Deposits,
+   compute and simulated returns do not enter it, nor does the leftover crypto dust of the coins sold at
+   the reset (worth cents; its value at the reset was never recorded). A missing, null or stale total is
+   a dash. Net is realized options P&L since the reset less every input cost since the reset: Profit
+   without any open position's gain (an open loss still counts) and without an unreconciled difference
+   unless it is a loss, less the itemized costs. Deposits never enter it. One quiet line under the numbers
+   names each cost by service (Sail as Sail billed it, Claude, OpenAI, ThetaData, market data, other). A
+   part not yet metered says so and Net is a dash; so is a bill that does not name Claude (an older House:
+   "Costs are not itemized yet."), or a Profit or bill that is not fresh. Running ticks from the House's
+   first start on its new record.
+2. **Thoughts first.** A generous, legible space for an actual published note, the agent's name, a
+   subtle band and when it was written. New notes wait long enough for the current one to be read.
+   Long thoughts expand and remain until the reader closes them. The feed below carries actual
+   thinking, trades and news, newest first; repeats fold into one line. No invented activity.
+3. **The balance chart.** The recorded account balance since the reset (or since the chart's own later
+   start: the owner's Sept 27 deposit is funding, so the chart starts after it), without a heading, axes or
+   reconciliation paragraphs. Only the current balance and its timestamp sit below it. Hover can
+   inspect a recorded point. This balance is distinct from the Profit headline.
+4. **Positions.** Directly below the chart, one quiet table of every real position on the Brokerage
+   Account since the reset: open first, then closed, newest first. Each row says who traded it (the
+   agent's partner name, or House calibration), what it is in words ("SPY call debit vertical", "QQQ long
+   put"), the contracts, the expiry, when it opened and closed (to the minute), its P&L after fees
+   (realized, or at the current value while open) and its share of Profit. The footer carries the
+   positions not listed, "Other account activity" and the Profit total. **The lines sum to the Profit
+   headline exactly, to the cent**: the rows, one "N positions not listed" line (the oldest closed past
+   300, and any position the table's fields cannot describe, open or closed: the House alerts on those),
+   other account activity, and any unreconciled difference, which is shown as its own line whenever it
+   is not zero and never hidden. A
+   stale or unknown Profit leaves the total and every share a dash, as in the headline. Shares add up to
+   100%; a negative share moved against the total; a zero Profit has no shares. With no positions the
+   table says "No real positions yet." and still shows the footer. On a phone each row stacks into a short
+   block (who and P&L, what and share, then contracts and dates); on a narrow desktop the table scrolls
+   inside its own box. The page never scrolls sideways. Nothing in it moves.
+5. **Agents.** Three horizontal stages of dots: 3 Increased capital (Sized), 2 Live trading (Probe),
+   1 Practice (Candidate and Gym). Candidates are filled dots; Gym agents are rings. The published
+   band determines a dot's stage. A quiet gold ring fills from the House's current promotion
+   prerequisites, including partial trade/day counts; it is a checklist, never odds or a deadline.
+   No progress is inferred from training attempts, age or aggregate profit. Missing or stale
+   evidence leaves a bare track. Each dot is
+   a native button. Click, tap or press Enter for name, strategy, concise performance and open
+   positions, plus the exact remaining checks and the current blocker. The top stage shows what
+   keeps its capital rather than inventing another level. Close or Escape returns focus to its dot.
+   Retired agents remain in a collapsed row. Dots stay in a stable order within each band. A fresh
+   note, trade or agent news produces one short ripple, only on screen and at most four at once;
+   historical playback creates none. A confirmed change of stage can glide to its new row.
+   A dot's detail lists its open structures, real and shadow; the Positions table holds real money only.
+6. **Practice league.** Below the agents, only while the House publishes it: one quiet table of the
+   families practising on live quotes in the shadow book under the Gym's fill rules, captioned "Shadow
+   trades on live quotes, never real money. Not in Profit or Net." Each row is the agent's name (a quiet
+   "retired" tag once it has gone), structure kind, version tier (validated or Train), sessions, closed
+   trades, wins, realized P&L and return on maximum loss; the footer is the House's totals over every
+   family, with how many are not listed. On a phone each row stacks like a position. It never enters
+   Profit, Net or the Positions table.
 
-1. **The top bar: Profit, Net and Running.** Exactly three numbers. Profit is the Brokerage Account's complete real
-   options P&L since the reset, supplied in `trading {as_of, pnl_usd}`: every real options position after its fees (the
-   agents' and the House's own calibration round trips), open ones at the House's current value, plus the account's other
-   activity (fees no position carries, crypto fees, interest). Deposits, compute and simulated returns do not enter it,
-   nor does the leftover crypto dust of the coins sold at the reset. A missing, null or stale total is a dash. Net is
-   realized options P&L since the reset less every input cost since the reset: Profit without any open position's gain
-   (an open loss still counts) and without an unreconciled difference unless it is a loss, less the itemized costs.
-   Deposits never enter it. While Profit or Net is a dash, the last value the House could price sits under it, dated
-   ("−$27.05 · 3:58 PM", title "Last value the House could price."), from the Worker's score archive and only when that
-   value is younger than four days; with no archive nothing shows. One quiet line names each cost by service (Sail as Sail
-   billed it, Claude, OpenAI, ThetaData, market data, other). A part not yet metered says so and Net is a dash; so is a
-   bill that does not name Claude ("Costs are not itemized yet."), or a Profit or bill that is not fresh. Running ticks
-   from the House's first start on its new record. The live pulse follows the checkpoint's freshness.
-2. **Thinking now.** The newest published note, typed at about forty characters a second with a caret, its speaker's dot,
-   name, level and true age (green under two minutes). A note stays at least its reading time (three and a half words a
-   second, six to twenty seconds) and then until a newer note arrives; newer notes queue behind a "+N" pill that skips to
-   the newest; the pointer over the card holds it; a note the card cuts carries a ↓ (measured after layout, when typing
-   ends and when the card changes size: how much fits depends on its width, never a character count) and an expanded note
-   stays until it is closed. After ten minutes with no newer note the card dims and keeps the last thought and its age. It never shows a
-   placeholder. One announcement every twenty seconds at most. On a phone, a 48px ticker carries the typing note while the
-   card and the tape are both off screen. While a note is on the card its speaker's dot breathes on the Climb and wears its
-   name.
-3. **The Climb: the levels.** A map read left to right and upward. The main stairs: Train, Validation, then across the gold
-   line Tuition, the Holdout's gate (⌸, with a pip per look: filled for a pass, slashed for a fail), Probe and Sized. The
-   side path leaves Train flat and dashed through Practice and, across the gold line, the Incubator, a dotted-gold ledge
-   with a ╳: it never reaches the top. Every agent is a dot on the step it stands on, in a stable order by its name's
-   ordinal, the dots growing with a big box (14 to 18 pixels apart) and the stairs taking the whole width; above each step its
-   count now, below it its name and how many families have ever reached it since the reset.
-   A count the House has not published is "—", never 0. Each level's meaning is its title. Retired agents are a heap at
-   Train's foot with their count; tapping it lists recent retirements and their causes. A retired agent still holding
-   open real money stands, dimmed with a ×, on that money's step. The House's own trades are a ⌂ off the stairs with the
-   calibration count, never an agent; tapping it shows them in Positions. ⟳ is the Gym's count of programs tested,
-   rolling to each checkpoint's value. A retired dot dims, unless it still holds money: the agent on a real-money step
-   keeps its full mark, and its × says it has retired. An agent off the roster (it keeps only a few recent retirements)
-   that still holds open real money stands, retired, on that money's step: its trade's route, else the Incubator for an
-   incubator row and Tuition for any other. With a House that publishes `levels`, every step and count is the House's; with an
-   older House the page places dots by band and the ledger (real money on a Gym agent with no incubator tag can only be
-   tuition; a retired agent on the roster still holding money stands on that money's step the same way, so Tuition never
-   reads 0 while a tuition lot is open) and shows "—" for Validation and Practice. Every dot is a native button (one tab stop per step; the arrow keys
-   move between its dots) whose accessible name says its level, its money and its checks; the pointer need only come
-   within twelve pixels. A dot opens its card: the agent's thesis in whole sentences, its record (trials, revisions, the
-   forward tally, and the "real evidence" tally only when the House sends one: the real trades the bands judge, never
-   tuition, the incubator or the House's own), its open structures, its promotion checklist and blocker when the House publishes one, and its
-   last five thoughts; a dot on the map also makes the tape follow it (a card opened from a list is a look, not a follow;
-   its "→ thoughts" follows). A step's name opens its roster, each agent's name over the first sentence of its thesis in
-   two lines at most; Practice opens the practice league (below).
-   Motion follows real events only: a birth drops a dot onto Train, a retirement slides one into the heap, a move or a
-   level change glides, a trade ripples (four at most at once), and dots that spoke in the last ten minutes glow faintly.
-   Loading history moves nothing. On a phone the Climb is a ladder of 44px rungs, summit first: each rung's name over how
-   many families ever reached it, its dots, its count now, and ⟳ beside Train's dots; the graveyard and the House's ⌂
-   under it are 44px wide at the least, a one-digit count too.
-4. **Positions, each with its reason.** Every real position on the Brokerage Account since the reset: open first, then
-   closed, newest first, in the publisher's order. One line each: the agent's dot and partner name with what it is in words
-   ("GOOGL call debit vertical", never cut) under them, how long it has been open or was held, its P&L after fees (a dash while unpriced) and a
-   bar diverging from zero on one scale for the table, losses left and gains right, the sign always in the text. An
-   incubator line carries its "Incubator" tag. The House's calibration round trips fold into one line with a strip of
-   ticks and their sum; the House live test gets its own. The newest open agent position stands open until the viewer
-   chooses (closing that one is remembered on this device only), so the panel's first words are a reason. Hovering a line
-   previews (no controls, the thesis clamped at seven lines), and tapping opens in place (one at a time), its reason: the
-   agent's whole **thesis** (at most 280 characters, never clamped), the **trigger** that opened it (the order's own tag,
-   its tickers in capitals) and,
-   once closed, why it closed and who closed it (the agent, the House or expiry), the **level** it was opened on, its
-   **life** from opening to expiry, and its P&L against its **risk** (the most it can lose), as a share of that risk. No
-   maximum gain is shown: beside the maximum loss it would reveal the strikes' width. A House line's reason is a fixed line
-   ("Measures real fills."; "A pre-registered House test."). The thesis is the House's `rationale` when it sends one (a
-   null shows nothing, and the page drops any sentence its own rules refuse); an older House's page takes the tape's open
-   trade (same agent, root, structure and expiry, within five minutes of the opening minute) and the roster's mechanism,
-   or, for an agent that has left the roster, its birth news (one `?agent=` read per agent), filtered by the same sentence
-   rules plus one more (a sentence an older publisher cut a number out of, "exceeds standard deviations", never shows), and
-   shows no thesis rather than a raw one. The same filtered thesis is the one on the agent's card and its roster line, and
-   a birth on the tape reads as its filtered idea or as "is born, a new family." alone. Open and Closed filter the list. One quiet footer line keeps the sum: other activity,
-   any positions not listed, any unreconciled difference, and Profit, a dash while it is unknown. ≡ swaps to the ledger
-   table: **its lines sum to the Profit headline exactly, to the cent** (the rows, one "N positions not listed" line, other
-   account activity, and any unreconciled difference, shown whenever it is not zero), with shares that add up to 100%;
-   with no positions it says "No real positions yet." It is also the chart's table view.
-5. **Profit & costs: performance over time.** Two small multiples on one time axis, each with its own dollar axis (costs run
-   to hundreds of dollars and trades to tens: on one scale every trade would sit flat on the baseline). Above, the
-   trading: Realized is a solid line that steps at each close, exact from the ledger since the reset; Profit is a faint
-   line through the archived points where the House could price them, broken across every unknown point and every gap
-   over fifteen minutes (three samples, once the archive is sampled). Below, about a third of the height, Costs is a solid
-   line through the archived bills, anchored by a hollow dot at $0 at the reset and joined to nothing it did not record.
-   The end labels are the legend: in a margin sized to the longest, or, on a narrow plot (under 520 pixels wide: a phone, or the
-   chart's column on a small desktop such as 1280 × 720), as a key in a strip of its own above each panel, read left to right, never on a
-   line, a marker or each other. Faint bands
-   mark the hours outside 9:30 to 4:00 New York time on weekdays. Each closed position is a dot on Realized where it
-   closed (the House's smaller and muted, the incubator's dotted) and each open one a ▸ under the trading chart where it opened;
-   the crosshair snaps to every point and marker, ←/→ step through them, a tap pins it, and a marker opens its position.
-   The Worker keeps the archive from its own deploy (`/api/capital/score`); with none yet the chart shows the Realized
-   steps, the anchor and today's costs as one dot. **Balance** is the recorded account balance since the chart's start
-   (the owner's Sept 27 deposit is funding, so the chart starts after it), with its current reading and time below it.
-   Balance is not Profit.
-6. **The tape.** Newest first, one line each: a mark for its kind (● a thought, ◆ a trade, ✦ a birth read as its idea, ↑
-   a move, × a retirement read as its cause, ✓/✗ the auditor's verdict, ⌂ the House's own news), the name, the words and
-   the age. A trade off real money says so in words, not only in a fainter colour: "shadow" for the shadow book's,
-   "incubator" for real money at tuition size (an agent on the Incubator step trades nothing else); real money is the
-   default and carries no tag. Repeats fold into ×N. Tapping a line opens its whole text and a way to its agent. Thoughts, Trades and Life
-   filter it; following an agent shows only it (its notes, trades and the swarm's news about it) until its chip is
-   cleared. Balance marks never appear here.
+**The incubator** (from Oct 1, 2026) is real money at tuition size, never evidence. Its positions are in
+Profit and the Positions table under their agent's name with a quiet "Incubator" tag (title: "Incubator:
+real money at tuition size, never evidence."), and its open structures carry an "incubator" tag in the
+dot's detail instead of "real money". The label ships before the House switches the route on.
 
-**The practice league** is the Practice step's sheet, only while the House publishes it: one quiet list, narrow enough for
-the sheet, of the families practising on live quotes in the shadow book under the Gym's fill rules, captioned "Shadow
-trades on live quotes, never real money. Not in Profit or Net." Each family is its dashed dot and name (a quiet "retired"
-tag once it has gone) with its realized P&L at the right, and under them its structure kind, version tier (validated or
-Train), sessions, closed trades and wins, with its return on maximum loss at the right; the totals over every family,
-with how many are not listed, sit in a dashed box labelled "practice". It never enters Profit, Net or Positions.
-
-**The incubator** (from Oct 1, 2026) is real money at tuition size, never evidence. Its positions are in Profit and
-Positions under their agent's name with a quiet "Incubator" tag (title: "Incubator: real money at tuition size, never
-evidence."), and its open structures carry an "incubator" tag in the agent's card instead of "real money".
-
-No narrative paragraphs, section intros, footer prose or empty-state essays; the one empty state is "No real positions
-yet." The only links are the owner's home page and the repository. Every string is a text node; every size is set
-through the CSSOM (the policy refuses style attributes); every asset is self-hosted. Reduced motion turns off typing and
-all animation. Every touch target on a phone is at least 44px. The chart's two colours and the levels' two ramps are
-validated (dataviz `validate_palette.js`) against both themes' surfaces.
+No extra narrative paragraphs, footer or explanatory dashboard panels. The only links are the
+owner's home page and the repository. On a phone the stages stack; dots have 44px touch targets.
+Reduced motion turns off typing and animation. All text uses text nodes; all assets are self-hosted.
 
 ## Names and identity
 
@@ -147,8 +88,8 @@ untouched. A record reset also clears names.
 ## Honest public data
 
 The schema still allowlists every field. No quotes, bids, asks, strikes, greeks, surfaces, programs
-or fitted parameters publish. Prose stays quote-free and names no venue. An agent's card uses only the
-published thesis or mechanism, structure kind, trade counts, wins, P&L, maximum loss and training counts.
+or fitted parameters publish. Prose stays quote-free and names no venue. Dot details use only the
+published mechanism, structure kind, trade counts, wins, P&L, maximum loss and training counts.
 Losses remain signed and visible. A roster subtotal never stands in for total options P&L.
 
 The optional `agent.progress` block has a fixed target, complete ordered checklist and allowlisted
@@ -195,37 +136,6 @@ The `trading` block is optional for schema-2 compatibility. Its signed dollar st
 when the complete real book cannot be priced. Profit requires an as-of time within ten minutes of
 both the checkpoint and the current browser clock. The account chart retains the published reset
 basis, with `PERFORMANCE_START_AT` and `START_EQUITY` as fallbacks; neither defines headline Profit.
-
-The optional `levels {as_of, agents, funnel}` and `rationale {as_of, agents, trades}` blocks (Oct 1, 2026) are the swarm
-window. `levels.agents` places roster agents only, each at one of `train, practice, validation, incubator, tuition,
-candidate, probe, sized, retired`, consistent with its band (a band above the Gym is its own level; a Gym agent stands
-below the holdout; a retired agent is retired unless it still holds open real money, when it stands on that money's step).
-`levels.funnel` counts families since the reset at each level by union (a family counts at a level when it reached it or
-any higher level on its track): each a counter or null, and each track only narrows. `rationale.agents` is each agent's
-thesis, whole sentences with no number (a digit or a numeral in any script; a number word, cardinal, ordinal, fraction,
-a cardinal's plural, "fives", decade, multiple, "quintuple", coin, quantile, "a couple", "unity", "a score of", or run
-together, "twentyfive", "threefold", "twentyish", "tenpct"; a word split by marks that joins into one, "twen·ty"; "a sigma"
-or "a single" unit; "ones" beside a number or a unit; and "one" anywhere but as a pronoun, "one another", "one of", "one on
-the other's", "no one", "the one", "one's"; read in lower case with accents folded off, "twénty", and split at apostrophes,
-"fifty's"), no invisible format or combining mark, no letter beyond Latin-1, no colon, bracket, code mark or parameter
-name, at most 280 characters, or null. The schema applies the House's number rule word for word (`numbered` and
-`plainGlyphs` in schema.js, mirroring league/swarm/public.py; both sides test the House's case list, and a parity test runs
-the House's own code beside the site's), so the Worker refuses a window whose thesis or tag carries a number the House
-missed (the House then sends the checkpoint without the window); the parameter-name rule stays with the House, which
-knows the names, and the page applies the whole rule again before showing. A public read names every roster agent, ledger
-row and practice row, so it may run past the stored limit by at most 508 names of 40 characters; the page takes it.
-`rationale.trades` is each ledger row's route (fitting its source), the opening and
-closing orders' own tags (at most 80 characters, under the same rules, null on House rows and a close's on an open row),
-the exit as an enum (agent, House or expiry) and the maximum loss. Never program code, parameter values, thresholds,
-strikes, prices, marks or a maximum gain. Only the page's own read, `?progress=1&positions=1&practice=1&window=1`, carries
-the two blocks; every older read is byte for byte what it was. `/api/capital/events?agent=<id>` reads one agent's notes,
-trades and the swarm's news about it. `/api/capital/score` is the Worker's archive of `{at, profit_usd, costs_usd,
-net_usd}` at five-minute buckets (each null when unknown, Net by the page's own rule), with the newest known Profit and Net
-within four days; it starts at the site's deploy and is never backfilled by guesswork. It keeps the newest 30,000 buckets
-(retention deletes by key range), and once its points span more than 2,048 buckets a read returns the first bucket at or
-after each step of `step_ms` and the newest, so neither a write nor a read passes over the whole table. Each point keeps
-the Profit basis it was measured on, and a new basis starts the archive over; the page also drops any point from before
-the current basis. It is cached for five minutes and the page reads it at that pace. A reset clears it.
 
 Public transport remains one hibernating WebSocket with eight-second polling fallback and
 thirty-second checkpoint refresh. Status follows the checkpoint, not an animation or local switch.
