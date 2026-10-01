@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { validCheckpoint, validEventBatch, validEvent, EVENT_KINDS, BANDS, SCHEMA_VERSION, quoteFree } from '../capital/schema.js';
+import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree } from '../capital/schema.js';
 import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
   climbModel, rationaleFor } from '../capital/capital.js';
 import { floor, post, get, words, FLOOR_IDS, BUSY_IDS, stubPage, withBrowser } from './harness.mjs';
@@ -32,6 +32,20 @@ const loadPractice = () => [JSON.parse(readFileSync(practiceFile, 'utf8')), load
 const windowFile = `${FIXTURES.replace(/\/?$/, '/')}site_checkpoint_window.json`;
 const windowSkip = skip || (!existsSync(windowFile) && `the runtime's fixtures at ${FIXTURES} predate the swarm window`);
 const loadWindow = () => [JSON.parse(readFileSync(windowFile, 'utf8')), load()[1]];
+// The House's own funnel chains (league/publish.py `FUNNEL_CHAINS`): the two sides must narrow the same way, or the House's
+// window is refused and dropped for half an hour at a time (Oct 1, 2026: Tuition became its own chain under Validation).
+const publishFile = fileURLToPath(new URL('../../publish.py', `file://${FIXTURES.replace(/\/?$/, '/')}`));
+const publishSkip = windowSkip || (!existsSync(publishFile) && `the runtime's publisher is not at ${publishFile}`);
+function houseChains(source) {
+  const match = /^FUNNEL_CHAINS\s*=\s*\(([\s\S]*?)\)\s*$/m.exec(source);
+  if (!match) return null;
+  return [...match[1].matchAll(/\(([^()]*)\)/g)].map(group => [...group[1].matchAll(/"([a-z_]+)"/g)].map(name => name[1]));
+}
+test('the House narrows its funnel by the same chains as the site', { skip: publishSkip }, () => {
+  assert.deepEqual(houseChains(readFileSync(publishFile, 'utf8')), FUNNEL_CHAINS);
+  const [checkpoint] = loadWindow();
+  if (checkpoint.levels) assert.equal(validFunnel(checkpoint.levels.funnel), true, 'the window fixture’s funnel');
+});
 const PAGE_IDS = FLOOR_IDS;
 // Every name a quote, a greek, a surface or a fitted parameter goes by. None is a key anywhere.
 const FORBIDDEN_KEYS = /^(?:bid|ask|mid|mark|last|spread|iv|implied_vol|vol|delta|gamma|theta|vega|rho|greeks?|surface|strike|strikes|price|prices|entry_price|exit_price|mark_price|underlying_price|params|parameters|quote|quotes|nbbo|program|code|legs_detail)$/i;

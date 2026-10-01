@@ -519,8 +519,10 @@ export const FUNNEL_KEYS = ['since', 'born', 'practice', 'validation', 'tuition'
   'sized', 'retired', 'calibration', 'live_test'];
 const FUNNEL_COUNTS = FUNNEL_KEYS.filter(key => key !== 'since');
 // Each chain only ever narrows: a family counts at a level when it reached that level or any higher one on its track.
-const FUNNEL_CHAINS = [['sized', 'probe', 'candidate', 'tuition', 'validation', 'born'], ['incubator', 'practice', 'born'], ['retired', 'born'],
-  ['looks_passed', 'looks']];
+// Tuition is its own chain under Validation: a holdout look does not need tuition first, and a family whose look fails
+// never gets a tuition row, so Candidate may exceed Tuition (the House's `publish.FUNNEL_CHAINS`, Oct 1, 2026).
+export const FUNNEL_CHAINS = [['sized', 'probe', 'candidate', 'validation', 'born'], ['tuition', 'validation'], ['incubator', 'practice', 'born'],
+  ['retired', 'born'], ['looks_passed', 'looks']];
 // A level's band on the roster: a band above the Gym is its own level; a Gym family is somewhere on the way up; a retired
 // family is retired, unless it still holds open real money, when it stands on that money's step.
 export const LEVELS_BY_BAND = {
@@ -534,7 +536,9 @@ export const ROUTES_BY_SOURCE = { calibration: ['calibration'], house: ['house']
 // also drops every sentence with a number word (except the pronoun "one") or a fitted parameter's name; that rule lives
 // with the publisher, which knows the names.
 const THESIS_MARKS = /[:()[\]{}<>=_`#|\\]/;
-export const thesisWords = (value, max) => words(value, max) && !/\d/.test(value) && !THESIS_MARKS.test(value);
+// Any numeral in any script (½, Ⅻ, ٣, a fullwidth digit) and any invisible format character (a soft hyphen, a zero-width
+// joiner) is refused too: the House refuses both, and neither can split or disguise a number here.
+export const thesisWords = (value, max) => words(value, max) && !/\p{N}/u.test(value) && !/\p{Cf}/u.test(value) && !THESIS_MARKS.test(value);
 const idsOf = list => new Set((Array.isArray(list) ? list : []).map(row => row?.id));
 export function validFunnel(value) {
   if (!exact(value, FUNNEL_KEYS) || !instant(value.since) || !FUNNEL_COUNTS.every(key => nullable(value[key], counter))) return false;

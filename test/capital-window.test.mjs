@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LEVELS, ROUTES, EXITS, FUNNEL_KEYS, OPTIONAL_CHECKPOINT_FIELDS, MAX_AGENTS, thesisWords, validCheckpoint, validLevels, validRationale, validFunnel,
+  LEVELS, ROUTES, EXITS, FUNNEL_KEYS, FUNNEL_CHAINS, OPTIONAL_CHECKPOINT_FIELDS, MAX_AGENTS, thesisWords, validCheckpoint, validLevels, validRationale, validFunnel,
   scorePoint, validScorePoint,
 } from '../capital/schema.js';
 import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
@@ -69,11 +69,18 @@ test('the funnel: fourteen keys, counters or null, and each track narrows among 
   assert.equal(validFunnel(funnel()), true);
   assert.equal(validFunnel(funnel({ validation: null, practice: null })), true, 'a source the House could not read is null');
   assert.equal(validFunnel(Object.fromEntries(FUNNEL_KEYS.map(key => [key, key === 'since' ? RESET_AT : null]))), true, 'all unknown');
+  // Tuition is its own chain under Validation: a look needs no tuition first, and a failed look never gets one, so more
+  // families may reach the Holdout than Tuition (the House's funnel since Oct 1, 2026).
+  assert.deepEqual(FUNNEL_CHAINS, [['sized', 'probe', 'candidate', 'validation', 'born'], ['tuition', 'validation'], ['incubator', 'practice', 'born'],
+    ['retired', 'born'], ['looks_passed', 'looks']]);
+  assert.equal(validFunnel(funnel({ tuition: 1 })), true, 'candidate 6 above tuition 1');
+  assert.equal(validFunnel(funnel({ tuition: 0, candidate: 9 })), true, 'every validated family looked, none paid tuition');
+  assert.equal(validCheckpoint(windowCheckpoint({ levels: levelsBlock({ funnel: funnel({ tuition: 1 }) }) })), true, 'the whole window stands');
   for (const [label, value] of [
     ['probe above candidate', funnel({ probe: 7 })], ['sized above probe', funnel({ sized: 4 })], ['tuition above validation', funnel({ tuition: 10 })],
     ['validation above born', funnel({ validation: 50 })], ['the incubator above practice', funnel({ incubator: 4 })], ['practice above born', funnel({ practice: 60 })],
     ['more retired than born', funnel({ retired: 50 })], ['more passes than looks', funnel({ looks_passed: 5 })],
-    ['a gap skipped by a null still narrows', funnel({ candidate: null, tuition: 2 })],
+    ['a gap skipped by a null still narrows', funnel({ candidate: null, validation: 2 })], ['tuition above validation, alone', funnel({ tuition: 10, candidate: 0, probe: 0, sized: 0 })],
     ['a fraction', funnel({ born: 49.5 })], ['a negative', funnel({ looks: -1 })], ['a string', funnel({ born: '49' })], ['since not an instant', funnel({ since: '2026-09-26' })],
     ['a key missing', (({ live_test: _l, ...rest }) => rest)(funnel())], ['a key more', funnel({ odds: 1 })],
   ]) assert.equal(validFunnel(value), false, label);
@@ -120,7 +127,8 @@ test('rationale: theses in safe words, and each trade’s route, tags, exit and 
   assert.equal(validCheckpoint(noLedger), true, 'no ledger: no trades');
   assert.equal(validCheckpoint(withTrades(patch('real:5', { exit: null, close_why: null }))), true, 'an exit nobody recorded is null');
   assert.equal(thesisWords("investors reprice one on the other's capex", 80), true);
-  for (const bad of ['IWM breaks to a fresh 60-day low', 'the (wide) leg', 'a = b', 'snake_case', 'a #tag', 'pipe | here', 'back\\slash', 'x < y', '{ }', '[ ]', '']) {
+  for (const bad of ['IWM breaks to a fresh 60-day low', 'the (wide) leg', 'a = b', 'snake_case', 'a #tag', 'pipe | here', 'back\\slash', 'x < y', '{ }', '[ ]', '',
+    'the gap exceeds ½ of the move', 'the Ⅻ month lookback', 'IV is ٣ points over realized', 'a ３ day hold', 'sev\u00aden days', 'one\u200bsigma']) {
     assert.equal(thesisWords(bad, 280), false, bad);
   }
 });
