@@ -84,12 +84,13 @@ test('a rejected event batch rolls back its tentative name allocation', async ()
 test('every published agent gets a dot at the actual stage; training totals never imply a promotion', () => {
   const many = Array.from({ length: 100 }, (_, n) => agent(`family-${n}`));
   const stages = agentStages(swarmCheckpoint({ agents: many }));
-  assert.deepEqual(stages.map(stage => stage.agents.length), [0, 0, 100]);
+  assert.deepEqual(stages.map(stage => stage.agents.length), [0, 0, 0, 0, 0, 100]);
+  // An older House sends no levels: each rung comes from the band (a Gym agent with no money trains).
   assert.deepEqual(agentStages(swarmCheckpoint()).map(stage => stage.agents.map(row => row.band)),
-    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate', 'gym', 'gym', 'gym', 'gym', 'gym']]);
+    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate'], [], [], ['gym', 'gym', 'gym', 'gym', 'gym']]);
 });
 
-test('a new thought waits for the current thought to be read while its feed entry arrives immediately', async () => {
+test('a new thought waits for the current thought to be read, and reaches the feed once the card has shown it', async () => {
   const { capital } = floor();
   const original = note('one', 'I am testing the opening range and waiting for evidence before I change the program.', PUBLISHED_AT);
   await post(capital, '/api/capital/events', batch(original));
@@ -109,14 +110,17 @@ test('a new thought waits for the current thought to be read while its feed entr
     clock += 1000;
     socket.handlers.get('message')({ data: JSON.stringify(next) });
     assert.match(words(root.querySelector('#floor-now')), /testing the opening range/);
-    assert.match(words(root.querySelector('#floor-feed')), /next revision/);
-    clock += 60000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:later', seq: 3 }) });
-    assert.match(words(root.querySelector('#floor-now')), /next revision/);
+    // The new note waits for the card, counted on it, and is not in the feed before the card has shown it.
+    assert.doesNotMatch(words(root.querySelector('#floor-feed')), /next revision/);
+    assert.equal(words(root.querySelector('#floor-now').withClass('now-queue')[0]), '+1');
     clock += 60000;
     const full = 'I am checking whether the same mechanism holds in another market session. '.repeat(9).trim();
-    const long = { ...note('one', full, PUBLISHED_AT), seq: 4, display_name: 'Meriwether' };
+    const long = { ...note('one', full, PUBLISHED_AT), seq: 3, display_name: 'Meriwether' };
     socket.handlers.get('message')({ data: JSON.stringify(long) });
+    assert.match(words(root.querySelector('#floor-now')), /next revision/);
+    assert.match(words(root.querySelector('#floor-feed')), /testing the opening range/, 'the shown note moves down to the feed');
+    clock += 60000;
+    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:later', seq: 4 }) });
     const more = root.querySelector('#floor-now').withClass('thought-more')[0];
     assert.equal(more.hidden, false);
     more.click();

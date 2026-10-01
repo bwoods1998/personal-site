@@ -1,7 +1,7 @@
 // The swarm window's data layer (Oct 1, 2026): the schema's two optional blocks (`levels` and `rationale`), the Worker's
 // reads for every page (the window read alone carries the blocks), one agent's tape, the score archive, and the number-word
-// rule the Worker's contract shares with the House. The page that drew the window was rolled back to the prior design;
-// it reads CURRENT_READ, which these tests hold byte for byte to what it was.
+// rule the Worker's contract shares with the House. The page that drew the window was rolled back to the prior design; the
+// prior design with the owner's ideas reads the window again, and every other read stays byte for byte what it was.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -136,7 +136,7 @@ test('rationale: theses in safe words, and each trade’s route, tags, exit and 
 // ---------------------------------------------------------------------------- the Worker
 test('every read but the window read is byte for byte what it was, with the blocks stored or not (C7)', async () => {
   const reads = ['', '?progress=1', POSITIONS_READ, CURRENT_READ, WINDOW_READ];
-  assert.equal(CHECKPOINT_READ, CURRENT_READ, 'the page reads CURRENT_READ, which the stored window never changes');
+  assert.equal(CHECKPOINT_READ, WINDOW_READ, 'the page reads the window (Oct 1, 2026: the owner\'s ideas on the prior design)');
   assert.equal(WINDOW_READ, '?progress=1&positions=1&practice=1&window=1');
   const bodies = async checkpoint => {
     const { capital } = floor(at + 30000);
