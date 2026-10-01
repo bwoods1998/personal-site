@@ -1,23 +1,21 @@
-// The swarm window (Oct 1, 2026): why each trade, every result, the levels and performance over time. The schema's two new
-// blocks, the Worker's reads for old and new pages, one agent's tape, the score archive, and the page's pure models.
+// The swarm window's data layer (Oct 1, 2026): the schema's two optional blocks (`levels` and `rationale`), the Worker's
+// reads for every page (the window read alone carries the blocks), one agent's tape, the score archive, and the number-word
+// rule the Worker's contract shares with the House. The page that drew the window was rolled back to the prior design;
+// it reads CURRENT_READ, which these tests hold byte for byte to what it was.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEVELS, ROUTES, EXITS, FUNNEL_KEYS, FUNNEL_CHAINS, OPTIONAL_CHECKPOINT_FIELDS, MAX_AGENTS, thesisWords, validCheckpoint, validLevels, validRationale, validFunnel,
-  scorePoint, validScorePoint, numberTokens, MAX_STRUCTURES, MAX_CHECKPOINT_BYTES, MAX_PUBLIC_CHECKPOINT_BYTES, MAX_NAMED_ROWS, MAX_POSITIONS, MAX_PRACTICE_ROWS, byteLength,
+  scorePoint, validScorePoint, numberTokens, numbered, MAX_STRUCTURES, MAX_CHECKPOINT_BYTES, MAX_PUBLIC_CHECKPOINT_BYTES, MAX_NAMED_ROWS, MAX_POSITIONS,
+  MAX_PRACTICE_ROWS, byteLength,
 } from '../capital/schema.js';
 import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
-import {
-  CHECKPOINT_READ, STEPS, climbModel, climbLayout, levelOf, thesisText, houseThesis, agentThesis, plainTag, tickerCase, cutNumber, numbered, interimRationale,
-  rationaleFor, riskShare, pitchFor,
-  realizedSteps, realizedAt, scoreSeries, scoreModel, marketClosedBands, niceTicks, newsKind, feedLine, netNumber, lastKnown, holdMs, ordinalOf,
-  HOUSE_RATIONALE, nyInstant, tradeMoney, recordLine, narrowKeys, labelWidth,
-} from '../capital/capital.js';
+import { CHECKPOINT_READ, netNumber } from '../capital/capital.js';
 import { floor, post, get } from './harness.mjs';
 import { LEAKS, PLAIN } from './number-words.mjs';
 import {
-  swarmCheckpoint, ledgerCheckpoint, ledger, position, agent, structure, note, trade, news, POSITIONS, PUBLISHED_AT, RESET_AT, GOOGL_THESIS,
-  WINDOW_AGENTS, WINDOW_POSITIONS, LEVEL_OF, funnel, levelsBlock, rationaleBlock, rationaleTrade, windowCheckpoint,
+  swarmCheckpoint, ledgerCheckpoint, ledger, position, agent, structure, note, trade, news, POSITIONS, PUBLISHED_AT, RESET_AT,
+  funnel, levelsBlock, rationaleBlock, rationaleTrade, windowCheckpoint,
 } from './swarm-fixture.mjs';
 
 const at = Date.parse(PUBLISHED_AT);
@@ -138,7 +136,7 @@ test('rationale: theses in safe words, and each trade’s route, tags, exit and 
 // ---------------------------------------------------------------------------- the Worker
 test('every read but the window read is byte for byte what it was, with the blocks stored or not (C7)', async () => {
   const reads = ['', '?progress=1', POSITIONS_READ, CURRENT_READ, WINDOW_READ];
-  assert.equal(CHECKPOINT_READ, WINDOW_READ);
+  assert.equal(CHECKPOINT_READ, CURRENT_READ, 'the page reads CURRENT_READ, which the stored window never changes');
   assert.equal(WINDOW_READ, '?progress=1&positions=1&practice=1&window=1');
   const bodies = async checkpoint => {
     const { capital } = floor(at + 30000);
@@ -301,156 +299,9 @@ test('a score point is Profit, the bill and Net by the page’s own rule, measur
   assert.equal(scorePoint(windowCheckpoint({ compute: BILL })).net_usd, netNumber(windowCheckpoint({ compute: BILL }), at), 'an open loss counts');
 });
 
-// ---------------------------------------------------------------------------- the Climb
-test('the Climb: the House’s levels first, a retired agent with open money on its money’s step, and unknown counts as dashes', () => {
-  const model = climbModel(windowCheckpoint(), {});
-  const where = Object.fromEntries(STEPS.map(step => [step.key, model.steps[step.key].agents.map(dot => dot.id)]));
-  const sorted = Object.fromEntries(Object.entries(where).map(([key, ids]) => [key, [...ids].sort()]));
-  assert.deepEqual(sorted, { train: ['calendar-term', 'eod-drift', 'strangle-cheap'], validation: ['gap-drift'], tuition: ['googl-lags'],
-    holdout: ['butterfly-pin', 'ironfly-quiet', 'trend-vertical'], probe: ['orb-4', 'putspread-dip-2'], sized: ['condor-vrp-3'], practice: ['skew-revert'], incubator: [] });
-  const googl = model.dots.get('googl-lags');
-  assert.deepEqual([googl.retired, googl.money, googl.level], [true, 'real', 'tuition'], 'retired, filled gold, standing on Tuition');
-  assert.equal(model.dots.has('reversal-1'), false, 'retired with no money: in the graveyard');
-  assert.equal(model.dots.get('condor-vrp-3').money, 'real');
-  assert.equal(model.dots.get('ironfly-quiet').money, 'shadow', 'a Candidate’s forward book is dashed');
-  assert.equal(model.dots.get('skew-revert').money, 'shadow', 'practice is dashed');
-  assert.equal(model.dots.get('calendar-term').money, 'research');
-  assert.deepEqual(STEPS.map(step => [step.key, model.steps[step.key].now, model.steps[step.key].everCount]), [
-    ['train', 3, 49], ['validation', 1, 9], ['tuition', 1, 7], ['holdout', 3, 6], ['probe', 2, 3], ['sized', 1, 1], ['practice', 1, 3], ['incubator', 0, 1]]);
-  assert.deepEqual([model.graveyard, model.house, model.looks, model.trials], [37, { calibration: 1, liveTest: 0 }, { looks: 4, passed: 3 }, 48213]);
-  // An older House: the band and the ledger say what they can; the rest is a dash, never 0.
-  const old = climbModel(ledgerCheckpoint(), {});
-  assert.deepEqual(STEPS.map(step => [step.key, old.steps[step.key].now, old.steps[step.key].everCount]), [
-    ['train', 5, 48], ['validation', null, null], ['tuition', 0, null], ['holdout', 3, null], ['probe', 2, null], ['sized', 1, null], ['practice', null, null], ['incubator', 0, null]]);
-  assert.equal(old.looks, null, 'no pips without the House');
-  assert.deepEqual(old.house, { calibration: 1, liveTest: 0 });
-  assert.equal(climbModel(ledgerCheckpoint({ positions: ledger({ rows: POSITIONS.slice(0, 4), earlier: { positions: 2, pnl_usd: '203.20' } }) })).house.calibration, null,
-    'with positions folded away the rows cannot count them');
-  // Interim tuition: real money on a Gym agent with no incubator tag; an incubator row puts its agent on the Incubator.
-  const interim = ledgerCheckpoint({ positions: ledger({ rows: [position('real:20', { agent: 'gap-drift', underlying: 'SPY', structure: 'long_call', right: 'call', legs: 1, pnl_usd: '0.00' }),
-    ...POSITIONS.map(row => (row.id === 'real:7' ? { ...row, pnl_usd: '12.50' } : row))] }), trading: { as_of: PUBLISHED_AT, pnl_usd: '220.40' } });
-  assert.equal(levelOf(interim.agents.find(row => row.id === 'gap-drift'), interim), 'tuition');
-  const incubated = ledgerCheckpoint({ structures: [structure('s-inc', { agent: 'eod-drift', route: 'incubator' })] });
-  assert.equal(levelOf(incubated.agents.find(row => row.id === 'eod-drift'), incubated), 'incubator');
-  assert.equal(climbModel(incubated).dots.get('eod-drift').money, 'incubator');
-});
-
-test('dots keep a stable order by partner ordinal; births and retirements on the tape move the map until the checkpoint confirms them', () => {
-  assert.deepEqual(['Mullins 166', 'Meriwether', 'Leahy 2', 'Hilibrand', 'someone'].map(ordinalOf), [1986, 1, 24, 2, Infinity]);
-  const named = WINDOW_AGENTS.map(row => ({ ...row, display_name: { 'calendar-term': 'Scholes', 'strangle-cheap': 'Meriwether 2', 'eod-drift': 'Hilibrand' }[row.id] }))
-    .map(row => (row.display_name ? row : (({ display_name: _d, ...rest }) => rest)(row)));
-  const ids = model => model.steps.train.agents.map(dot => dot.id);
-  const before = climbModel(windowCheckpoint({ agents: named }));
-  assert.deepEqual(ids(before), ['eod-drift', 'calendar-term', 'strangle-cheap'], 'Hilibrand (2), Scholes (3), Meriwether 2 (13)');
-  const busier = named.map(row => (row.id === 'eod-drift' ? { ...row, record: { ...row.record, trials: 99999 } } : row));
-  assert.deepEqual(ids(climbModel(windowCheckpoint({ agents: busier }))), ids(before), 'trials never reorder');
-  const born = climbModel(windowCheckpoint({ agents: named }), { born: [{ id: 'new-idea', name: 'Leahy 9' }, { id: 'calendar-term' }] });
-  assert.deepEqual(ids(born), [...ids(before), 'new-idea']);
-  assert.equal(born.dots.get('new-idea').provisional, true);
-  assert.equal(born.steps.train.now, 4);
-  const gone = climbModel(windowCheckpoint({ agents: named }), { gone: ['calendar-term', 'googl-lags'] });
-  assert.equal(gone.dots.has('calendar-term'), false);
-  assert.equal(gone.dots.has('googl-lags'), true, 'an agent still holding money stays on the map');
-  assert.equal(gone.graveyard, 38);
-});
-
-test('the map’s geometry: stairs rise, the side path stays flat, every dot inside the box, real money right of the gold line', () => {
-  // The map is drawn from 760 pixels wide; a phone reads the ladder instead.
-  for (const [width, height] of [[800, 300], [1100, 600], [728, 330], [840, 280]]) {
-    const model = climbModel(windowCheckpoint());
-    const layout = climbLayout(model, width, height);
-    const mains = ['train', 'validation', 'tuition', 'holdout', 'probe', 'sized'].map(key => layout.steps[key]);
-    mains.forEach((step, index) => { if (index) { assert.ok(step.y < mains[index - 1].y, `${width}: rises`); assert.ok(step.x >= mains[index - 1].x + mains[index - 1].w); } });
-    assert.equal(layout.steps.practice.y, layout.steps.incubator.y, 'the side path is flat');
-    assert.ok(layout.steps.practice.y > layout.steps.train.y, 'below Train, never above it');
-    assert.ok(layout.steps.practice.x < layout.goldX && layout.steps.incubator.x > layout.goldX, 'the gold line cuts both tracks');
-    assert.ok(layout.steps.validation.x + layout.steps.validation.w < layout.goldX && layout.steps.tuition.x > layout.goldX);
-    for (const [id, dot] of layout.dots) {
-      assert.ok(dot.cx > 0 && dot.cx < layout.width && dot.cy > 0 && dot.cy < layout.height, `${width}×${height}: ${id}`);
-    }
-    assert.equal(layout.dots.size, model.dots.size);
-  }
-  const crowd = climbModel(swarmCheckpoint({ agents: Array.from({ length: 60 }, (_, n) => agent(`family-${n}`)) }));
-  const grid = climbLayout(crowd, 900, 300);
-  assert.equal(grid.steps.train.cols, 12, '60 dots: a 12 × 5 grid');
-  assert.equal(grid.steps.train.rows, 5);
-});
-
-test('an agent off the roster that still holds real money stands, retired, on that money’s step; a big box spreads the map', () => {
-  const stray = position('real:30', { agent: 'off-roster', display_name: 'Mullins 166', underlying: 'GOOGL', structure: 'debit_vertical', right: 'call', legs: 2,
-    pnl_usd: '-3.00' });
-  const old = ledgerCheckpoint({ positions: ledger({ rows: [stray, ...POSITIONS] }), trading: { as_of: PUBLISHED_AT, pnl_usd: '217.40' } });
-  const model = climbModel(old);
-  const dot = model.dots.get('off-roster');
-  assert.deepEqual([dot.step, dot.money, dot.retired, dot.name], ['tuition', 'real', true, 'Mullins 166']);
-  assert.equal(model.steps.tuition.now, 1, 'the Climb agrees with Positions');
-  const routed = windowCheckpoint();
-  const withStray = { ...routed, positions: { ...routed.positions, rows: [{ ...stray, agent: 'off-roster-2', id: 'real:31' }, ...routed.positions.rows] },
-    rationale: { ...routed.rationale, trades: [...routed.rationale.trades, { id: 'real:31', route: 'probe', open_why: null, close_why: null, exit: null, max_loss_usd: null }] } };
-  assert.equal(climbModel(withStray).dots.get('off-roster-2').step, 'probe', 'the trade’s own route names the step');
-  assert.deepEqual([pitchFor(920, 300), pitchFor(1560, 465), pitchFor(4000, 300)], [14, 18, 14]);
-  const wide = climbLayout(climbModel(windowCheckpoint()), 1560, 465);
-  assert.ok(wide.steps.sized.x + wide.steps.sized.w >= 1560 - 16 - 1, 'the stairs reach the right edge');
-  assert.equal(wide.pitch, 18);
-});
-
-test('a trade’s money on the tape and an agent’s evidence record say what they are', () => {
-  const line = (real, tape = 'trade') => ({ tape, real });
-  assert.equal(tradeMoney(line(false)), 'shadow');
-  assert.equal(tradeMoney(line(true)), 'real');
-  assert.equal(tradeMoney(line(true), { step: 'incubator', money: 'research' }), 'incubator', 'an agent on the Incubator trades nothing else');
-  assert.equal(tradeMoney(line(true), { step: 'train', money: 'incubator' }), 'incubator');
-  assert.equal(tradeMoney(line(true), { step: 'probe', money: 'real' }), 'real');
-  assert.equal(tradeMoney(line(null, 'thought')), null);
-  // `record.real` is the evidence record (never tuition, the incubator or the House's): shown only when sent, and named so.
-  const record = { trials: 131, revisions: 6, forward: null, real: null };
-  assert.equal(recordLine({ record }), 'trials 131 · revisions 6', 'no evidence record: no "real 0/0"');
-  assert.equal(recordLine({ record: { ...record, real: { trades: 4, wins: 2, pnl_usd: '-18.30' } } }), 'trials 131 · revisions 6 · real evidence 2/4 −$18.30');
-});
-
-test('a retired agent on the roster still holding real money stands on that money’s step without the House’s levels', () => {
-  // The window fixture with neither block: GOOGL's tuition lot is open, so Tuition holds its dot, never 0 (S2, Oct 1).
-  const { levels: _l, rationale: _r, ...bare } = windowCheckpoint();
-  const model = climbModel(bare);
-  const googl = model.dots.get('googl-lags');
-  assert.deepEqual([googl?.step, googl?.money, googl?.retired, googl?.level], ['tuition', 'real', true, 'tuition']);
-  assert.equal(model.steps.tuition.now, 1, 'Tuition counts the open lot');
-  assert.equal(model.dots.has('reversal-1'), false, 'retired with no money: still in the graveyard');
-  assert.equal(levelOf(bare.agents.find(row => row.id === 'googl-lags'), bare), 'tuition');
-  // Rationale without levels: the trade's own route names the step, as it does off the roster.
-  const { levels: _l2, ...routedOnly } = windowCheckpoint({ rationale: rationaleBlock({ trades: rationaleBlock().trades.map(row => (row.id === 'real:8' ? { ...row, route: 'probe' } : row)) }) });
-  assert.equal(climbModel(routedOnly).dots.get('googl-lags').step, 'probe');
-  // Only a real structure says so (a House before the ledger): Tuition; an incubator structure: the Incubator.
-  const noLedger = { ...bare, trading: undefined, positions: undefined };
-  delete noLedger.trading;
-  delete noLedger.positions;
-  const viaStructure = { ...noLedger, structures: [...noLedger.structures, structure('st-googl', { agent: 'googl-lags', underlying: 'GOOGL', structure: 'debit_vertical', legs: 2 })] };
-  assert.equal(climbModel(viaStructure).dots.get('googl-lags').step, 'tuition');
-  const incubated = { ...noLedger, structures: [...noLedger.structures, structure('st-googl', { agent: 'googl-lags', route: 'incubator' })] };
-  assert.equal(climbModel(incubated).dots.get('googl-lags').step, 'incubator');
-  assert.equal(climbModel(noLedger).dots.has('googl-lags'), false, 'no money open: the graveyard');
-});
-
-// ---------------------------------------------------------------------------- the rationale
-test('the page’s thesis filter keeps whole safe sentences, like the House’s', () => {
-  assert.equal(thesisText(GOOGL_THESIS), GOOGL_THESIS, 'the pronoun "one" passes; both sentences fit');
-  assert.ok(GOOGL_THESIS.length <= 280);
-  assert.equal(thesisText(GOOGL_THESIS.slice(0, 240)), GOOGL_THESIS.split('. ')[0] + '.', 'the published mechanism is cut: its fragment never shows');
-  for (const [label, text] of [['a digit', 'IWM breaks to a fresh 60-day low.'], ['a number word', 'Sell a twenty five delta wing.'],
-    ['one with a unit', 'Wait one standard deviation.'], ['one beside a number word', 'Hold one hundred lots.'], ['a colon', 'The rule: buy it.'],
-    ['brackets', 'Buy the (wide) wing.'], ['a code mark', 'When ctx.price breaks.'], ['a parameter-like name', 'Use lookback_days here.'], ['no end', 'A sentence with no end']]) {
-    assert.equal(thesisText(text), null, label);
-  }
-  assert.equal(numbered("reprice one on the other's"), false);
-  assert.equal(numbered('one day'), true);
-  assert.equal(thesisText('Short. A sentence long enough to keep. Then 3 more.'), 'Short. A sentence long enough to keep.');
-  const long = `${'A careful sentence about markets and their habits that runs on. '.repeat(5).trim()}`;
-  assert.ok(thesisText(long).length <= 280);
-  assert.ok(thesisText(`${'word '.repeat(80)}end.`).endsWith('…'), 'a single long sentence cuts at a word with an ellipsis');
-});
-
-test('every number hidden in words or other scripts is refused; only the pronoun "one" passes', () => {
-  // A fixed adversarial list (the safety review of Oct 1, 2026): each must come out null, through the thesis and the tag rules.
+// ---------------------------------------------------------------------------- the number-word rule
+test('every number hidden in words or other scripts is refused by the contract; only the pronoun "one" passes', () => {
+  // A fixed adversarial list (the safety review of Oct 1, 2026): the Worker refuses each as a thesis and as a tag.
   const leaks = [
     'Buy the call when GOOGL lags MSFT by more than one stdev.', 'Enter when the gap exceeds one ATR over the prior close.', 'Enter at one sd.',
     'Use a lookback of one hr.', 'Exit after one trading session closes.', 'Hold through one full standard deviation.', 'Hold for one more week.',
@@ -460,40 +311,25 @@ test('every number hidden in words or other scripts is refused; only the pronoun
     'Wait ｏｎｅ sigma.', 'Wait οne sigma.', 'Wait sev\u00aden days.', 'Wait fo\u200bur days.', 'Enter when IV is ٣ points over realized.',
   ];
   for (const text of leaks) {
-    assert.equal(thesisText(text), null, text);
-    assert.equal(houseThesis(text), null, `House: ${text}`);
-    assert.equal(plainTag(text.replace(/\.$/, '')), null, `tag: ${text}`);
+    assert.equal(thesisWords(text, 280), false, text);
+    assert.equal(thesisWords(text.replace(/\.$/, ''), 80), false, `tag: ${text}`);
   }
   for (const text of ["MSFT and GOOGL sell competing products, and investors reprice one on the other's capex with a delay.", 'Investors move one another.',
     'No one prices it in.', 'One of the legs decays faster.', 'The two names reprice one against the other.', 'Within seconds the spread widens.',
     'Once MSFT moves, GOOGL follows.']) {
-    assert.equal(thesisText(text) === null, /two/.test(text), text);
+    assert.equal(thesisWords(text, 280), !/two/.test(text), text);
   }
   assert.equal(numbered('the one day a week'), true, 'a pronoun before a unit is a number');
-  // An older publisher cut decimals out of its news: a sentence that reads as cut never shows in the interim.
-  assert.equal(cutNumber('Enter when the z-score exceeds standard deviations.'), true);
-  assert.equal(cutNumber('IV above .'), true);
-  assert.equal(cutNumber('GOOGL lags MSFT after strong cloud news.'), false);
-  assert.equal(thesisText('Enter when the z-score exceeds standard deviations. Small caps lag the index.', 280, 12, { interim: true }), 'Small caps lag the index.');
-  // Tags read their tickers in capitals; ordinary words stay as written.
-  assert.equal(tickerCase('msft leads googl, qqq flat'), 'MSFT leads GOOGL, QQQ flat');
-  assert.equal(tickerCase('xyz breaks on news', ['XYZ']), 'XYZ breaks on news');
-  assert.equal(tickerCase('it is on', ['ON']), 'it is on', 'a ticker that is an ordinary word stays a word');
-  assert.equal(plainTag('msft up 4 sessions, googl flat'), null);
-  assert.equal(plainTag('a'.repeat(81)), null);
+  assert.equal(numbered("reprice one on the other's"), false);
+  assert.equal(numbered('one day'), true);
 });
 
-test('every sentence the safety reviews named is refused on every path, the Worker’s contract too; plain words and the pronoun pass', () => {
+test('every sentence the safety reviews named is refused by the Worker’s contract; plain words and the pronoun pass', () => {
   for (const text of LEAKS) {
-    assert.equal(thesisText(text), null, text);
-    assert.equal(houseThesis(text), null, `House: ${text}`);
-    assert.equal(plainTag(text.replace(/\.$/, '')), null, `tag: ${text}`);
     assert.equal(thesisWords(text, 280), false, `contract: ${text}`);
     assert.equal(thesisWords(text.replace(/\.$/, ''), 80), false, `contract, as a tag: ${text}`);
   }
   for (const text of PLAIN) {
-    assert.equal(thesisText(text), text, text);
-    assert.equal(houseThesis(text), text, `House: ${text}`);
     assert.equal(thesisWords(text, 280), true, `contract: ${text}`);
   }
   // The words as the rules read them: accents folded off, split at apostrophes but "one's".
@@ -504,216 +340,4 @@ test('every sentence the safety reviews named is refused on every path, the Work
   const trades = rationaleBlock().trades.map(row => (row.id === 'real:8' ? { ...row, open_why: 'hold a couple of sessions' } : row));
   assert.equal(validCheckpoint(windowCheckpoint({ rationale: rationaleBlock({ trades }) })), false);
   assert.equal(validCheckpoint(windowCheckpoint({ rationale: rationaleBlock({ agents: [{ id: 'orb-4', thesis: 'Funds dress their books at quarter-end.' }] }) })), true);
-});
-
-test('the rationale: the House’s block first, else the tape’s open trade and the roster’s mechanism; House rows are fixed lines', () => {
-  const body = windowCheckpoint();
-  const rows = new Map(body.positions.rows.map(row => [row.id, row]));
-  const googl = rationaleFor(rows.get('real:8'), body);
-  assert.deepEqual(googl, { house: false, interim: false, thesis: GOOGL_THESIS, route: 'tuition', openWhy: 'MSFT leads GOOGL, QQQ flat', closeWhy: null, exit: null, maxLoss: '157.00' });
-  assert.deepEqual(rationaleFor(rows.get('real:5'), body), { house: false, interim: false, thesis: rationaleBlock().agents[1].thesis, route: 'probe',
-    openWhy: 'the open broke higher on heavy volume', closeWhy: 'target reached before the lunch lull', exit: 'agent', maxLoss: '96.00' });
-  assert.deepEqual(rationaleFor(rows.get('real:1'), body), { house: true, interim: false, thesis: HOUSE_RATIONALE.calibration, openWhy: null, closeWhy: null,
-    exit: 'house', route: 'calibration', maxLoss: '5.00' });
-  // An older House: the tape's open trade within five minutes of the opening minute, and the mechanism's whole sentences.
-  const old = ledgerCheckpoint();
-  const open = trade('orb-4', { underlying: 'SPY', structure: 'debit_vertical', legs: 2, quantity: 2, expiry: '2026-09-28', max_loss_usd: '96.00', why: 'The open broke higher on heavy volume.' }, '2026-09-28T14:11:30.000Z');
-  const row6 = old.positions.rows.find(row => row.id === 'real:6');
-  assert.deepEqual(interimRationale(row6, [open]), { openWhy: 'The open broke higher on heavy volume.', maxLoss: '96.00' });
-  for (const [label, event] of [['too late', { ...open, at: '2026-09-28T14:16:00.000Z' }], ['too early', { ...open, at: '2026-09-28T14:09:59.000Z' }],
-    ['another expiry', { ...open, payload: { ...open.payload, expiry: '2026-10-02' } }], ['another agent', { ...open, stream: 'agent:condor-vrp-3' }],
-    ['a close', { ...open, payload: { ...open.payload, action: 'close', pnl_usd: '1.00' } }], ['the shadow book', { ...open, payload: { ...open.payload, real: false } }]]) {
-    assert.deepEqual(interimRationale(row6, [event]), { openWhy: null, maxLoss: null }, label);
-  }
-  const interim = rationaleFor(row6, old, { trades: [open] });
-  assert.equal(interim.interim, true);
-  assert.equal(interim.route, 'probe', 'from the band');
-  assert.equal(interim.thesis, 'Trades the break of the opening range in the direction of the break, with a vertical sized by its maximum loss.');
-  assert.equal(interim.maxLoss, '96.00', 'the open structure’s risk');
-  assert.equal(interim.closeWhy, null, 'a close’s own reason is never the entry tag');
-  // Off the roster: the birth news's idea.
-  const stray = position('real:30', { agent: 'off-roster', pnl_usd: '0.00' });
-  assert.equal(rationaleFor(stray, old, { births: new Map([['off-roster', 'Small caps lag the index after a shock.']]) }).thesis, 'Small caps lag the index after a shock.');
-  assert.equal(rationaleFor(stray, old).route, null, 'its band is unknown');
-  // A House thesis of null means nothing survived the House's filter: no interim stands in, on the card, the roster or a row.
-  assert.equal(rationaleFor(position('real:31', { agent: 'reversal-1' }), body).thesis, null);
-  const nulled = windowCheckpoint({ agents: body.agents.map(row => (row.id === 'reversal-1' ? { ...row, mechanism: 'Buys when 7-14 DTE IV trades below realized.' } : row)) });
-  assert.equal(agentThesis(nulled, 'reversal-1'), null);
-  // An older House: the roster's mechanism under the page's rules, never raw.
-  const raw = ledgerCheckpoint({ agents: old.agents.map(row => (row.id === 'orb-4' ? { ...row, mechanism: 'When 7-14 DTE IV trades below realized, buy it. Vol mean-reverts upward.' } : row)) });
-  assert.equal(agentThesis(raw, 'orb-4'), 'Vol mean-reverts upward.');
-  // The interim trigger is a tag under the thesis rules, its tickers in capitals.
-  const numbered_ = trade('orb-4', { ...open.payload, why: 'spy up 4 sessions' }, '2026-09-28T14:11:30.000Z');
-  assert.equal(interimRationale(row6, [numbered_]).openWhy, null);
-  assert.equal(rationaleFor(row6, old, { trades: [{ ...open, payload: { ...open.payload, why: 'spy broke the open' } }] }).openWhy, 'SPY broke the open');
-  assert.equal(riskShare('-12.56', '157.00'), -8);
-  assert.equal(riskShare('31.00', '96.00'), 32.2);
-  assert.equal(riskShare(null, '157.00'), null);
-  assert.equal(riskShare('1.00', '0.00'), null);
-});
-
-// ---------------------------------------------------------------------------- performance over time
-test('Realized steps exactly at each close from the ledger; the archive’s lines break on unknowns and gaps', () => {
-  const realized = realizedSteps(ledgerCheckpoint());
-  assert.equal(realized.start, Date.parse(RESET_AT));
-  assert.deepEqual(realized.steps.map(step => [new Date(step.at).toISOString().slice(11, 16), step.id, Number(step.cents)]),
-    [['13:58', 'real:3', 20540], ['14:10', 'real:1', 20320], ['14:20', 'real:4', 18490], ['14:30', 'real:5', 21590]]);
-  assert.equal(realized.complete, true);
-  assert.equal(realizedAt(realized, Date.parse('2026-09-28T14:15:00.000Z')), 20320n);
-  assert.equal(realizedAt(realized, Date.parse('2026-09-20T00:00:00.000Z')), null, 'nothing before the start');
-  const folded = realizedSteps(ledgerCheckpoint({ positions: ledger({ rows: POSITIONS.slice(0, 4), earlier: { positions: 2, pnl_usd: '203.20' } }) }));
-  assert.equal(folded.start, Date.parse('2026-09-28T14:20:00.000Z'), 'starts at the oldest listed close');
-  assert.equal(folded.startCents, 20320n);
-  assert.deepEqual(folded.steps.map(step => Number(step.cents)), [18490, 21590]);
-  const unknown = realizedSteps(ledgerCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: null }, positions: ledger({ rows: POSITIONS.map(row => (row.id === 'real:1' ? { ...row, pnl_usd: null } : row)) }) }));
-  assert.deepEqual(unknown.steps.map(step => step.id), ['real:3'], 'stops at an unknown result');
-  assert.equal(unknown.complete, false);
-  assert.equal(realizedSteps(swarmCheckpoint()), null);
-  const points = [['14:00', '1.00'], ['14:05', '2.00'], ['14:10', null], ['14:15', '3.00'], ['14:20', '4.00'], ['14:40', '5.00']]
-    .map(([time, value]) => ({ at: `2026-09-28T${time}:00.000Z`, profit_usd: value, costs_usd: '1.00', net_usd: null }));
-  assert.deepEqual(scoreSeries(points, 'profit_usd').map(segment => segment.map(point => Number(point.cents))), [[100, 200], [300, 400], [500]]);
-  assert.deepEqual(scoreSeries(points, 'costs_usd').map(segment => segment.length), [5, 1], 'a gap over fifteen minutes breaks the line');
-  assert.deepEqual(scoreSeries(points, 'net_usd'), []);
-  const model = scoreModel(ledgerCheckpoint({ compute: BILL }), null, at);
-  assert.deepEqual([model.profit, model.costs, model.costsNow?.cents], [[], [], 32879n], 'no archive: the current costs as one point');
-  // Points from before the Profit basis never show; a sampled archive breaks its lines only on a gap three samples wide.
-  const archive = { step_ms: 1800000, points: [['2026-09-26T05:00', '9.00'], ['2026-09-28T13:00', '1.00'], ['2026-09-28T13:30', '2.00'], ['2026-09-28T14:00', '3.00'],
-    ['2026-09-28T16:00', '4.00']].map(([time, value]) => ({ at: `${time}:00.000Z`, profit_usd: value, costs_usd: value, net_usd: null })) };
-  const sampledModel = scoreModel(ledgerCheckpoint({ compute: BILL }), archive, at);
-  assert.deepEqual(sampledModel.profit.map(segment => segment.map(point => Number(point.cents))), [[100, 200, 300], [400]]);
-  assert.equal(sampledModel.points.length, 4, 'the point before the reset is gone');
-  assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-26T05:00:00.000Z', profit_usd: '9.00' }, last_net: null }, at, RESET_AT), { profit: null, net: null },
-    'never from before the basis');
-  assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-25T14:00:00.000Z', profit_usd: '-27.05' }, last_net: { at: '2026-09-28T14:00:00.000Z', net_usd: '-582.57' } }, at),
-    { profit: { at: '2026-09-25T14:00:00.000Z', usd: '-27.05' }, net: { at: '2026-09-28T14:00:00.000Z', usd: '-582.57' } });
-  assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-20T14:00:00.000Z', profit_usd: '-27.05' }, last_net: null }, at), { profit: null, net: null }, 'older than four days');
-  assert.deepEqual(lastKnown(null, at), { profit: null, net: null });
-});
-
-test('on a narrow chart the end labels are a key above their panel, left to right, apart and inside the box', () => {
-  // A phone's chart (328 wide: the key ends at 318) with the widest labels the Climb's money can make.
-  const keys = narrowKeys([{ key: 'realized', label: 'Realized +$12,345.67' }, null, { key: 'profit', label: 'Profit +$12,345.67' }], 318);
-  assert.deepEqual(keys.map(entry => entry.key), ['realized', 'profit'], 'read left to right in the given order');
-  assert.equal(keys.at(-1).textEnd, 318, 'the last ends at the edge');
-  keys.forEach((entry, index) => {
-    assert.ok(entry.keyFrom >= 0 && entry.keyFrom < entry.keyTo && entry.keyTo < entry.textEnd - labelWidth(entry.label), `${entry.key}: its swatch before its words`);
-    if (index) assert.ok(keys[index - 1].textEnd + 8 <= entry.keyFrom, 'never on each other');
-  });
-});
-
-test('market-closed bands are the hours outside 9:30 to 4:00 New York time on weekdays; ticks are clean', () => {
-  const bands = marketClosedBands(Date.parse('2026-09-26T06:25:30.000Z'), Date.parse('2026-09-30T23:00:00.000Z'))
-    .map(([from, to]) => [new Date(from).toISOString(), new Date(to).toISOString()]);
-  assert.deepEqual(bands, [
-    ['2026-09-26T06:25:30.000Z', '2026-09-28T13:30:00.000Z'], ['2026-09-28T20:00:00.000Z', '2026-09-29T13:30:00.000Z'],
-    ['2026-09-29T20:00:00.000Z', '2026-09-30T13:30:00.000Z'], ['2026-09-30T20:00:00.000Z', '2026-09-30T23:00:00.000Z']]);
-  assert.equal(new Date(nyInstant(2026, 11, 2, 9, 30)).toISOString(), '2026-11-02T14:30:00.000Z', 'after the clocks change');
-  assert.equal(new Date(nyInstant(2026, 10, 7, 16, 0)).toISOString(), '2026-10-07T20:00:00.000Z');
-  assert.deepEqual(marketClosedBands(5, 1), []);
-  assert.deepEqual(niceTicks(-25.8, 555.81), [0, 200, 400]);
-  assert.deepEqual(niceTicks(-30, 0), [-20, 0]);
-  assert.deepEqual(niceTicks(1400, 1560), [1400, 1500]);
-  assert.ok(niceTicks(0, 0).length >= 2);
-});
-
-// ---------------------------------------------------------------------------- the tape and the thought
-test('the tape names each line by its verb: a thought, a trade, a birth as its idea, a move, a retirement as its cause', () => {
-  assert.deepEqual(newsKind('is born, a new family: Small caps lag the index.', 'x'), { kind: 'born', brief: 'Small caps lag the index.', idea: 'Small caps lag the index.', head: 'is born, a new family' });
-  assert.deepEqual(newsKind('is born, forked from its parent: Holds longer.', 'x').brief, 'Holds longer.');
-  assert.deepEqual(newsKind('is born, a new family.', 'x'), { kind: 'born', brief: 'is born, a new family.', idea: null, head: 'is born, a new family' });
-  // A birth's idea is a thesis: an entry rule with its numbers never shows, on the line or opened.
-  const rule = feedLine(news('is born, a new family: Buys when 3-7 DTE IV trades below realized.', PUBLISHED_AT, 'orb-4'));
-  assert.deepEqual([rule.brief, rule.text], ['is born, a new family.', 'is born, a new family.']);
-  const mixed = feedLine(news('is born, a new family: Buys when 3-7 DTE IV trades below realized. Vol mean-reverts upward.', PUBLISHED_AT, 'orb-4'));
-  assert.deepEqual([mixed.brief, mixed.text], ['Vol mean-reverts upward.', 'is born, a new family: Vol mean-reverts upward.']);
-  // A trade's tag on the tape follows the tag rules too.
-  assert.equal(feedLine(trade('orb-4', { why: 'spy up 4 sessions' })).brief, 'opened 1 XSP iron condor · Sep 28 · max loss $184');
-  assert.deepEqual(newsKind('retired: never beat the fill cost.', 'x'), { kind: 'retired', brief: 'never beat the fill cost.' });
-  assert.deepEqual(newsKind('moves from Probe to Sized: its forward record held.', 'x'), { kind: 'moved', brief: 'Probe → Sized · its forward record held', from: 'Probe', to: 'Sized' });
-  assert.deepEqual(newsKind('approved for real money by the auditor. Clean.', 'x'), { kind: 'approved', brief: 'Clean.' });
-  assert.deepEqual(newsKind('refused for real money by the auditor.', 'x'), { kind: 'refused', brief: 'refused for real money by the auditor.' });
-  assert.deepEqual(newsKind('New code on main.', null), { kind: 'house', brief: 'New code on main.' });
-  const line = feedLine(trade('orb-4', { why: 'The open broke higher.' }));
-  assert.deepEqual([line.tape, line.group, line.brief], ['trade', 'trades', 'opened 1 XSP iron condor · Sep 28 · max loss $184 · The open broke higher.']);
-  assert.deepEqual([feedLine(note('orb-4', 'Thinking.')).group, feedLine(news('retired: x.', PUBLISHED_AT, 'orb-4')).group], ['thoughts', 'life']);
-  assert.equal(holdMs('one two three'), 6000, 'at least six seconds');
-  assert.equal(holdMs('word '.repeat(35)), 10000, 'three and a half words a second');
-  assert.equal(holdMs('word '.repeat(200)), 20000, 'at most twenty');
-});
-
-// ---------------------------------------------------------------------------- the page, mounted on a new House
-test('mounted on a new House: the retired agent on Tuition, each position’s reason, the last known Profit and the tape’s filters', async () => {
-  const { withBrowser, stubPage, FLOOR_IDS, words } = await import('./harness.mjs');
-  const { startCapital } = await import('../capital/capital.js');
-  let now = at + 30000;
-  const { capital } = floor();
-  capital.now = () => now;
-  // An earlier priced checkpoint for the archive, then the current one with Profit unknown.
-  const priced = windowCheckpoint({ published_at: '2026-09-28T14:40:00.000Z', trading: { as_of: '2026-09-28T14:40:00.000Z', pnl_usd: '213.40' },
-    compute: { ...BILL, as_of: '2026-09-28T14:40:00.000Z' }, positions: ledger({ as_of: '2026-09-28T14:40:00.000Z', rows: WINDOW_POSITIONS, other: { ...ledger().other, as_of: '2026-09-28T14:40:00.000Z' } }),
-    account: { ...swarmCheckpoint().account, as_of: '2026-09-28T14:40:00.000Z' }, gym: { ...swarmCheckpoint().gym, as_of: '2026-09-28T14:40:00.000Z' },
-    performance: { ...swarmCheckpoint().performance, verified_at: '2026-09-28T14:40:00.000Z' }, structures: [],
-    levels: levelsBlock({ as_of: '2026-09-28T14:40:00.000Z' }), rationale: rationaleBlock({ as_of: '2026-09-28T14:40:00.000Z' }) });
-  priced.agents = priced.agents.map(row => ({ ...row, retired_at: row.retired_at && row.retired_at > priced.published_at ? '2026-09-28T14:35:00.000Z' : row.retired_at }));
-  assert.equal(validCheckpoint(priced), true);
-  assert.equal((await post(capital, '/api/capital/checkpoint', priced)).status, 200);
-  const unpriced = windowCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: null }, compute: BILL,
-    positions: ledger({ rows: WINDOW_POSITIONS.map(row => (row.id === 'real:8' ? { ...row, pnl_usd: null } : row)), other: null, unreconciled_usd: null }) });
-  assert.equal((await post(capital, '/api/capital/checkpoint', unpriced)).status, 200);
-  const events = [trade('googl-lags', { underlying: 'GOOGL', structure: 'debit_vertical', legs: 2, expiry: '2026-10-07', max_loss_usd: '157.00', why: 'msft leads googl, qqq flat' }, '2026-09-28T14:31:40.000Z'),
-    note('googl-lags', 'GOOGL has not followed MSFT yet; the vertical stays on.', '2026-09-28T14:45:00.000Z'),
-    news('retired: the family left the Gym after review.', '2026-09-28T14:46:00.000Z', 'reversal-1'),
-    trade('ironfly-quiet', { real: false, underlying: 'SPY', structure: 'iron_butterfly', legs: 4, max_loss_usd: '312.00', why: 'quiet morning' }, '2026-09-28T14:44:00.000Z')];
-  assert.equal((await post(capital, '/api/capital/events', batch(...events))).status, 200);
-  const root = stubPage('floor', FLOOR_IDS);
-  await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
-    Date.now = () => now;
-    const feed = await startCapital(root);
-    feed.stop();
-    // Profit is unknown now: a dash, and under it the last value the House could price, dated.
-    const numbers = root.querySelector('#floor-numbers');
-    assert.equal(numbers.withClass('number-value')[0].textContent, '—');
-    const last = numbers.withClass('number-last');
-    assert.deepEqual(last.map(node => node.textContent), ['+$213.40 · 10:40 AM', '−$127.89 · 10:40 AM'], 'Net: Profit without open gains, less the bill');
-    assert.equal(last[0].getAttribute('title'), 'Last value the House could price.');
-    // The Climb: the House's counts, the look pips, and the retired agent standing on Tuition with its real money.
-    const board = root.querySelector('#floor-agents');
-    const tuition = board.withClass('dot').filter(node => node.dataset.step === 'tuition');
-    assert.deepEqual(tuition.map(node => [node.dataset.agent, node.getAttribute('aria-label')]), [['googl-lags', 'Meriwether 2, Tuition, retired, real money open']]);
-    assert.match(tuition[0].className, /money-real.*is-retired/);
-    const pips = board.withClass('pips')[0];
-    assert.deepEqual(pips.children.map(node => node.className), ['pip is-pass', 'pip is-pass', 'pip is-pass', 'pip is-fail']);
-    assert.match(words(board.withClass('step-label').find(node => node.dataset.step === 'train')), /^Train ever 49$/);
-    // The thought on the card is the agent's, with its level.
-    assert.equal(root.querySelector('#floor-now').withClass('chip-level')[0].textContent, 'Tuition');
-    // Its position: the House's thesis, the trigger, Tuition, the life bar, and its risk with no result yet.
-    const positions = root.querySelector('#floor-positions');
-    const item = positions.withClass('pos-item').find(node => node.dataset.position === 'real:8');
-    assert.equal(words(item.children[0]), 'Meriwether 2 GOOGL call debit vertical open 27m —');
-    // The newest open agent position stands open: its reason is the first thing the panel says.
-    assert.equal(item.children[0].getAttribute('aria-expanded'), 'true');
-    const card = item.withClass('rationale')[0];
-    assert.equal(card.withClass('rationale-thesis')[0].textContent, GOOGL_THESIS, 'the whole thesis, its conclusion too');
-    assert.equal(words(card.withClass('rationale-why')[0]), 'MSFT leads GOOGL, QQQ flat Tuition');
-    assert.match(words(card), /Sep 28 Oct 7 risk \$157 — → thoughts → agent$/);
-    assert.equal(card.withClass('life-now').length, 1, 'open: a now tick on its life');
-    // A closed one says who closed it.
-    positions.withClass('pos-item').find(node => node.dataset.position === 'real:5').children[0].click();
-    const closed = positions.withClass('pos-item').find(node => node.dataset.position === 'real:5').withClass('rationale')[0];
-    assert.equal(words(closed.withClass('rationale-why')[0]), 'the open broke higher on heavy volume ↩ target reached before the lunch lull · agent Probe');
-    assert.match(words(closed), /\+32% of risk/);
-    assert.equal(words(positions.withClass('pos-foot')[0]), 'other — · Profit —', 'while Profit is unknown, so is the sum');
-    // A trade off real money says so in words on the tape, not only in a fainter colour; real money is the default.
-    const tapeLines = root.querySelector('#floor-feed').withClass('tape-line').filter(node => node.dataset.kind === 'trade');
-    const shadowLine = tapeLines.find(node => node.className.includes('is-shadow'));
-    assert.deepEqual(shadowLine.withClass('tag').map(node => [node.className, node.textContent]), [['tag tag-shadow', 'shadow']]);
-    assert.ok(tapeLines.some(node => !node.className.includes('is-shadow') && node.withClass('tag').length === 0), 'a real trade carries no tag');
-    // The tape's filters: Life alone.
-    const filters = root.querySelector('#floor-filters').withClass('filter');
-    filters[0].click();
-    filters[1].click();
-    const kinds = root.querySelector('#floor-feed').withClass('tape-line').map(node => node.dataset.kind);
-    assert.deepEqual(kinds, ['retired']);
-    assert.match(words(root.querySelector('#floor-feed')), /^Leahy the family left the Gym after review\. \d+m$/);
-  });
 });
