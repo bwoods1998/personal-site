@@ -130,12 +130,15 @@ test('a note is held while it is read; newer notes queue behind a +N pill, which
     pill().click();
     assert.match(shown(), /A fourth thought/, '+N skips to the newest');
     assert.equal(pill().hidden, true);
-    // A long note clamps with ↓, and an expanded note stays until its reader closes it.
+    // A note the card cuts gets a ↓ (measured: how much fits depends on the card's width), and an expanded note stays until
+    // its reader closes it. A note that fits has none, however long it is.
+    const more = card().withClass('think-more')[0];
+    assert.equal(more.hidden, true, 'a note that fits: no ↓');
     clock += 30000;
+    Object.assign(card().withClass('think-text')[0], { scrollHeight: 216, clientHeight: 135 });
     const full = 'I am checking whether the same mechanism holds in another market session. '.repeat(9).trim();
     send('two', full, 'Hilibrand');
-    const more = card().withClass('think-more')[0];
-    assert.equal(more.hidden, false);
+    assert.equal(more.hidden, false, 'a cut note: ↓');
     more.click();
     assert.equal(more.getAttribute('aria-expanded'), 'true');
     clock += 60000;

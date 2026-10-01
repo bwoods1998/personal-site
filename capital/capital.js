@@ -507,8 +507,6 @@ export function positionsLine(ledger) {
 // position above. One row per family as the House sends them (the alive by trades, then the retired), and the totals
 // over every family, shown or not. Null while the House publishes no block: the section stays hidden.
 export const PRACTICE_CAPTION = 'Shadow trades on live quotes, never real money. Not in Profit or Net.';
-export const PRACTICE_COLUMNS = [['who', 'Agent'], ['what', 'Structure'], ['tier', 'Version'], ['sessions', 'Sessions'], ['trades', 'Trades'],
-  ['wins', 'Won'], ['pnl', 'P&L'], ['ror', 'On risk']];
 export const PRACTICE_TIER_WORDS = { validated: 'validated', train: 'Train' };
 export function practiceTable(checkpoint) {
   const block = checkpoint?.practice;
@@ -552,10 +550,12 @@ export function feedLine(event, names = new Map()) {
   const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
   const base = { id: show(event.id), seq: Number(event.seq) || 0, at: show(event.at), pnl: '', tone: '', real: null };
   if (event.kind === 'swarm.news') {
-    const text = plainNote(payload.text);
+    const raw = plainNote(payload.text);
     const who = agentId(payload.agent) ? payload.agent : null;
-    if (!text) return null;
-    const life = newsKind(text, who);
+    if (!raw) return null;
+    const life = newsKind(raw, who);
+    // A birth's idea shows only under the thesis rules, in full too: never an entry rule with its numbers.
+    const text = life.kind === 'born' ? (life.idea ? `${life.head}: ${life.idea}` : `${life.head}.`) : raw;
     return { ...base, kind: 'swarm', agent: who || 'swarm', agentId: who, name: who ? event.display_name || names.get(who) || titleCase(who) : 'The House', text,
       tape: life.kind, brief: life.brief, group: 'life' };
   }
@@ -566,7 +566,8 @@ export function feedLine(event, names = new Map()) {
     const text = plainNote(payload.text);
     return text ? { ...base, kind: 'thinking', agent, agentId: agent, name, text, tape: 'thought', brief: text, group: 'thoughts' } : null;
   }
-  const why = plainNote(payload.why);
+  // The order's own tag, only under the thesis rules (no number, no code), with its tickers in capitals.
+  const why = tickerCase(plainTag(payload.why, 240), [payload.underlying]);
   return {
     ...base, kind: 'trading', agent, agentId: agent, name, text: tradeWords(payload), real: payload.real === true,
     pnl: numeric(payload.pnl_usd) ? signedMoney(payload.pnl_usd) : '', tone: signOf(payload.pnl_usd), why,
@@ -578,8 +579,13 @@ export function feedLine(event, names = new Map()) {
 export function newsKind(text, agent) {
   const value = plainNote(text);
   if (!agent) return { kind: 'house', brief: value };
-  let match = /^is born, (?:a new family|forked from its parent)(?::\s*(.+))?/i.exec(value);
-  if (match) return { kind: 'born', brief: match[1] ? match[1].trim() : value };
+  let match = /^(is born, (?:a new family|forked from its parent))(?::\s*(.+))?/i.exec(value);
+  if (match) {
+    // The idea is the family's mechanism as the publisher cut it, read under the thesis rules (a fragment, a number or a
+    // sentence a number was cut out of never shows); with none left, the birth reads as itself.
+    const idea = match[2] ? thesisText(match[2], 280, 12, { interim: true }) : null;
+    return { kind: 'born', brief: idea || `${match[1]}.`, idea, head: match[1] };
+  }
   match = /^retired:\s*(.+)$/i.exec(value);
   if (match) return { kind: 'retired', brief: match[1].trim() };
   match = /^moves from (\w+) to (\w+)(?::\s*(.+))?/i.exec(value);
@@ -633,28 +639,98 @@ export function heroNote(events, current = null, { holdMs = 45000 } = {}) {
 // written as a word (the pronoun "one" aside), within the limit. Null when nothing survives: the card then shows no
 // thesis rather than a raw mechanism. The House's thesis always replaces this one.
 const CODE_MARKS = /[=_{}[\]<>`#|\\]|->|::|\bctx\.|\bnp\.|\bPARAMS\b|\bNEEDS\b|\bdef\s|\breturn\s|\bimport\s|\blambda\b/;
-const NUMBER_WORD = new RegExp('^(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|'
-  + 'seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|hundreds|thousand|thousands|million|half|'
-  + 'halves|halve|third|thirds|quarter|quarters|fourth|fourths|fifth|fifths|sixth|sixths|seventh|eighth|ninth|tenth|tenths|hundredth|'
-  + 'hundredths|first|second|twice|thrice|double|triple|dozen|point|percent|percentage|percentages|fraction|fractions|basis|bps|pct)$', 'i');
-const UNIT_WORDS = new Set(['day', 'days', 'session', 'sessions', 'week', 'weeks', 'month', 'months', 'year', 'years', 'hour', 'hours', 'minute',
-  'minutes', 'bar', 'bars', 'standard', 'sigma', 'sigmas', 'deviation', 'deviations', 'strike', 'strikes', 'contract', 'contracts', 'lot', 'lots',
-  'leg', 'legs', 'percent', 'point', 'points', 'dte', 'delta', 'deltas', 'times', 'x', 'tick', 'ticks', 'cent', 'cents', 'dollar', 'dollars']);
-// A number written as a word, except the pronoun "one" ("investors reprice one on the other's capex").
+const UNITS_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const TENS_WORDS = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const ORDINAL_WORDS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth',
+  'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth', 'thirtieth', 'fortieth', 'fiftieth',
+  'sixtieth', 'seventieth', 'eightieth', 'ninetieth', 'hundredth', 'thousandth', 'millionth', 'billionth'];
+// Every way a number hides in a word (as the House's `league/swarm/public.py` reads it, Oct 1, 2026): the cardinals and their
+// ordinals (and plurals: "two thirds", "the twelfths"), decades, multiples ("twice", "doubled", "threefold"), money's coins,
+// a fortnight, the quantiles, and the words that only carry a measure ("percent", "basis").
+const NUMBER_WORDS = new Set([
+  'zero', ...UNITS_WORDS, 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', ...TENS_WORDS,
+  'hundred', 'hundreds', 'thousand', 'thousands', 'million', 'millions', 'billion', 'billions', 'trillion', 'dozen', 'dozens',
+  'tens', 'teens', 'twenties', 'thirties', 'forties', 'fifties', 'sixties', 'seventies', 'eighties', 'nineties',
+  ...ORDINAL_WORDS, ...ORDINAL_WORDS.filter(word => word !== 'first' && word !== 'second').map(word => `${word}s`),
+  'half', 'halves', 'halve', 'halved', 'halving', 'quarter', 'quarters', 'twice', 'thrice', 'double', 'doubles', 'doubled', 'doubling', 'triple',
+  'triples', 'tripled', 'tripling', 'quadruple', 'quadrupled', 'fortnight', 'fortnights', 'nickel', 'nickels', 'dime', 'dimes', 'penny', 'pennies',
+  'tercile', 'terciles', 'quartile', 'quartiles', 'quintile', 'quintiles', 'decile', 'deciles',
+  'point', 'percent', 'percentage', 'percentages', 'fraction', 'fractions', 'basis', 'bps', 'pct',
+]);
+const UNIT_WORDS = new Set(['day', 'days', 'session', 'sessions', 'week', 'weeks', 'month', 'months', 'year', 'years', 'hour', 'hours', 'hr', 'hrs',
+  'minute', 'minutes', 'min', 'mins', 'sec', 'secs', 'wk', 'wks', 'mo', 'mos', 'yr', 'yrs', 'bar', 'bars', 'standard', 'sigma', 'sigmas', 'deviation',
+  'deviations', 'sd', 'sds', 'stdev', 'stdevs', 'atr', 'atrs', 'strike', 'strikes', 'contract', 'contracts', 'lot', 'lots', 'leg', 'legs', 'percent',
+  'point', 'points', 'dte', 'delta', 'deltas', 'times', 'x', 'tick', 'ticks', 'cent', 'cents', 'dollar', 'dollars', 'notch', 'notches', 'handle',
+  'handles', 'bp', 'pip', 'pips']);
+// A unit of spread: "a sigma", "an ATR", "a single standard deviation" are each a number of them.
+const SPREAD_WORDS = new Set(['sigma', 'stdev', 'sd', 'standard', 'deviation', 'atr']);
+// The words that make the "one" before them a measure even with a word between: "one trading session", "one full standard
+// deviation", "one more week".
+const MEASURE_WORDS = new Set([...UNIT_WORDS, 'trading', 'business', 'calendar', 'full', 'whole', 'more', 'less', 'extra', 'additional', 'further']);
+// A number word run together with another, or with a unit ("twentyfive", "tenpercent", "fivedays"), and "-fold" multiples.
+const runTogether = token => (/^[a-z]+fold$/.test(token) && token !== 'fold')
+  || [...NUMBER_WORDS].some(head => head.length > 2 && token.length > head.length && token.startsWith(head)
+    && (NUMBER_WORDS.has(token.slice(head.length)) || UNIT_WORDS.has(token.slice(head.length))));
+// The pronoun "one" passes only where English uses it as a pronoun ("one another", "one of", "one on the other's capex",
+// "no one", "the one", "each one"), and never before a measure or beside another number ("the one day", "one twenty").
+const PRONOUN_BEFORE = new Set(['no', 'the', 'each', 'any', 'every', 'either', 'neither', 'which', 'this', 'that']);
+const PRONOUN_LINKS = new Set(['on', 'to', 'over', 'or', 'against', 'versus', 'vs', 'after', 'from', 'than', 'and']);
+function pronounOne(tokens, index) {
+  const [before, after, next, last] = [tokens[index - 1] || '', tokens[index + 1] || '', tokens[index + 2] || '', tokens[index + 3] || ''];
+  if (NUMBER_WORDS.has(before) || NUMBER_WORDS.has(after) || MEASURE_WORDS.has(after) || runTogether(after)) return false;
+  return after === 'another' || after === 'of' || after === 'sided' || PRONOUN_BEFORE.has(before)
+    || (PRONOUN_LINKS.has(after) && next === 'the' && /^other/.test(last)) || (PRONOUN_LINKS.has(after) && /^other/.test(next));
+}
+// A number written as a word, except the pronoun "one". Tokens are read after NFKC folding, so a fullwidth "ｏｎｅ" is "one".
 export function numbered(sentence) {
-  const tokens = show(sentence).toLowerCase().match(/[a-z']+/g) || [];
+  const tokens = show(sentence).normalize('NFKC').toLowerCase().match(/[a-z']+/g) || [];
   return tokens.some((token, index) => {
-    if (!NUMBER_WORD.test(token)) return false;
-    if (token !== 'one') return true;
-    const before = tokens[index - 1] || '';
-    const after = tokens[index + 1] || '';
-    return NUMBER_WORD.test(before) || NUMBER_WORD.test(after) || UNIT_WORDS.has(after);
+    const word = token.replace(/'s$/, '');
+    if (word === 'one') return !pronounOne(tokens, index);
+    // "single" before a unit, and "a"/"an" before a unit of spread, are each a count of one.
+    if (word === 'single' || word === 'singles') return MEASURE_WORDS.has(tokens[index + 1]) || SPREAD_WORDS.has(tokens[index + 1]);
+    if ((word === 'a' || word === 'an') && SPREAD_WORDS.has(tokens[index + 1])) return true;
+    return NUMBER_WORDS.has(word) || runTogether(word);
   });
 }
-export const sentencesOf = text => show(text).replace(/\s+/g, ' ').trim().replace(/([.!?])\s+/g, '$1\u0000').split('\u0000').filter(Boolean);
-export function thesisText(text, limit = 280, minimum = 12) {
-  const keep = sentencesOf(text).filter(sentence => !/\d/.test(sentence) && !CODE_MARKS.test(sentence) && !/[:()]/.test(sentence)
-    && !numbered(sentence) && /[.!?]$/.test(sentence));
+// Characters no public sentence carries: any numeral in any script ("½", "Ⅻ", "٣"), an invisible format mark (a soft
+// hyphen or a zero-width space that splits a number word), and a letter outside Latin-1 (a Greek "ο" in "οne").
+const HIDDEN_NUMBER = /[\p{N}\p{Cf}]/u;
+const FOREIGN_LETTER = /(?![\u0000-\u00ff])\p{L}/u;
+// One sentence the public may read: no digit, numeral or hidden mark, no colon or bracket, no code, no number word.
+export const plainSentence = sentence => Boolean(sentence) && !HIDDEN_NUMBER.test(sentence) && !FOREIGN_LETTER.test(sentence)
+  && !CODE_MARKS.test(sentence) && !/[:()]/.test(sentence) && !numbered(sentence);
+// A short tag (an order's `why`) under the same rules, within its limit.
+export const plainTag = (value, limit = 80) => {
+  const text = plainNote(value);
+  return text && text.length <= limit && plainSentence(text) ? text : null;
+};
+// A tag's tickers in capitals ("msft leads googl, qqq flat" reads "MSFT leads GOOGL, QQQ flat"): the symbols the swarm
+// trades, and any the row names, never an ordinary word.
+const TICKERS = new Set(['spy', 'qqq', 'iwm', 'dia', 'xsp', 'spx', 'spxw', 'ndx', 'rut', 'vix', 'vxx', 'uvxy', 'gld', 'slv', 'tlt', 'ief', 'hyg', 'lqd',
+  'uso', 'eem', 'efa', 'fxi', 'smh', 'soxx', 'xle', 'xlf', 'xlk', 'xlu', 'xlv', 'xly', 'xlp', 'xli', 'xlb', 'kre', 'arkk', 'tqqq', 'sqqq', 'msft', 'googl',
+  'goog', 'aapl', 'nvda', 'amzn', 'meta', 'tsla', 'amd', 'avgo', 'nflx', 'orcl', 'crm', 'intc', 'mu', 'jpm', 'gs', 'bac', 'xom', 'cvx', 'brk', 'unh', 'lly']);
+const ORDINARY = new Set(['a', 'all', 'an', 'and', 'are', 'at', 'be', 'big', 'by', 'can', 'for', 'go', 'has', 'have', 'in', 'is', 'it', 'key', 'low', 'new',
+  'now', 'of', 'on', 'one', 'or', 'out', 'see', 'so', 'the', 'to', 'top', 'two', 'up', 'was', 'well']);
+export function tickerCase(text, symbols = []) {
+  if (!text) return text ?? null;
+  const own = new Set(symbols.map(symbol => show(symbol).toLowerCase()).filter(symbol => /^[a-z]{1,5}$/.test(symbol) && !ORDINARY.has(symbol)));
+  return text.replace(/\b[a-z]{1,5}\b/gi, word => (TICKERS.has(word.toLowerCase()) || own.has(word.toLowerCase()) ? word.toUpperCase() : word));
+}
+export const sentencesOf = text => show(text).replace(/\s+/g, ' ').trim().replace(/([.!?…])\s+/g, '$1\u0000').split('\u0000').filter(Boolean);
+// A sentence an older publisher has already cut a number out of ("exceeds standard deviations", "IV above ."): the House's
+// news strips decimals and brackets, which can leave a sentence that reads whole but says something else. Never shown.
+const COMPARATORS = new Set(['exceeds', 'exceed', 'exceeding', 'above', 'below', 'under', 'over', 'than', 'beyond', 'past', 'within', 'by', 'at',
+  'least', 'most', 'near', 'around', 'about', 'next', 'last', 'top', 'bottom', 'roughly', 'nearly', 'almost']);
+export function cutNumber(sentence) {
+  if (/\s[.,;!?…]/.test(sentence)) return true;
+  const tokens = show(sentence).toLowerCase().match(/[a-z']+/g) || [];
+  return tokens.some((token, index) => COMPARATORS.has(token) && UNIT_WORDS.has(tokens[index + 1]));
+}
+// Whole sentences in order while they fit, each one plain and ending ".", "!" or "?". `interim`: text an older publisher
+// may have cut numbers out of, so a sentence that reads as cut is dropped too.
+export function thesisText(text, limit = 280, minimum = 12, { interim = false } = {}) {
+  const keep = sentencesOf(text).filter(sentence => plainSentence(sentence) && /[.!?]$/.test(sentence) && !(interim && cutNumber(sentence)));
   let out = '';
   for (const sentence of keep) {
     const next = `${out} ${sentence}`.trim();
@@ -664,12 +740,13 @@ export function thesisText(text, limit = 280, minimum = 12) {
   if (!out && keep.length) out = `${keep[0].slice(0, limit - 1).replace(/\s+\S*$/, '').replace(/[ ,;-]+$/, '')}…`;
   return out.length >= minimum ? out : null;
 }
-// A published mechanism cut at its last full sentence (the publisher cuts it at 240 characters, mid-word if it must).
-export function wholeSentences(text) {
-  const full = show(text).replace(/\s+/g, ' ').trim();
-  if (!full || /[.!?]$/.test(full)) return full;
-  const end = Math.max(full.lastIndexOf('. '), full.lastIndexOf('! '), full.lastIndexOf('? '));
-  return end > 0 ? full.slice(0, end + 1) : `${full.replace(/\s+\S*$/, '')}…`;
+// The House's own thesis as the page shows it: the House filtered it already; the page drops any sentence its own rules
+// refuse (they can be stricter), and shows nothing rather than a part that reads wrong.
+export function houseThesis(text) {
+  if (typeof text !== 'string') return null;
+  const all = sentencesOf(text);
+  const kept = all.filter(plainSentence);
+  return kept.length && kept.join(' ').length >= 12 ? kept.join(' ') : null;
 }
 export const firstSentence = text => sentencesOf(text)[0] || '';
 
@@ -733,6 +810,7 @@ export function levelOf(agent, checkpoint, held = openMoney(checkpoint), publish
 export const moneyOf = (level, money) => (money?.real ? 'real' : money?.incubator ? 'incubator' : level === 'practice' || money?.shadow ? 'shadow' : 'research');
 export const MONEY_WORDS = { research: 'researching', shadow: 'trading the shadow book', incubator: 'incubator money open', real: 'real money open' };
 const countOf = value => (Number.isSafeInteger(value) && value >= 0 ? value : null);
+const ROUTE_STEPS = { tuition: 'tuition', incubator: 'incubator', probe: 'probe', sized: 'sized' };
 // The whole map: each step's agents now and its families ever, the graveyard, the House's own trades and the holdout's
 // looks. A count the House has not published is null and reads "—", never 0. `born` adds provisional dots for births on
 // the tape the checkpoint has not confirmed yet; `gone` takes off the map the agents the tape has just retired.
@@ -753,6 +831,20 @@ export function climbModel(checkpoint, { born = [], gone = [] } = {}) {
     if (leaving.has(agent.id) && !held.has(agent.id)) { left += 1; continue; }
     const dot = { id: show(agent.id), name: agentName(agent), ordinal: ordinalOf(agent.display_name), level, step: key, band: show(agent.band),
       money: moneyOf(level, held.get(agent.id)), retired: agent.band === 'retired', provisional: false, progress: agentProgress(agent, checkpoint) };
+    steps[key].agents.push(dot);
+    dots.set(dot.id, dot);
+  }
+  // An agent off the roster (the roster keeps only a few recent retirements) that still holds open real money stands, retired,
+  // on that money's step all the same: the step its trade's route names, else the Incubator for an incubator row and
+  // Tuition for any other agent row (the one real step a Gym agent reaches without the holdout).
+  const onRoster = new Set(roster.map(agent => agent.id));
+  const routes = new Map((Array.isArray(checkpoint?.rationale?.trades) ? checkpoint.rationale.trades : []).map(trade => [trade?.id, trade?.route]));
+  for (const row of Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : []) {
+    if (row?.status !== 'open' || !AGENT_SOURCES.includes(row.source) || !agentId(row.agent) || onRoster.has(row.agent) || dots.has(row.agent)) continue;
+    const key = ROUTE_STEPS[routes.get(row.id)] || (row.source === 'incubator' ? 'incubator' : 'tuition');
+    const name = validDisplayName(row.display_name) ? row.display_name : titleCase(row.agent);
+    const dot = { id: row.agent, name, ordinal: ordinalOf(name), level: STEPS.find(step => step.key === key).level, step: key, band: 'retired',
+      money: row.source === 'incubator' ? 'incubator' : 'real', retired: true, provisional: false, progress: null };
     steps[key].agents.push(dot);
     dots.set(dot.id, dot);
   }
@@ -786,9 +878,12 @@ export function climbModel(checkpoint, { born = [], gone = [] } = {}) {
 // The map's geometry for a box of `width` by `height` pixels: each step's platform (x, y, w), the centre of every dot, the
 // gold line, the side path and the off-map marks. Pure, so a resize redraws the same map.
 export const PITCH = 14;
+// The dots grow with a big box (theatre, a wide screen), from 14 to 18 pixels apart, so the map fills it.
+export const pitchFor = (width, height) => Math.round(Math.max(PITCH, Math.min(18, width / 86, height / 25)));
 export function climbLayout(model, width = 800, height = 300) {
   const W = Math.max(320, Number(width) || 800);
   const H = Math.max(240, Number(height) || 300);
+  const PITCH = pitchFor(W, H);
   const pad = 16;
   const label = 32;
   const sideY = H - label;
@@ -805,14 +900,14 @@ export function climbLayout(model, width = 800, height = 300) {
   const total = Object.values(widths).reduce((sum, value) => sum + value, 0) + goldGap + pad * 2;
   if (total < W) {
     const others = MAIN_STEPS.filter(key => key !== 'train');
-    const share = Math.min(110, (W - total) / others.length);
+    const share = (W - total) / others.length;
     for (const key of others) widths[key] += share;
   } else if (total > W) {
     const over = total - W;
     const others = MAIN_STEPS.filter(key => key !== 'train');
     for (const key of others) widths[key] = Math.max(64 + gate(key), widths[key] - over / others.length);
   }
-  const rise = Math.max(14, Math.min(40, (mainY - 110) / (MAIN_STEPS.length - 1)));
+  const rise = Math.max(14, Math.min(PITCH * 3.5, (mainY - 110) / (MAIN_STEPS.length - 1)));
   const steps = {};
   let x = pad;
   MAIN_STEPS.forEach((key, index) => {
@@ -849,7 +944,7 @@ export function climbLayout(model, width = 800, height = 300) {
     for (const dot of dots.values()) dot.cy -= lift;
   }
   return {
-    width: W, height: H, rise, steps, dots, goldX, mainY: mainY - lift, sideY: sideY - lift,
+    width: W, height: H, pitch: PITCH, rise, steps, dots, goldX, mainY: mainY - lift, sideY: sideY - lift,
     graveyard: { x: pad + 6, y: sideY - lift }, house: { x: Math.max(steps.incubator.x + steps.incubator.w + 44, steps.probe.x + 8), y: sideY - lift },
   };
 }
@@ -867,9 +962,13 @@ export function interimRationale(row, tradeEvents = []) {
     && event.payload.real === true && streamAgentOf(event.stream) === row?.agent && event.payload.underlying === row.underlying
     && event.payload.structure === row.structure && event.payload.expiry === row.expiry
     && Date.parse(event.at) >= opened && Date.parse(event.at) <= opened + 5 * 60000);
-  return match ? { openWhy: plainNote(match.payload.why) || null, maxLoss: numeric(match.payload.max_loss_usd) ? match.payload.max_loss_usd : null }
+  // The tape's `why` can run to 240 characters and keep integers: it shows only as a tag under the thesis rules.
+  return match ? { openWhy: plainTag(match.payload.why, 80), maxLoss: numeric(match.payload.max_loss_usd) ? match.payload.max_loss_usd : null }
     : { openWhy: null, maxLoss: null };
 }
+// Every symbol the page has seen traded, for `tickerCase`.
+const symbolsOf = checkpoint => [...new Set([...(Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : []),
+  ...(Array.isArray(checkpoint?.structures) ? checkpoint.structures : [])].map(row => row?.underlying).filter(Boolean))];
 // Everything the rationale card says about one ledger row. The House's `rationale` block first; while it sends none, the
 // tape's open trade and the roster's mechanism (filtered by `thesisText`), or the agent's birth news when it has left the
 // roster. A House row's reason is a fixed line.
@@ -882,20 +981,29 @@ export function rationaleFor(row, checkpoint, { trades = [], births = new Map() 
       route: trade?.route ?? (row.source === 'house' ? 'house' : 'calibration'), maxLoss: trade?.max_loss_usd ?? null };
   }
   const agent = (Array.isArray(checkpoint?.agents) ? checkpoint.agents : []).find(entry => entry?.id === row.agent) || null;
-  const published = (Array.isArray(block?.agents) ? block.agents : []).find(entry => entry?.id === row.agent);
-  const thesis = published ? published.thesis : thesisText(agent?.mechanism) || thesisText(births.get(row.agent)) || null;
+  const thesis = agentThesis(checkpoint, row.agent, births);
   const interim = interimRationale(row, trades);
   const structure = (Array.isArray(checkpoint?.structures) ? checkpoint.structures : []).find(entry => entry?.real === true && entry.agent === row.agent
     && entry.underlying === row.underlying && entry.structure === row.structure && entry.expiry === row.expiry);
   const route = trade ? trade.route : row.source === 'incubator' ? 'incubator'
     : ['probe', 'sized'].includes(agent?.band) ? agent.band : agent?.band === 'gym' ? 'tuition' : null;
+  const symbols = [row.underlying, ...symbolsOf(checkpoint)];
   return {
     house: false, interim: !trade, thesis, route,
-    openWhy: trade ? trade.open_why : interim.openWhy,
-    closeWhy: trade ? trade.close_why : null,
+    openWhy: tickerCase(trade ? plainTag(trade.open_why) : interim.openWhy, symbols),
+    closeWhy: tickerCase(trade ? plainTag(trade.close_why) : null, symbols),
     exit: trade ? trade.exit : null,
     maxLoss: trade?.max_loss_usd ?? (row.status === 'open' && structure ? structure.max_loss_usd : null) ?? interim.maxLoss,
   };
+}
+// An agent's thesis wherever the page shows it (its card, its step's roster, its positions): the House's own when the House
+// publishes `rationale` for it, even when that is null (nothing survived the House's filter: then nothing shows); else, from
+// an older House, its mechanism or its birth news under the page's own rules. Never a raw mechanism.
+export function agentThesis(checkpoint, id, births = new Map()) {
+  const published = (Array.isArray(checkpoint?.rationale?.agents) ? checkpoint.rationale.agents : []).find(entry => entry?.id === id);
+  if (published) return houseThesis(published.thesis);
+  const agent = (Array.isArray(checkpoint?.agents) ? checkpoint.agents : []).find(entry => entry?.id === id) || null;
+  return thesisText(agent?.mechanism, 280, 12, { interim: true }) || thesisText(births.get(id), 280, 12, { interim: true }) || null;
 }
 // "−8% of risk": the P&L as a share of the most the position could lose, to a whole percent. Never a maximum gain.
 export function riskShare(pnl, risk) {
@@ -939,7 +1047,7 @@ export function realizedAt(realized, at) {
 // One archived series in segments: a segment breaks on an unknown point or a gap of more than fifteen minutes, so the line
 // never joins across what nobody recorded.
 export const SCORE_GAP_MS = 15 * 60 * 1000;
-export function scoreSeries(points, key) {
+export function scoreSeries(points, key, gapMs = SCORE_GAP_MS) {
   const segments = [];
   let current = null;
   let last = null;
@@ -947,7 +1055,7 @@ export function scoreSeries(points, key) {
     .filter(point => Number.isFinite(point.at)).sort((left, right) => left.at - right.at);
   for (const point of ordered) {
     if (!numeric(point.value)) { current = null; continue; }
-    if (!current || point.at - last > SCORE_GAP_MS) { current = []; segments.push(current); }
+    if (!current || point.at - last > gapMs) { current = []; segments.push(current); }
     current.push({ at: point.at, cents: centsOf(point.value) });
     last = point.at;
   }
@@ -1058,7 +1166,9 @@ async function loadScore() {
     && typeof value.at === 'string' && Number.isFinite(Date.parse(value.at)) && numeric(value[key]));
   if (data?.schema_version !== SCHEMA_VERSION || !Array.isArray(data.points) || data.points.length > HISTORY_LIMIT || !data.points.every(validScorePoint)
       || !last(data.last_profit, 'profit_usd') || !last(data.last_net, 'net_usd')) throw new Error('Invalid score history.');
-  return { points: data.points, last_profit: data.last_profit, last_net: data.last_net };
+  // `step_ms`: the archive's spacing once it is sampled (an older Worker sends none: five minutes).
+  const step = Number.isSafeInteger(data.step_ms) && data.step_ms >= 300000 ? data.step_ms : 300000;
+  return { points: data.points, last_profit: data.last_profit, last_net: data.last_net, step_ms: step };
 }
 async function loadHistory() {
   const data = await fetchJson(`${apiBase(pageSearch())}/history`);
@@ -1152,11 +1262,11 @@ function startFeed({ streams, onEvents, onStatus }) {
 // Motion follows only real events, never history, and stops under reduced motion.
 const TAPE_LIMIT = 60;
 const PHONE_TAPE_LINES = 6;
-const NOTE_CLAMP_CHARS = 300;
 const QUIET_MS = 10 * 60 * 1000;
 const GLOW_MS = 10 * 60 * 1000;
 const MAX_RIPPLES = 4;
 const LAST_KNOWN_MS = 4 * 86400000;
+const SCORE_READ_MS = 5 * 60000;
 export const LAST_KNOWN_TITLE = 'Last value the House could price.';
 export const BALANCE_TITLE = 'Balance is not Profit.';
 export const EMPTY_POSITIONS = 'No real positions yet.';
@@ -1232,10 +1342,11 @@ export function clockTime(value, now = Date.now()) {
   const day = stamp => date(new Date(stamp).toISOString(), 'day');
   return day(at) === day(now) ? time : `${day(at)}, ${time}`;
 }
-// The newest Profit and Net the House could price, while Profit is a dash: dated, and no older than four days.
-export function lastKnown(score, now = Date.now()) {
+// The newest Profit and Net the House could price, while Profit is a dash: dated, no older than four days, and never from
+// before the current Profit basis (`since`).
+export function lastKnown(score, now = Date.now(), since = null) {
   const fresh = (entry, key) => (entry && numeric(entry[key]) && now - Date.parse(entry.at) <= LAST_KNOWN_MS && now >= Date.parse(entry.at) - 60000
-    ? { at: entry.at, usd: entry[key] } : null);
+    && !(Date.parse(entry.at) < Date.parse(since)) ? { at: entry.at, usd: entry[key] } : null);
   return { profit: fresh(score?.last_profit, 'profit_usd'), net: fresh(score?.last_net, 'net_usd') };
 }
 // The tape's marks, drawn in tone tokens: a thought, a trade, a birth, a move, a retirement, the auditor's two verdicts,
@@ -1281,7 +1392,7 @@ function typeInto(node, text, animate = true, done = null) {
 
 // ---- the top bar: Profit, Net, Running, the last value the House could price, and the costs
 function numbersPanel(checkpoint, state) {
-  const last = lastKnown(state.score);
+  const last = lastKnown(state.score, Date.now(), profitBasis(checkpoint).start_at);
   return mastheadNumbers(checkpoint).map(item => {
     const row = element('div', null, `number number-${item.key}`);
     if (item.title) row.setAttribute('title', item.title);
@@ -1353,7 +1464,20 @@ function thinkCard(state) {
   card.addEventListener('pointerenter', () => { state.think.hovering = true; state.climb?.pulseDot?.(state.think.current?.agent); });
   card.addEventListener('pointerleave', () => { state.think.hovering = false; thinkAdvance(state); });
   state.think.parts = { card, mark, name, level, age, text, more, queue, live };
+  if (typeof ResizeObserver !== 'undefined') {
+    const watcher = new ResizeObserver(() => thinkOverflow(state));
+    watcher.observe(text);
+    state.watchers.push(watcher);
+  }
   return card;
+}
+// The ↓ shows exactly when the note is cut: measured after layout (how many words fit depends on the card's width), again
+// when typing ends and whenever the card changes size. An expanded note keeps its ↑.
+function thinkOverflow(state) {
+  const { text, more } = state.think.parts || {};
+  if (!text || !more) return;
+  const cut = Number(text.scrollHeight) - Number(text.clientHeight) > 2;
+  more.hidden = !state.think.current || !(state.think.expanded || cut);
 }
 function thinkDraw(state) {
   const box = state.box.now;
@@ -1373,7 +1497,7 @@ function thinkDraw(state) {
   age.textContent = note ? shortAgo(note.at) : '';
   if (note) age.dateTime = note.at;
   age.className = `think-age${note && Date.now() - Date.parse(note.at) < 120000 ? ' is-fresh' : ''}`;
-  more.hidden = !note || note.text.length <= NOTE_CLAMP_CHARS;
+  thinkOverflow(state);
   queue.hidden = !think.queue.length;
   queue.textContent = `+${think.queue.length}`;
   if (!note) text.textContent = '';
@@ -1393,7 +1517,7 @@ function thinkShow(state, note, animate) {
     parts.more.setAttribute('aria-expanded', 'false');
     parts.more.textContent = '↓';
     parts.text.className = 'think-text';
-    typeInto(parts.text, note.text, animate);
+    typeInto(parts.text, note.text, animate, () => thinkOverflow(state));
     // One announcement every twenty seconds at most.
     if (now - (think.announcedAt || 0) >= 20000) { think.announcedAt = now; parts.live.textContent = `${note.name}: ${note.text}`; }
   }
@@ -1480,7 +1604,7 @@ function climbView(state) {
     let best = null;
     for (const [id, at] of view.layout.dots) {
       const distance = Math.hypot(at.cx - x, at.cy - y);
-      if (distance <= 12 && (!best || distance < best.distance)) best = { id, distance, at };
+      if (distance <= Math.max(12, view.layout.pitch * 0.85) && (!best || distance < best.distance)) best = { id, distance, at };
     }
     return best;
   };
@@ -1529,7 +1653,12 @@ function climbView(state) {
     const at = view.layout?.dots?.get(id);
     const dot = state.model?.dots?.get(id);
     tag.hidden = !at || !dot;
-    if (at && dot) { tag.textContent = dot.name; place(tag, { left: `${Math.max(36, Math.min((view.layout?.width || 800) - 36, at.cx))}px`, top: `${at.cy - 9}px` }); }
+    if (!at || !dot) return;
+    // The name tag sits over its dot, kept whole inside the map by its own measured width.
+    tag.textContent = dot.name;
+    const half = (boxOf(tag)?.width || dot.name.length * 6.5 + 12) / 2;
+    const width = view.layout?.width || 800;
+    place(tag, { left: `${Math.max(half + 4, Math.min(width - half - 4, at.cx))}px`, top: `${at.cy - (view.layout?.pitch || PITCH) / 2 - 2}px` });
   };
   return view;
 }
@@ -1715,7 +1844,20 @@ function drawLadder(state, view, model) {
     for (const dot of step.agents.slice(0, 12)) dots.append(dotMark(dot));
     if (step.agents.length > 12) dots.append(element('span', `+${step.agents.length - 12}`, 'rung-more'));
     if (key === 'holdout') dots.append(looksPips(model.looks));
-    control.append(element('span', step.word, 'rung-name'), dots, element('span', countText(step.now), 'rung-count'));
+    // The funnel on a phone too: each rung's name over how many families ever reached it, as on the map, and the Gym's
+    // counter beside Train's dots.
+    const name = element('span', null, 'rung-label');
+    const ever = element('span', null, 'rung-ever');
+    if (key === 'train') ever.append(element('span', 'ever', 'ever-word'));
+    ever.append(element('span', countText(step.everCount)));
+    name.append(element('span', step.word, 'rung-name'), ever);
+    if (key === 'train' && model.trials !== null) {
+      const trials = element('span', null, 'step-trials rung-trials');
+      trials.append(cycleIcon(), element('span', model.trials.toLocaleString('en-US'), 'trials-count'));
+      trials.setAttribute('title', 'Programs tested in the Gym');
+      dots.append(trials);
+    }
+    control.append(name, dots, element('span', countText(step.now), 'rung-count'));
     control.addEventListener('click', () => openRoster(state, key, control));
     item.append(control);
     return item;
@@ -1739,6 +1881,7 @@ function drawClimb(state, { animate = false } = {}) {
   const size = boxOf(view.map);
   const layout = climbLayout(state.model, size?.width || 800, size?.height || 300);
   view.layout = layout;
+  setVar(view.map, '--pitch', `${layout.pitch}px`);
   drawClimbLines(view, state.model, layout);
   drawClimbLabels(state, view, state.model, layout);
   drawClimbDots(state, view, state.model, layout, animate && view.drawn && !still() && floorRunning(state.checkpoint));
@@ -1819,10 +1962,10 @@ function rosterList(state, dots) {
   for (const dot of dots) {
     const item = element('li');
     const row = button(null, 'roster-row');
-    const agent = state.agents.get(dot.id);
-    const thesis = thesisOf(state, dot.id) || firstSentence(wholeSentences(agent?.mechanism));
-    row.append(dotMark(dot), element('span', dot.name, 'roster-name'), element('span', firstSentence(thesis), 'roster-thesis'));
-    row.addEventListener('click', () => openAgent(state, dot.id, row));
+    const thesis = agentThesis(state.checkpoint, dot.id, state.births);
+    row.append(dotMark(dot), element('span', dot.name, 'roster-name'), element('span', thesis ? firstSentence(thesis) : '', 'roster-thesis'));
+    // From a list (a step's roster, a phone's rung) a card is a look, not a choice to follow: the tape stays the swarm's.
+    row.addEventListener('click', () => openAgent(state, dot.id, row, { follow: false }));
     item.append(row);
     list.append(item);
   }
@@ -1848,11 +1991,7 @@ function openGraveyard(state, opener) {
   }).catch(() => {});
 }
 // An agent's card: its thesis, its record, its open structures, its checklist when the House publishes one, and its
-// last five thoughts. Clicking a dot also follows it on the tape.
-function thesisOf(state, id) {
-  const published = (Array.isArray(state.checkpoint?.rationale?.agents) ? state.checkpoint.rationale.agents : []).find(entry => entry?.id === id);
-  return published ? published.thesis : null;
-}
+// last five thoughts. Clicking a dot on the map also follows it on the tape (its "→ thoughts" does, from anywhere).
 function recordLine(agent) {
   const record = agent?.record;
   if (!record) return '';
@@ -1870,7 +2009,7 @@ function openAgent(state, id, opener, { follow = true, quiet = false } = {}) {
   const head = sheetHead(name, chips);
   head.prepend?.(dotMark(dot || { money: 'research', step: 'train' }));
   const nodes = [head];
-  const thesis = thesisOf(state, id) || wholeSentences(agent?.mechanism) || state.births.get(id) && thesisText(state.births.get(id));
+  const thesis = agentThesis(state.checkpoint, id, state.births);
   if (thesis) nodes.push(element('blockquote', thesis, 'agent-thesis'));
   if (agent) nodes.push(element('p', recordLine(agent), 'agent-record'));
   const structures = structureRows(state.checkpoint).filter(row => row.agent === id);
@@ -2003,18 +2142,12 @@ function riskBar(pnl, risk) {
   box.append(track, labels);
   return box;
 }
-function rationaleCard(state, line, row) {
+// A pinned card shows the whole thesis (never more than 280 characters, and the list scrolls); a hover preview clamps it
+// looser and carries no controls (it cannot be pressed).
+function rationaleCard(state, line, row, { preview = false } = {}) {
   const why = rationaleFor(row, state.checkpoint, { trades: state.trades, births: state.births });
-  const card = element('div', null, `rationale${why.house ? ' is-house' : ''}`);
-  if (why.thesis) {
-    const thesis = element('blockquote', why.thesis, 'rationale-thesis');
-    card.append(thesis);
-    if (why.thesis.length > 220) {
-      const more = button('↓', 'thesis-more', 'Read the whole thesis');
-      more.addEventListener('click', event => { event.stopPropagation?.(); thesis.classList?.toggle?.('is-open'); more.textContent = more.textContent === '↓' ? '↑' : '↓'; });
-      card.append(more);
-    }
-  }
+  const card = element('div', null, `rationale${why.house ? ' is-house' : ''}${preview ? ' is-preview' : ''}`);
+  if (why.thesis) card.append(element('blockquote', why.thesis, 'rationale-thesis'));
   const trigger = element('p', null, 'rationale-why');
   if (why.openWhy) { const chip = element('span', null, 'why-chip why-open'); chip.append(glyph('trade'), element('span', why.openWhy)); trigger.append(chip); }
   if (!line.open && (why.closeWhy || why.exit)) {
@@ -2028,7 +2161,7 @@ function rationaleCard(state, line, row) {
   card.append(lifeBar(row));
   const risk = riskBar(row.pnl_usd, why.maxLoss);
   if (risk) card.append(risk);
-  if (!why.house && agentId(row.agent)) {
+  if (!preview && !why.house && agentId(row.agent)) {
     const links = element('p', null, 'rationale-links');
     const thoughts = button('→ thoughts', 'link-button');
     thoughts.addEventListener('click', event => { event.stopPropagation?.(); followAgent(state, row.agent); state.box.tape?.scrollIntoView?.({ block: 'nearest' }); });
@@ -2056,6 +2189,9 @@ function positionItem(state, line, row, scale) {
   age.append(element('span', heldText(line)));
   control.append(mark, who, element('span', line.what, 'pos-what'), age, element('span', line.pnl, `pos-pnl ${line.tone}`.trim()), microBar(line.usd === null ? null : centsOf(line.usd), scale));
   control.addEventListener('click', () => {
+    if (expanded && state.positionsAuto) remember('ltcm-shut', line.id);
+    else if (!expanded && remembered('ltcm-shut') === line.id) remember('ltcm-shut', null);
+    state.positionsAuto = false;
     state.openPosition = expanded ? null : line.id;
     hidePeek(state);
     drawPositions(state);
@@ -2063,7 +2199,7 @@ function positionItem(state, line, row, scale) {
   });
   control.addEventListener('pointerenter', move => {
     state.chart?.pulse?.(line.id);
-    if (!expanded && finePointer() && (!move.pointerType || move.pointerType === 'mouse')) showPeek(state, control, rationaleCard(state, line, row));
+    if (!expanded && finePointer() && (!move.pointerType || move.pointerType === 'mouse')) showPeek(state, control, rationaleCard(state, line, row, { preview: true }));
   });
   control.addEventListener('pointerleave', () => hidePeek(state));
   item.append(control);
@@ -2145,6 +2281,13 @@ function drawPositions(state) {
   const head = positionsHead(state, ledger);
   if (state.ledgerTable) { ready([head, ...positionsPanel(state.checkpoint)]); return; }
   const rows = new Map(state.checkpoint.positions.rows.map(row => [row.id, row]));
+  // The reason is the point: until the viewer chooses, the newest open agent position stands open, unless the viewer once
+  // closed that very one (remembered on this device only).
+  if (state.positionsAuto) {
+    const newest = ledger.open.find(line => AGENT_SOURCES.includes(line.source));
+    state.openPosition = newest && remembered('ltcm-shut') !== newest.id ? newest.id : null;
+  }
+  askBirths(state, ledger);
   const filter = state.positionsFilter;
   const lines = [...ledger.open, ...ledger.closed].filter(line => (filter === 'open' ? line.open : filter === 'closed' ? !line.open : true));
   const agents = filter === 'house' ? [] : lines.filter(line => AGENT_SOURCES.includes(line.source));
@@ -2164,6 +2307,21 @@ function drawPositions(state) {
   nodes.push(positionsFoot(ledger));
   ready(nodes);
   state.seenPositions = new Set([...ledger.open, ...ledger.closed].map(line => `${line.id}:${line.open}`));
+}
+// An agent that has left the roster still has its birth news on the tape: one read per agent fetches it, so its position can
+// carry its thesis while the House publishes no rationale for it.
+function askBirths(state, ledger) {
+  for (const line of [...ledger.open, ...ledger.closed]) {
+    const id = line.agent;
+    if (!agentId(id) || state.agents.has(id) || state.births.has(id) || state.askedBirths.has(id) || state.askedBirths.size >= 40) continue;
+    state.askedBirths.add(id);
+    loadEvents({ agent: id, kind: 'swarm.news', limit: 50 }).then(data => {
+      const born = data.events.map(event => newsKind(event.payload?.text, id)).find(life => life.kind === 'born' && life.idea);
+      if (!born || state.births.has(id)) return;
+      state.births.set(id, born.idea);
+      drawPositions(state);
+    }).catch(() => {});
+  }
 }
 // One quiet line under the rows, so they add up to Profit to the cent: the account's other activity, the positions not
 // listed, any unreconciled difference, and Profit (a dash while it is unknown).
@@ -2267,51 +2425,34 @@ function positionsPanel(checkpoint, now = Date.now()) {
   scroll.append(table);
   return [caption, scroll];
 }
-// The practice league, in the Practice step's sheet: shadow trades, never real money, under its caption; its totals in
-// a dashed box labelled "practice".
+// The practice league, in the Practice step's sheet: shadow trades, never real money, under its caption. A compact list that
+// fits the sheet (each family's name and result first; its structure, version and record under them), and the totals in a
+// dashed box labelled "practice".
 function practicePanel(checkpoint) {
   const league = practiceTable(checkpoint);
   if (!league) return null;
   const caption = element('p', null, 'positions-caption practice-caption');
   caption.append(element('span', PRACTICE_CAPTION));
   if (Number.isFinite(Date.parse(league.asOf))) caption.append(element('span', '·'), element('span', 'as of'), timeNode(league.asOf));
-  const table = element('table', null, 'positions-table practice-table');
-  table.append(element('caption', `The practice league: ${PRACTICE_CAPTION}`, 'visually-hidden'));
-  const head = element('thead');
-  const headings = element('tr');
-  for (const [key, label] of PRACTICE_COLUMNS) {
-    const heading = element('th', label, `pr-${key}`);
-    heading.setAttribute('scope', 'col');
-    headings.append(heading);
-  }
-  head.append(headings);
-  const body = element('tbody', null, 'pos-body');
+  const list = element('ul', null, 'practice-list');
+  list.setAttribute('aria-label', `The practice league: ${PRACTICE_CAPTION}`);
   for (const line of league.rows) {
-    const row = element('tr', null, `pr-row${line.retired ? ' pr-retired' : ''}`);
-    row.dataset.agent = line.agent;
-    const who = element('th', line.retired ? null : line.who, 'pr-who');
-    who.setAttribute('scope', 'row');
-    if (line.retired) who.append(element('span', line.who), tagNode('retired', 'retired'));
-    row.append(who, element('td', line.what, 'pr-what'), element('td', line.tier, 'pr-tier'), element('td', line.sessions, 'pr-sessions'),
-      element('td', line.trades, 'pr-trades'), element('td', line.wins, 'pr-wins'), element('td', line.pnl, `pr-pnl ${line.tone}`.trim()),
-      element('td', line.ror, `pr-ror ${line.rorTone}`.trim()));
-    body.append(row);
+    const item = element('li', null, `pr-item${line.retired ? ' pr-retired' : ''}`);
+    item.dataset.agent = line.agent;
+    const who = element('span', null, 'pr-who');
+    who.append(dotMark({ money: 'shadow', step: 'practice', retired: line.retired }), element('span', line.who));
+    if (line.retired) who.append(tagNode('retired', 'retired'));
+    const record = [line.what, line.tier, `${plural(Number(line.sessions) || 0, 'session')}`, `${plural(Number(line.trades) || 0, 'trade')}`,
+      `${line.wins} won`].filter(Boolean).join(' · ');
+    const ror = element('span', line.ror === '—' ? '—' : `${line.ror} on risk`, `pr-ror ${line.rorTone}`.trim());
+    item.append(who, element('span', line.pnl, `pr-pnl ${line.tone}`.trim()), element('span', record, 'pr-record'), ror);
+    list.append(item);
   }
-  const foot = element('tfoot');
-  const total = element('tr', null, 'pos-sum pr-total');
-  const label = element('th', league.hidden ? `${league.total.label} (${league.hidden} not listed)` : league.total.label, 'pr-who');
-  label.setAttribute('scope', 'row');
-  const blank = element('td', '', 'pr-what');
-  blank.setAttribute('colspan', '3');
-  total.append(label, blank, element('td', league.total.trades, 'pr-trades'), element('td', league.total.wins, 'pr-wins'),
-    element('td', league.total.pnl, `pr-pnl ${league.total.tone}`.trim()), element('td', '', 'pr-ror'));
-  foot.append(total);
-  table.append(head, body, foot);
-  const scroll = element('div', null, 'positions-scroll');
-  scroll.append(table);
   const totals = element('p', null, 'practice-total');
-  totals.append(element('span', 'practice', 'practice-word'), element('span', `${league.total.label} · ${league.total.trades} trades · `), element('b', league.total.pnl, league.total.tone || null));
-  return [caption, scroll, totals];
+  totals.append(element('span', 'practice', 'practice-word'),
+    element('span', `${league.hidden ? `${league.total.label} (${league.hidden} not listed)` : league.total.label} · ${league.total.trades} trades · ${league.total.wins} won · `),
+    element('b', league.total.pnl, league.total.tone || null));
+  return [caption, list, totals];
 }
 
 // ---- performance over time: Realized against Costs on one dollar axis, and the balance on its own
@@ -2373,68 +2514,131 @@ function balancePanel(checkpoint, marks) {
   nodes.push(caption);
   return nodes;
 }
-// The archive point nearest an instant, within five minutes.
-function scoreNear(points, at) {
+// The archive point nearest an instant, within half its spacing (five minutes unsampled).
+function scoreNear(points, at, within = 5 * 60000) {
   let best = null;
   for (const point of points) {
     const distance = Math.abs(Date.parse(point.at) - at);
-    if (distance <= 5 * 60000 && (!best || distance < best.distance)) best = { point, distance };
+    if (distance <= within && (!best || distance < best.distance)) best = { point, distance };
   }
   return best?.point || null;
 }
+// Performance over time: Realized and Profit on the trading scale, Costs on its own. Archived points from before the current
+// Profit basis (a re-based record) never show. A sampled archive (`step_ms` over five minutes) breaks its lines only on a
+// gap three samples wide.
 export function scoreModel(checkpoint, score, now = Date.now()) {
   const realized = realizedSteps(checkpoint);
-  const points = Array.isArray(score?.points) ? score.points : [];
-  const profit = scoreSeries(points, 'profit_usd');
-  const costs = scoreSeries(points, 'costs_usd');
-  const bill = inputCosts(checkpoint, now);
   const basis = Date.parse(profitBasis(checkpoint).start_at);
+  const points = (Array.isArray(score?.points) ? score.points : []).filter(point => !(Date.parse(point?.at) < basis));
+  const stepMs = Number.isFinite(Number(score?.step_ms)) && Number(score.step_ms) > 0 ? Number(score.step_ms) : 5 * 60000;
+  const gap = Math.max(SCORE_GAP_MS, 3 * stepMs);
+  const profit = scoreSeries(points, 'profit_usd', gap);
+  const costs = scoreSeries(points, 'costs_usd', gap);
+  const bill = inputCosts(checkpoint, now);
   const start = realized && Number.isFinite(realized.start) ? Math.min(realized.start, basis) : basis;
   const published = Date.parse(checkpoint?.published_at);
   const end = Math.max(Number.isFinite(published) ? published : now, ...points.map(point => Date.parse(point.at)).filter(Number.isFinite));
   const lastProfit = profit.at(-1)?.at(-1) || null;
   return {
-    start, end, realized, profit, costs, points,
+    start, end, realized, profit, costs, points, stepMs,
     costsNow: bill.total === null ? null : { at: Date.parse(bill.asOf), cents: centsOf(bill.total) },
-    profitFresh: lastProfit && end - lastProfit.at <= 10 * 60000 ? lastProfit : null,
+    profitFresh: lastProfit && end - lastProfit.at <= Math.max(10 * 60000, stepMs) ? lastProfit : null,
   };
 }
+// Labels at the end of each line are the legend. On a wide plot they sit in the right margin on short keys, moved apart along
+// leader lines; on a narrow one they sit inside the plot, over their line's end. Kept apart and inside their panel.
+function endLabels(nodes, entries, { edge, top, bottom, narrow }) {
+  const list = entries.filter(Boolean).sort((a, b) => a.y - b.y);
+  const lift = narrow ? 6 : 0;
+  list.forEach((entry, index) => { entry.ly = Math.max(entry.y - lift, index ? list[index - 1].ly + 14 : top + 8); });
+  for (let index = list.length - 1; index >= 0; index--) {
+    const below = index < list.length - 1 ? list[index + 1].ly - 14 : bottom + 4;
+    list[index].ly = Math.min(list[index].ly, below);
+  }
+  for (const entry of list) {
+    if (narrow) {
+      const label = svgElement('text', { x: edge - 2, y: entry.ly - 2, class: `end-label end-${entry.key}`, 'text-anchor': 'end' });
+      label.textContent = entry.label;
+      nodes.push(label);
+      continue;
+    }
+    const from = entry.x ?? edge;
+    if (Math.abs(entry.ly - entry.y) > 1 || from < edge - 1) nodes.push(svgElement('path', { d: `M${from + 3},${entry.y}L${edge + 6},${entry.ly}`, class: 'leader' }));
+    nodes.push(svgElement('line', { x1: edge + 8, x2: edge + 16, y1: entry.ly, y2: entry.ly, class: `key key-${entry.key}` }));
+    const label = svgElement('text', { x: edge + 20, y: entry.ly + 3.5, class: 'end-label' });
+    label.textContent = entry.label;
+    nodes.push(label);
+  }
+}
+// Two small multiples on one time axis, each with its own dollar scale: the trading (Realized steps at each close, the faint
+// Profit through the archive, a dot per closed position and a ▸ where each open one began) over the costs (the archived
+// bill from its $0 anchor at the reset). Costs run to hundreds of dollars and trades to tens; one shared scale would flatten
+// every trade into the baseline.
 function scoreChart(state, plot) {
   const checkpoint = state.checkpoint;
   const model = scoreModel(checkpoint, state.score);
   const size = boxOf(plot);
   const W = Math.max(280, size?.width || 600);
-  const H = Math.max(150, size?.height || 220);
-  const margin = { left: 46, right: 132, top: 14, bottom: 22 };
+  const H = Math.max(170, size?.height || 220);
+  const narrow = W < 520;
+  const lastCost = model.costs.at(-1)?.at(-1) || model.costsNow;
+  const labels = {
+    realized: model.realized ? `Realized ${centsText(model.realized.cents)}` : null,
+    profit: model.profitFresh ? `Profit ${centsText(model.profitFresh.cents)}` : null,
+    costs: lastCost ? `Costs ${money(decimalOf(lastCost.cents))}` : null,
+  };
+  // The right margin fits the longest end label (11px Courier: about 6.7 pixels a character), past its key.
+  const longest = Math.max(0, ...Object.values(labels).filter(Boolean).map(text => text.length));
+  const margin = { left: 46, right: narrow ? 10 : Math.ceil(longest * 6.7) + 30, top: 12, bottom: 22 };
   const plotW = W - margin.left - margin.right;
-  const plotH = H - margin.top - margin.bottom;
-  const values = [0];
-  if (model.realized) values.push(Number(model.realized.startCents), ...model.realized.steps.map(step => Number(step.cents)));
-  for (const segment of [...model.profit, ...model.costs]) values.push(...segment.map(point => Number(point.cents)));
-  if (model.costsNow) values.push(Number(model.costsNow.cents));
-  let low = Math.min(...values) / 100;
-  let high = Math.max(...values) / 100;
-  const pad = Math.max(1, (high - low) * 0.08);
-  low -= low < 0 ? pad : 0;
-  high += pad;
+  const gap = 16;
+  const costH = Math.max(40, Math.round((H - margin.top - margin.bottom - gap) * 0.3));
+  const tradeTop = margin.top;
+  const tradeBottom = H - margin.bottom - costH - gap;
+  const costTop = tradeBottom + gap;
+  const costBottom = H - margin.bottom;
+  const domain = values => {
+    const low = Math.min(...values) / 100;
+    const high = Math.max(...values) / 100;
+    const pad = Math.max(1, (high - low) * 0.12);
+    return [low < 0 ? low - pad : low, high + pad];
+  };
+  const trading = [0];
+  if (model.realized) trading.push(Number(model.realized.startCents), ...model.realized.steps.map(step => Number(step.cents)));
+  for (const segment of model.profit) trading.push(...segment.map(point => Number(point.cents)));
+  const billed = [0];
+  for (const segment of model.costs) billed.push(...segment.map(point => Number(point.cents)));
+  if (model.costsNow) billed.push(Number(model.costsNow.cents));
+  const [lowT, highT] = domain(trading);
+  const [lowC, highC] = domain(billed);
   const span = Math.max(1, model.end - model.start);
   const x = at => margin.left + (Math.max(model.start, Math.min(model.end, at)) - model.start) / span * plotW;
-  const y = dollars => margin.top + (high - dollars) / (high - low) * plotH;
-  const yc = cents => y(Number(cents) / 100);
+  const yT = dollars => tradeTop + (highT - dollars) / (highT - lowT) * (tradeBottom - tradeTop);
+  const yC = dollars => costTop + (highC - dollars) / (highC - lowC) * (costBottom - costTop);
+  const yTc = cents => yT(Number(cents) / 100);
+  const yCc = cents => yC(Number(cents) / 100);
   const svg = svgElement('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'score-svg', role: 'img',
-    'aria-label': `Realized ${model.realized ? centsText(model.realized.cents) : '—'} since the reset; costs ${model.costsNow ? money(decimalOf(model.costsNow.cents)) : '—'}.` });
+    'aria-label': `Realized ${model.realized ? centsText(model.realized.cents) : '—'} since the reset${model.profitFresh ? `, Profit ${centsText(model.profitFresh.cents)}` : ''}; `
+      + `costs ${model.costsNow ? money(decimalOf(model.costsNow.cents)) : '—'}, on their own scale below.` });
   const nodes = [];
   for (const [from, to] of marketClosedBands(model.start, model.end)) {
-    nodes.push(svgElement('rect', { x: x(from), y: margin.top, width: Math.max(0, x(to) - x(from)), height: plotH, class: 'closed-band' }));
+    for (const [top, bottom] of [[tradeTop, tradeBottom], [costTop, costBottom]]) {
+      nodes.push(svgElement('rect', { x: x(from), y: top, width: Math.max(0, x(to) - x(from)), height: bottom - top, class: 'closed-band' }));
+    }
   }
-  for (const tick of niceTicks(low, high)) {
-    nodes.push(svgElement('line', { x1: margin.left, x2: margin.left + plotW, y1: y(tick), y2: y(tick), class: tick === 0 ? 'zero' : 'grid' }));
-    const label = svgElement('text', { x: margin.left - 6, y: y(tick) + 3.5, class: 'tick', 'text-anchor': 'end' });
-    label.textContent = tickMoney(tick);
-    nodes.push(label);
-  }
-  if (low < 0 && !niceTicks(low, high).includes(0)) nodes.push(svgElement('line', { x1: margin.left, x2: margin.left + plotW, y1: y(0), y2: y(0), class: 'zero' }));
-  // Day ticks at New York midnight, thinned to fit.
+  const axis = (ticks, y, zero) => {
+    for (const tick of ticks) {
+      nodes.push(svgElement('line', { x1: margin.left, x2: margin.left + plotW, y1: y(tick), y2: y(tick), class: tick === 0 && zero ? 'zero' : 'grid' }));
+      const label = svgElement('text', { x: margin.left - 6, y: y(tick) + 3.5, class: 'tick', 'text-anchor': 'end' });
+      label.textContent = tickMoney(tick);
+      nodes.push(label);
+    }
+  };
+  const ticksT = niceTicks(lowT, highT);
+  axis(ticksT, yT, true);
+  if (lowT < 0 && !ticksT.includes(0)) nodes.push(svgElement('line', { x1: margin.left, x2: margin.left + plotW, y1: yT(0), y2: yT(0), class: 'zero' }));
+  axis(niceTicks(0, highC, 2), yC, false);
+  // Day ticks at New York midnight, thinned to fit, under the lower chart.
   const first = nyParts(model.start);
   const days = [];
   for (let day = Date.UTC(first.year, first.month - 1, first.day) + 86400000; day <= model.end + 86400000; day += 86400000) {
@@ -2449,54 +2653,20 @@ function scoreChart(state, plot) {
     label.textContent = date(new Date(at + 3600000).toISOString(), 'day');
     nodes.push(label);
   });
-  // The gap between Realized and Costs, washed by its sign wherever both are known. It is not Net (Net drops open gains
-  // and counts other activity), so it carries no label.
-  if (model.realized) {
-    for (const segment of model.costs) {
-      if (segment.length < 2) continue;
-      const times = [...new Set([...segment.map(point => point.at), ...model.realized.steps.map(step => step.at)
-        .filter(at => at > segment[0].at && at < segment.at(-1).at)])].sort((a, b) => a - b);
-      const costAt = at => {
-        const after = segment.findIndex(point => point.at >= at);
-        if (after <= 0) return Number(segment[Math.max(0, after)].cents);
-        const [a, b] = [segment[after - 1], segment[after]];
-        return Number(a.cents) + (Number(b.cents) - Number(a.cents)) * (at - a.at) / (b.at - a.at);
-      };
-      let run = [];
-      let sign = 0;
-      const flush = () => {
-        if (run.length > 1) {
-          const top = run.map(point => `${x(point.at).toFixed(1)},${(y(point.cost / 100)).toFixed(1)}`);
-          const bottom = run.slice().reverse().map(point => `${x(point.at).toFixed(1)},${yc(point.real).toFixed(1)}`);
-          nodes.push(svgElement('polygon', { points: [...top, ...bottom].join(' '), class: sign < 0 ? 'wash-negative' : 'wash-positive' }));
-        }
-      };
-      for (const at of times) {
-        const real = realizedAt(model.realized, at);
-        if (real === null) { flush(); run = []; continue; }
-        const cost = costAt(at);
-        const now = Number(real) < cost ? -1 : 1;
-        if (sign && now !== sign) { flush(); run = run.slice(-1); }
-        sign = now;
-        run.push({ at, cost, real });
-      }
-      flush();
-    }
-  }
-  const pathOf = segment => segment.map((point, index) => `${index ? 'L' : 'M'}${x(point.at).toFixed(1)},${yc(point.cents).toFixed(1)}`).join('');
-  for (const segment of model.costs) nodes.push(svgElement('path', { d: segment.length > 1 ? pathOf(segment) : `M${x(segment[0].at)},${yc(segment[0].cents)}h0.1`, class: 'line-costs' }));
+  const pathOf = (segment, y) => segment.map((point, index) => `${index ? 'L' : 'M'}${x(point.at).toFixed(1)},${y(point.cents).toFixed(1)}`).join('');
+  for (const segment of model.costs) nodes.push(svgElement('path', { d: segment.length > 1 ? pathOf(segment, yCc) : `M${x(segment[0].at)},${yCc(segment[0].cents)}h0.1`, class: 'line-costs' }));
   // Costs since the reset are $0 at the reset by definition; what lies between that anchor and the first archived point
   // is unknown, so nothing joins them.
-  nodes.push(svgElement('circle', { cx: x(model.start), cy: y(0), r: 4, class: 'anchor-costs' }));
-  if (!model.costs.length && model.costsNow) nodes.push(svgElement('circle', { cx: x(model.costsNow.at), cy: yc(model.costsNow.cents), r: 4, class: 'dot-costs' }));
-  for (const segment of model.profit) nodes.push(svgElement('path', { d: segment.length > 1 ? pathOf(segment) : `M${x(segment[0].at)},${yc(segment[0].cents)}h0.1`, class: 'line-profit' }));
+  nodes.push(svgElement('circle', { cx: x(model.start), cy: yC(0), r: 4, class: 'anchor-costs' }));
+  if (!model.costs.length && model.costsNow) nodes.push(svgElement('circle', { cx: x(model.costsNow.at), cy: yCc(model.costsNow.cents), r: 4, class: 'dot-costs' }));
+  for (const segment of model.profit) nodes.push(svgElement('path', { d: segment.length > 1 ? pathOf(segment, yTc) : `M${x(segment[0].at)},${yTc(segment[0].cents)}h0.1`, class: 'line-profit' }));
   if (model.realized) {
-    let d = `M${x(model.realized.start).toFixed(1)},${yc(model.realized.startCents).toFixed(1)}`;
-    for (const step of model.realized.steps) d += `H${x(step.at).toFixed(1)}V${yc(step.cents).toFixed(1)}`;
+    let d = `M${x(model.realized.start).toFixed(1)},${yTc(model.realized.startCents).toFixed(1)}`;
+    for (const step of model.realized.steps) d += `H${x(step.at).toFixed(1)}V${yTc(step.cents).toFixed(1)}`;
     if (model.realized.complete) d += `H${x(model.end).toFixed(1)}`;
     nodes.push(svgElement('path', { d, class: 'line-realized' }));
   }
-  // Each closed position is a dot on the Realized line where it closed; each open one a ▸ on the axis where it opened.
+  // Each closed position is a dot on the Realized line where it closed; each open one a ▸ under the trading chart where it opened.
   const rows = Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : [];
   const markers = [];
   const markerNodes = new Map();
@@ -2505,39 +2675,27 @@ function scoreChart(state, plot) {
       const step = model.realized.steps.find(entry => entry.id === row.id);
       if (!step) continue;
       const group = svgElement('g', { class: `marker source-${row.source}` });
-      group.append(svgElement('circle', { cx: x(step.at), cy: yc(step.cents), r: AGENT_SOURCES.includes(row.source) ? 4 : 3, class: 'marker-dot' }));
+      group.append(svgElement('circle', { cx: x(step.at), cy: yTc(step.cents), r: AGENT_SOURCES.includes(row.source) ? 4 : 3, class: 'marker-dot' }));
       nodes.push(group);
       markerNodes.set(row.id, group);
       markers.push({ at: step.at, id: row.id, row, cents: step.cents });
     } else if (row.status === 'open') {
       const at = Date.parse(row.opened_at);
       const group = svgElement('g', { class: `marker marker-open source-${row.source}` });
-      group.append(svgElement('path', { d: `M${x(at) - 4},${margin.top + plotH + 1}l8,4.5l-8,4.5z`, class: 'marker-open-mark' }));
+      group.append(svgElement('path', { d: `M${x(at) - 4},${tradeBottom + 1}l8,4.5l-8,4.5z`, class: 'marker-open-mark' }));
       nodes.push(group);
       markerNodes.set(row.id, group);
       markers.push({ at, id: row.id, row, cents: null, open: true });
     }
   }
-  // End labels are the legend: Realized and Costs always, Profit while its last point is fresh. Collisions move along a
-  // leader line rather than stacking.
-  const ends = [];
-  if (model.realized) ends.push({ key: 'realized', label: `Realized ${centsText(model.realized.cents)}`, y: yc(model.realized.cents) });
-  const lastCost = model.costs.at(-1)?.at(-1) || model.costsNow;
-  if (lastCost) ends.push({ key: 'costs', label: `Costs ${money(decimalOf(lastCost.cents))}`, y: yc(lastCost.cents), x: x(lastCost.at) });
-  if (model.profitFresh) ends.push({ key: 'profit', label: `Profit ${centsText(model.profitFresh.cents)}`, y: yc(model.profitFresh.cents), x: x(model.profitFresh.at) });
-  ends.sort((a, b) => a.y - b.y);
-  ends.forEach((entry, index) => { entry.ly = Math.max(entry.y, index ? ends[index - 1].ly + 14 : margin.top + 4); });
-  for (let index = ends.length - 2; index >= 0; index--) ends[index].ly = Math.min(ends[index].ly, ends[index + 1].ly - 14);
   const edge = margin.left + plotW;
-  for (const entry of ends) {
-    const from = entry.x ?? edge;
-    if (Math.abs(entry.ly - entry.y) > 1 || from < edge - 1) nodes.push(svgElement('path', { d: `M${from + 3},${entry.y}L${edge + 6},${entry.ly}`, class: 'leader' }));
-    nodes.push(svgElement('line', { x1: edge + 8, x2: edge + 16, y1: entry.ly, y2: entry.ly, class: `key key-${entry.key}` }));
-    const label = svgElement('text', { x: edge + 20, y: entry.ly + 3.5, class: 'end-label' });
-    label.textContent = entry.label;
-    nodes.push(label);
-  }
-  const cross = svgElement('line', { x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: 'crosshair', opacity: 0 });
+  endLabels(nodes, [
+    labels.realized && { key: 'realized', label: labels.realized, y: yTc(model.realized.cents) },
+    labels.profit && { key: 'profit', label: labels.profit, y: yTc(model.profitFresh.cents), x: x(model.profitFresh.at) },
+  ], { edge, top: tradeTop, bottom: tradeBottom, narrow });
+  endLabels(nodes, [labels.costs && { key: 'costs', label: labels.costs, y: yCc(lastCost.cents), x: x(lastCost.at) }],
+    { edge, top: costTop, bottom: costBottom, narrow });
+  const cross = svgElement('line', { x1: 0, x2: 0, y1: tradeTop, y2: costBottom, class: 'crosshair', opacity: 0 });
   nodes.push(cross);
   svg.replaceChildren(...nodes);
   // The crosshair snaps to every point and marker; ←/→ step through them; a tap pins it.
@@ -2569,7 +2727,7 @@ function scoreChart(state, plot) {
       delete tip.dataset.position;
       const real = realizedAt(model.realized, at);
       if (real !== null) value('realized', 'Realized', centsText(real));
-      const point = scoreNear(model.points, at);
+      const point = scoreNear(model.points, at, Math.max(5 * 60000, model.stepMs / 2));
       if (point && numeric(point.profit_usd)) value('profit', 'Profit', signedMoney(point.profit_usd));
       if (point && numeric(point.costs_usd)) value('costs', 'Costs', money(point.costs_usd));
       if (point && numeric(point.net_usd)) value('net', 'Net', signedMoney(point.net_usd));
@@ -2637,6 +2795,7 @@ function drawChart(state) {
   box.setAttribute('aria-busy', 'false');
 }
 function openPosition(state, id) {
+  state.positionsAuto = false;
   state.openPosition = id;
   state.ledgerTable = false;
   if (state.positionsFilter) state.positionsFilter = null;
@@ -2809,7 +2968,7 @@ async function startPage(root) {
     rendered: new Set(), primed: false, expanded: new Set(), clock: null, model: null, climb: null, speaker: null, spoke: new Map(),
     born: new Map(), gone: new Set(), births: new Map(), timers: new Set(), watchers: [], seenPositions: new Set(),
     tapeFilter: { thoughts: true, trades: true, life: true }, follow: null, followEvents: [], tapeMore: false,
-    positionsFilter: null, ledgerTable: false, openPosition: null, openGroup: null, chartMode: 'score', chartParts: null, chart: null, sheet: null,
+    positionsFilter: null, ledgerTable: false, openPosition: null, positionsAuto: true, askedBirths: new Set(), openGroup: null, chartMode: 'score', chartParts: null, chart: null, sheet: null,
   };
   const ready = node => node && node.setAttribute('aria-busy', 'false');
   const drawStatus = () => {
@@ -2852,7 +3011,7 @@ async function startPage(root) {
       }
       if (event.kind === 'swarm.news' && agentId(event.payload?.agent)) {
         const life = newsKind(event.payload.text, event.payload.agent);
-        if (life.kind === 'born' && !state.births.has(event.payload.agent)) state.births.set(event.payload.agent, life.brief);
+        if (life.kind === 'born' && life.idea && !state.births.has(event.payload.agent)) state.births.set(event.payload.agent, life.idea);
         if (event.display_name) state.names.set(event.payload.agent, state.names.get(event.payload.agent) || event.display_name);
       }
       const id = streamAgentOf(event.stream);
@@ -2863,9 +3022,11 @@ async function startPage(root) {
     try {
       const previousTrials = state.model?.trials ?? null;
       state.checkpoint = await loadCheckpoint();
-      const [marks, score] = await Promise.all([loadHistory().catch(() => null), loadScore().catch(() => null)]);
+      // The archive gains one point per five minutes: it is read at that pace, not with every checkpoint.
+      const scoreDue = !state.scoreAt || Date.now() - state.scoreAt >= SCORE_READ_MS;
+      const [marks, score] = await Promise.all([loadHistory().catch(() => null), scoreDue ? loadScore().catch(() => null) : null]);
       if (marks) state.marks = marks;
-      if (score) state.score = score;
+      if (score) { state.score = score; state.scoreAt = Date.now(); }
       state.agents = new Map(state.checkpoint.agents.map(agent => [agent.id, agent]));
       for (const agent of state.checkpoint.agents) state.names.set(agent.id, agentName(agent));
       for (const row of state.checkpoint.positions?.rows || []) if (row.display_name) state.names.set(row.agent, row.display_name);

@@ -223,12 +223,14 @@ test('mounted, the top bar shows Profit, Net and Running over one line of costs,
     const box = root.querySelector('#floor-sheet');
     assert.equal(box.hidden, false);
     assert.match(words(box.withClass('practice-caption')[0]), new RegExp(`^${PRACTICE_CAPTION.replace(/[.]/g, '\\.')} · as of `));
-    assert.equal(words(box.withClass('practice-total')[0]), 'practice 3 families · 15 trades · +$17.30');
-    const [table] = box.find('table');
-    assert.deepEqual(table.find('thead')[0].find('th').map(words), ['Agent', 'Structure', 'Version', 'Sessions', 'Trades', 'Won', 'P&L', 'On risk']);
-    assert.deepEqual(table.find('tbody')[0].find('tr').map(words), ['Meriwether iron condor validated 3 9 5 +$42.50 +12%',
-      'Scholes debit vertical Train 3 4 1 −$18.20 −9%', 'Meriwether 2 retired long straddle validated 3 2 0 −$7.00 —']);
-    assert.equal(words(table.find('tfoot')[0]), '3 families 15 6 +$17.30');
+    assert.equal(words(box.withClass('practice-total')[0]), 'practice 3 families · 15 trades · 6 won · +$17.30');
+    // A compact list that fits the sheet: each family's name and result, then its structure, version and record.
+    assert.equal(box.find('table').length, 0);
+    assert.deepEqual(box.withClass('pr-item').map(words), [
+      'Meriwether +$42.50 iron condor · validated · 3 sessions · 9 trades · 5 won +12% on risk',
+      'Scholes −$18.20 debit vertical · Train · 3 sessions · 4 trades · 1 won −9% on risk',
+      'Meriwether 2 retired −$7.00 long straddle · validated · 3 sessions · 2 trades · 0 won —']);
+    assert.match(box.withClass('pr-item')[2].className, /pr-retired/);
     const positions = root.querySelector('#floor-positions');
     const row = positions.withClass('pos-item').find(node => node.dataset.position === 'real:8');
     assert.equal(words(row.withClass('pos-who')[0]), 'Scholes Incubator');
@@ -241,7 +243,7 @@ test('mounted, the top bar shows Profit, Net and Running over one line of costs,
   // A House that publishes no practice block, and no itemized bill: the Practice sheet has only its caption, and Net is a dash.
   await mount(ledgerCheckpoint(), async root => {
     root.querySelector('#floor-agents').withClass('step-label').find(node => node.dataset.step === 'practice').click();
-    assert.equal(root.querySelector('#floor-sheet').withClass('practice-table').length, 0);
+    assert.equal(root.querySelector('#floor-sheet').withClass('practice-list').length, 0);
     assert.match(words(root.querySelector('#floor-sheet')), /Shadow trades on live quotes, never real money$/);
     assert.match(words(root.querySelector('#floor-numbers')), /^Profit \+\$220\.40 Net — Running /);
     assert.equal(words(root.querySelector('#floor-costs')), 'Costs are not itemized yet.');

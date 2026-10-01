@@ -8,7 +8,8 @@ import {
 } from '../capital/schema.js';
 import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
 import {
-  CHECKPOINT_READ, STEPS, climbModel, climbLayout, levelOf, thesisText, numbered, wholeSentences, interimRationale, rationaleFor, riskShare,
+  CHECKPOINT_READ, STEPS, climbModel, climbLayout, levelOf, thesisText, houseThesis, agentThesis, plainTag, tickerCase, cutNumber, numbered, interimRationale,
+  rationaleFor, riskShare, pitchFor,
   realizedSteps, realizedAt, scoreSeries, scoreModel, marketClosedBands, niceTicks, newsKind, feedLine, netNumber, lastKnown, holdMs, ordinalOf,
   HOUSE_RATIONALE, nyInstant,
 } from '../capital/capital.js';
@@ -185,59 +186,65 @@ test('one agent’s tape: its notes and trades, and the swarm’s news about it,
   assert.equal(index.length, 1, 'the news-by-agent index exists');
 });
 
-test('the score archive: one point per five minutes, the latest wins, nulls kept, retention, sampling and the reset', async () => {
+test('the score archive: one point per five minutes, the latest wins, nulls kept, key-range retention, keyed sampling, one basis, and the reset', async () => {
   assert.equal(SCORE_BUCKET_MS, 300000);
   assert.equal(MAX_SCORE_POINTS, 30000);
   let now = at + 30000;
   const { capital } = floor();
   capital.now = () => now;
-  const itemized = (minute, pnl) => {
+  const itemized = (minute, pnl, basis = swarmCheckpoint().performance) => {
     const stamp = `2026-09-28T14:${String(minute).padStart(2, '0')}:00.000Z`;
     return ledgerCheckpoint({ published_at: stamp, trading: { as_of: stamp, pnl_usd: pnl }, compute: { ...BILL, as_of: stamp },
       positions: pnl === null ? ledger({ as_of: stamp, rows: POSITIONS.map(row => ({ ...row, pnl_usd: null })), other: null, unreconciled_usd: null })
         : ledger({ as_of: stamp, other: { ...ledger().other, as_of: stamp } }),
-      account: { ...swarmCheckpoint().account, as_of: stamp }, gym: { ...swarmCheckpoint().gym, as_of: stamp }, performance: { ...swarmCheckpoint().performance, verified_at: stamp } });
+      account: { ...swarmCheckpoint().account, as_of: stamp }, gym: { ...swarmCheckpoint().gym, as_of: stamp }, performance: { ...basis, verified_at: stamp } });
   };
-  const empty = await (await get(capital, '/api/capital/score')).json();
-  assert.deepEqual(empty, { schema_version: 2, total: 0, sampled: false, points: [], last_profit: null, last_net: null });
+  const read = async () => (await get(capital, '/api/capital/score')).json();
+  assert.deepEqual(await read(), { schema_version: 2, sampled: false, step_ms: 300000, points: [], last_profit: null, last_net: null });
   for (const [minute, pnl] of [[50, '220.40'], [51, '220.40'], [56, null]]) {
     assert.equal((await post(capital, '/api/capital/checkpoint', itemized(minute, pnl))).status, 200);
   }
-  const score = await (await get(capital, '/api/capital/score')).json();
-  assert.equal(score.total, 2, '14:50 and 14:51 share a bucket');
+  const score = await read();
   assert.deepEqual(score.points, [
     { at: '2026-09-28T14:51:00.000Z', profit_usd: '220.40', costs_usd: '328.79', net_usd: '-120.89' },
     { at: '2026-09-28T14:56:00.000Z', profit_usd: null, costs_usd: '328.79', net_usd: null },
-  ]);
+  ], '14:50 and 14:51 share a bucket');
   assert.deepEqual(score.last_profit, { at: '2026-09-28T14:51:00.000Z', profit_usd: '220.40' }, 'the newest known Profit, past the unknown one');
   assert.deepEqual(score.last_net, { at: '2026-09-28T14:51:00.000Z', net_usd: '-120.89' });
   assert.ok(score.points.every(validScorePoint));
   assert.equal((await get(capital, '/api/capital/score?limit=5')).status, 400, 'no query string');
   assert.equal((await post(capital, '/api/capital/score', {})).status, 405);
-  const response = await get(capital, '/api/capital/score');
-  assert.match(response.headers.get('Cache-Control'), /max-age=30/);
+  assert.match((await get(capital, '/api/capital/score')).headers.get('Cache-Control'), /max-age=300\b/, 'a point changes once per bucket at most');
   assert.equal((await post(capital, '/api/capital/checkpoint', itemized(56, null))).status, 200, 'an identical replay changes nothing');
-  assert.equal((await (await get(capital, '/api/capital/score')).json()).total, 2);
-  // Retention keeps the newest MAX_SCORE_POINTS; sampling keeps the first and the last.
+  assert.equal((await read()).points.length, 2);
+  // Spanning more than 2,048 buckets, a read samples by key: the first bucket at or after each step, and the newest.
   for (let bucket = 1; bucket <= 2100; bucket++) {
-    capital.sql.exec('INSERT INTO score_history (bucket, at, profit_usd, costs_usd, net_usd) VALUES (?, ?, NULL, ?, NULL)', bucket, new Date(bucket * 300000).toISOString(), '1.00');
+    capital.sql.exec('INSERT INTO score_history (bucket, at, profit_usd, costs_usd, net_usd, basis) VALUES (?, ?, NULL, ?, NULL, ?)', bucket, new Date(bucket * 300000).toISOString(), '1.00', RESET_AT);
   }
-  const sampled = await (await get(capital, '/api/capital/score')).json();
-  assert.equal(sampled.total, 2102);
+  const newest = Math.floor(Date.parse('2026-09-28T14:56:00.000Z') / SCORE_BUCKET_MS);
+  const sampled = await read();
   assert.equal(sampled.sampled, true);
+  assert.equal(sampled.step_ms, Math.ceil((newest - 1) / 2047) * SCORE_BUCKET_MS);
   assert.ok(sampled.points.length <= 2048);
-  assert.equal(sampled.points[0].at, new Date(300000).toISOString());
-  assert.equal(sampled.points.at(-1).at, '2026-09-28T14:56:00.000Z');
-  capital.sql.exec(`WITH RECURSIVE n(value) AS (SELECT 3000 UNION ALL SELECT value + 1 FROM n WHERE value < 3000 + ?)
-    INSERT INTO score_history (bucket, at, costs_usd) SELECT value, ?, ? FROM n`, MAX_SCORE_POINTS, '1970-01-11T00:00:00.000Z', '1.00');
+  assert.deepEqual(sampled.points.map(point => point.at), [new Date(300000).toISOString(), '2026-09-28T14:51:00.000Z', '2026-09-28T14:56:00.000Z']);
+  // Retention deletes by key range: every bucket MAX_SCORE_POINTS or more older than the newest.
+  const next = Math.floor(Date.parse('2026-09-28T14:58:00.000Z') / SCORE_BUCKET_MS);
+  for (let bucket = next - MAX_SCORE_POINTS - 5; bucket <= next - MAX_SCORE_POINTS + 10; bucket++) {
+    capital.sql.exec('INSERT INTO score_history (bucket, at, costs_usd, basis) VALUES (?, ?, ?, ?)', bucket, new Date(bucket * 300000).toISOString(), '1.00', RESET_AT);
+  }
   now += 600000;
   assert.equal((await post(capital, '/api/capital/checkpoint', itemized(58, '220.40'))).status, 200);
-  const kept = Number(capital.sql.exec('SELECT COUNT(*) AS n FROM score_history').toArray()[0].n);
-  assert.equal(kept, MAX_SCORE_POINTS);
-  assert.equal(Number(capital.sql.exec('SELECT MIN(bucket) AS b FROM score_history').toArray()[0].b) > 2100, true, 'the oldest went first');
+  const oldest = Number(capital.sql.exec('SELECT MIN(bucket) AS b FROM score_history').toArray()[0].b);
+  assert.equal(oldest, next - MAX_SCORE_POINTS + 1, 'the oldest went, the rest stay');
+  assert.equal(Number(capital.sql.exec('SELECT COUNT(*) AS n FROM score_history').toArray()[0].n), 10 + 2, 'ten kept, then 14:51 and 14:58 (in 14:56’s bucket)');
+  // A new Profit basis starts the archive over: no line mixes two bases.
+  now += 120000;
+  const rebased = { ...swarmCheckpoint().performance, start_at: '2026-09-28T14:00:00.000Z' };
+  assert.equal((await post(capital, '/api/capital/checkpoint', itemized(59, '220.40', rebased))).status, 200);
+  assert.deepEqual((await read()).points.map(point => point.at), ['2026-09-28T14:59:00.000Z']);
   const reset = await (await post(capital, '/api/capital/reset?confirm=erase-everything', {})).json();
-  assert.equal(reset.cleared.score_history, MAX_SCORE_POINTS);
-  assert.equal((await (await get(capital, '/api/capital/score')).json()).total, 0);
+  assert.equal(reset.cleared.score_history, 1);
+  assert.deepEqual((await read()).points, []);
 });
 
 test('a score point is Profit, the bill and Net by the page’s own rule, measured against its checkpoint only', () => {
@@ -262,11 +269,9 @@ test('a score point is Profit, the bill and Net by the page’s own rule, measur
 test('the Climb: the House’s levels first, a retired agent with open money on its money’s step, and unknown counts as dashes', () => {
   const model = climbModel(windowCheckpoint(), {});
   const where = Object.fromEntries(STEPS.map(step => [step.key, model.steps[step.key].agents.map(dot => dot.id)]));
-  assert.deepEqual(where, { train: ['calendar-term', 'strangle-cheap', 'eod-drift'].sort(() => 0).filter(Boolean).length ? where.train : [], validation: ['gap-drift'],
-    tuition: ['googl-lags'], holdout: where.holdout, probe: where.probe, sized: ['condor-vrp-3'], practice: ['skew-revert'], incubator: [] });
-  assert.deepEqual(new Set(where.train), new Set(['calendar-term', 'strangle-cheap', 'eod-drift']));
-  assert.deepEqual(new Set(where.holdout), new Set(['ironfly-quiet', 'butterfly-pin', 'trend-vertical']));
-  assert.deepEqual(new Set(where.probe), new Set(['putspread-dip-2', 'orb-4']));
+  const sorted = Object.fromEntries(Object.entries(where).map(([key, ids]) => [key, [...ids].sort()]));
+  assert.deepEqual(sorted, { train: ['calendar-term', 'eod-drift', 'strangle-cheap'], validation: ['gap-drift'], tuition: ['googl-lags'],
+    holdout: ['butterfly-pin', 'ironfly-quiet', 'trend-vertical'], probe: ['orb-4', 'putspread-dip-2'], sized: ['condor-vrp-3'], practice: ['skew-revert'], incubator: [] });
   const googl = model.dots.get('googl-lags');
   assert.deepEqual([googl.retired, googl.money, googl.level], [true, 'real', 'tuition'], 'retired, filled gold, standing on Tuition');
   assert.equal(model.dots.has('reversal-1'), false, 'retired with no money: in the graveyard');
@@ -335,6 +340,24 @@ test('the map’s geometry: stairs rise, the side path stays flat, every dot ins
   assert.equal(grid.steps.train.rows, 5);
 });
 
+test('an agent off the roster that still holds real money stands, retired, on that money’s step; a big box spreads the map', () => {
+  const stray = position('real:30', { agent: 'off-roster', display_name: 'Mullins 166', underlying: 'GOOGL', structure: 'debit_vertical', right: 'call', legs: 2,
+    pnl_usd: '-3.00' });
+  const old = ledgerCheckpoint({ positions: ledger({ rows: [stray, ...POSITIONS] }), trading: { as_of: PUBLISHED_AT, pnl_usd: '217.40' } });
+  const model = climbModel(old);
+  const dot = model.dots.get('off-roster');
+  assert.deepEqual([dot.step, dot.money, dot.retired, dot.name], ['tuition', 'real', true, 'Mullins 166']);
+  assert.equal(model.steps.tuition.now, 1, 'the Climb agrees with Positions');
+  const routed = windowCheckpoint();
+  const withStray = { ...routed, positions: { ...routed.positions, rows: [{ ...stray, agent: 'off-roster-2', id: 'real:31' }, ...routed.positions.rows] },
+    rationale: { ...routed.rationale, trades: [...routed.rationale.trades, { id: 'real:31', route: 'probe', open_why: null, close_why: null, exit: null, max_loss_usd: null }] } };
+  assert.equal(climbModel(withStray).dots.get('off-roster-2').step, 'probe', 'the trade’s own route names the step');
+  assert.deepEqual([pitchFor(920, 300), pitchFor(1560, 465), pitchFor(4000, 300)], [14, 18, 14]);
+  const wide = climbLayout(climbModel(windowCheckpoint()), 1560, 465);
+  assert.ok(wide.steps.sized.x + wide.steps.sized.w >= 1560 - 16 - 1, 'the stairs reach the right edge');
+  assert.equal(wide.pitch, 18);
+});
+
 // ---------------------------------------------------------------------------- the rationale
 test('the page’s thesis filter keeps whole safe sentences, like the House’s', () => {
   assert.equal(thesisText(GOOGL_THESIS), GOOGL_THESIS, 'the pronoun "one" passes; both sentences fit');
@@ -351,15 +374,47 @@ test('the page’s thesis filter keeps whole safe sentences, like the House’s'
   const long = `${'A careful sentence about markets and their habits that runs on. '.repeat(5).trim()}`;
   assert.ok(thesisText(long).length <= 280);
   assert.ok(thesisText(`${'word '.repeat(80)}end.`).endsWith('…'), 'a single long sentence cuts at a word with an ellipsis');
-  assert.equal(wholeSentences('First sentence. Second is cut mid'), 'First sentence.');
-  assert.equal(wholeSentences('All whole.'), 'All whole.');
+});
+
+test('every number hidden in words or other scripts is refused; only the pronoun "one" passes', () => {
+  // A fixed adversarial list (the safety review of Oct 1, 2026): each must come out null, through the thesis and the tag rules.
+  const leaks = [
+    'Buy the call when GOOGL lags MSFT by more than one stdev.', 'Enter when the gap exceeds one ATR over the prior close.', 'Enter at one sd.',
+    'Use a lookback of one hr.', 'Exit after one trading session closes.', 'Hold through one full standard deviation.', 'Hold for one more week.',
+    'Exit at the eleventh session.', 'Sell a twelfth of the range.', 'Close by the ninetieth minute.', 'The move runs threefold.',
+    'Sell the twentyfive delta wing.', 'Size it at tenpercent.', 'Wait a single sigma.', 'Collect a nickel.', 'Collect a dime of premium.',
+    'Hold for a fortnight.', 'When one name leads, follow it.', 'Enter when the gap exceeds ½ of the prior move.', 'Use the Ⅻ month lookback.',
+    'Wait ｏｎｅ sigma.', 'Wait οne sigma.', 'Wait sev\u00aden days.', 'Wait fo\u200bur days.', 'Enter when IV is ٣ points over realized.',
+  ];
+  for (const text of leaks) {
+    assert.equal(thesisText(text), null, text);
+    assert.equal(houseThesis(text), null, `House: ${text}`);
+    assert.equal(plainTag(text.replace(/\.$/, '')), null, `tag: ${text}`);
+  }
+  for (const text of ["MSFT and GOOGL sell competing products, and investors reprice one on the other's capex with a delay.", 'Investors move one another.',
+    'No one prices it in.', 'One of the legs decays faster.', 'The two names reprice one against the other.', 'Within seconds the spread widens.',
+    'Once MSFT moves, GOOGL follows.']) {
+    assert.equal(thesisText(text) === null, /two/.test(text), text);
+  }
+  assert.equal(numbered('the one day a week'), true, 'a pronoun before a unit is a number');
+  // An older publisher cut decimals out of its news: a sentence that reads as cut never shows in the interim.
+  assert.equal(cutNumber('Enter when the z-score exceeds standard deviations.'), true);
+  assert.equal(cutNumber('IV above .'), true);
+  assert.equal(cutNumber('GOOGL lags MSFT after strong cloud news.'), false);
+  assert.equal(thesisText('Enter when the z-score exceeds standard deviations. Small caps lag the index.', 280, 12, { interim: true }), 'Small caps lag the index.');
+  // Tags read their tickers in capitals; ordinary words stay as written.
+  assert.equal(tickerCase('msft leads googl, qqq flat'), 'MSFT leads GOOGL, QQQ flat');
+  assert.equal(tickerCase('xyz breaks on news', ['XYZ']), 'XYZ breaks on news');
+  assert.equal(tickerCase('it is on', ['ON']), 'it is on', 'a ticker that is an ordinary word stays a word');
+  assert.equal(plainTag('msft up 4 sessions, googl flat'), null);
+  assert.equal(plainTag('a'.repeat(81)), null);
 });
 
 test('the rationale: the House’s block first, else the tape’s open trade and the roster’s mechanism; House rows are fixed lines', () => {
   const body = windowCheckpoint();
   const rows = new Map(body.positions.rows.map(row => [row.id, row]));
   const googl = rationaleFor(rows.get('real:8'), body);
-  assert.deepEqual(googl, { house: false, interim: false, thesis: GOOGL_THESIS, route: 'tuition', openWhy: 'msft leads googl, qqq flat', closeWhy: null, exit: null, maxLoss: '157.00' });
+  assert.deepEqual(googl, { house: false, interim: false, thesis: GOOGL_THESIS, route: 'tuition', openWhy: 'MSFT leads GOOGL, QQQ flat', closeWhy: null, exit: null, maxLoss: '157.00' });
   assert.deepEqual(rationaleFor(rows.get('real:5'), body), { house: false, interim: false, thesis: rationaleBlock().agents[1].thesis, route: 'probe',
     openWhy: 'the open broke higher on heavy volume', closeWhy: 'target reached before the lunch lull', exit: 'agent', maxLoss: '96.00' });
   assert.deepEqual(rationaleFor(rows.get('real:1'), body), { house: true, interim: false, thesis: HOUSE_RATIONALE.calibration, openWhy: null, closeWhy: null,
@@ -384,8 +439,17 @@ test('the rationale: the House’s block first, else the tape’s open trade and
   const stray = position('real:30', { agent: 'off-roster', pnl_usd: '0.00' });
   assert.equal(rationaleFor(stray, old, { births: new Map([['off-roster', 'Small caps lag the index after a shock.']]) }).thesis, 'Small caps lag the index after a shock.');
   assert.equal(rationaleFor(stray, old).route, null, 'its band is unknown');
-  // A House thesis of null means nothing survived the House's filter: no interim stands in.
+  // A House thesis of null means nothing survived the House's filter: no interim stands in, on the card, the roster or a row.
   assert.equal(rationaleFor(position('real:31', { agent: 'reversal-1' }), body).thesis, null);
+  const nulled = windowCheckpoint({ agents: body.agents.map(row => (row.id === 'reversal-1' ? { ...row, mechanism: 'Buys when 7-14 DTE IV trades below realized.' } : row)) });
+  assert.equal(agentThesis(nulled, 'reversal-1'), null);
+  // An older House: the roster's mechanism under the page's rules, never raw.
+  const raw = ledgerCheckpoint({ agents: old.agents.map(row => (row.id === 'orb-4' ? { ...row, mechanism: 'When 7-14 DTE IV trades below realized, buy it. Vol mean-reverts upward.' } : row)) });
+  assert.equal(agentThesis(raw, 'orb-4'), 'Vol mean-reverts upward.');
+  // The interim trigger is a tag under the thesis rules, its tickers in capitals.
+  const numbered_ = trade('orb-4', { ...open.payload, why: 'spy up 4 sessions' }, '2026-09-28T14:11:30.000Z');
+  assert.equal(interimRationale(row6, [numbered_]).openWhy, null);
+  assert.equal(rationaleFor(row6, old, { trades: [{ ...open, payload: { ...open.payload, why: 'spy broke the open' } }] }).openWhy, 'SPY broke the open');
   assert.equal(riskShare('-12.56', '157.00'), -8);
   assert.equal(riskShare('31.00', '96.00'), 32.2);
   assert.equal(riskShare(null, '157.00'), null);
@@ -416,6 +480,14 @@ test('Realized steps exactly at each close from the ledger; the archive’s line
   assert.deepEqual(scoreSeries(points, 'net_usd'), []);
   const model = scoreModel(ledgerCheckpoint({ compute: BILL }), null, at);
   assert.deepEqual([model.profit, model.costs, model.costsNow?.cents], [[], [], 32879n], 'no archive: the current costs as one point');
+  // Points from before the Profit basis never show; a sampled archive breaks its lines only on a gap three samples wide.
+  const archive = { step_ms: 1800000, points: [['2026-09-26T05:00', '9.00'], ['2026-09-28T13:00', '1.00'], ['2026-09-28T13:30', '2.00'], ['2026-09-28T14:00', '3.00'],
+    ['2026-09-28T16:00', '4.00']].map(([time, value]) => ({ at: `${time}:00.000Z`, profit_usd: value, costs_usd: value, net_usd: null })) };
+  const sampledModel = scoreModel(ledgerCheckpoint({ compute: BILL }), archive, at);
+  assert.deepEqual(sampledModel.profit.map(segment => segment.map(point => Number(point.cents))), [[100, 200, 300], [400]]);
+  assert.equal(sampledModel.points.length, 4, 'the point before the reset is gone');
+  assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-26T05:00:00.000Z', profit_usd: '9.00' }, last_net: null }, at, RESET_AT), { profit: null, net: null },
+    'never from before the basis');
   assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-25T14:00:00.000Z', profit_usd: '-27.05' }, last_net: { at: '2026-09-28T14:00:00.000Z', net_usd: '-582.57' } }, at),
     { profit: { at: '2026-09-25T14:00:00.000Z', usd: '-27.05' }, net: { at: '2026-09-28T14:00:00.000Z', usd: '-582.57' } });
   assert.deepEqual(lastKnown({ last_profit: { at: '2026-09-20T14:00:00.000Z', profit_usd: '-27.05' }, last_net: null }, at), { profit: null, net: null }, 'older than four days');
@@ -439,9 +511,16 @@ test('market-closed bands are the hours outside 9:30 to 4:00 New York time on we
 
 // ---------------------------------------------------------------------------- the tape and the thought
 test('the tape names each line by its verb: a thought, a trade, a birth as its idea, a move, a retirement as its cause', () => {
-  assert.deepEqual(newsKind('is born, a new family: Small caps lag the index.', 'x'), { kind: 'born', brief: 'Small caps lag the index.' });
-  assert.deepEqual(newsKind('is born, forked from its parent: Holds longer.', 'x'), { kind: 'born', brief: 'Holds longer.' });
-  assert.deepEqual(newsKind('is born, a new family.', 'x'), { kind: 'born', brief: 'is born, a new family.' });
+  assert.deepEqual(newsKind('is born, a new family: Small caps lag the index.', 'x'), { kind: 'born', brief: 'Small caps lag the index.', idea: 'Small caps lag the index.', head: 'is born, a new family' });
+  assert.deepEqual(newsKind('is born, forked from its parent: Holds longer.', 'x').brief, 'Holds longer.');
+  assert.deepEqual(newsKind('is born, a new family.', 'x'), { kind: 'born', brief: 'is born, a new family.', idea: null, head: 'is born, a new family' });
+  // A birth's idea is a thesis: an entry rule with its numbers never shows, on the line or opened.
+  const rule = feedLine(news('is born, a new family: Buys when 3-7 DTE IV trades below realized.', PUBLISHED_AT, 'orb-4'));
+  assert.deepEqual([rule.brief, rule.text], ['is born, a new family.', 'is born, a new family.']);
+  const mixed = feedLine(news('is born, a new family: Buys when 3-7 DTE IV trades below realized. Vol mean-reverts upward.', PUBLISHED_AT, 'orb-4'));
+  assert.deepEqual([mixed.brief, mixed.text], ['Vol mean-reverts upward.', 'is born, a new family: Vol mean-reverts upward.']);
+  // A trade's tag on the tape follows the tag rules too.
+  assert.equal(feedLine(trade('orb-4', { why: 'spy up 4 sessions' })).brief, 'opened 1 XSP iron condor · Sep 28 · max loss $184');
   assert.deepEqual(newsKind('retired: never beat the fill cost.', 'x'), { kind: 'retired', brief: 'never beat the fill cost.' });
   assert.deepEqual(newsKind('moves from Probe to Sized: its forward record held.', 'x'), { kind: 'moved', brief: 'Probe → Sized · its forward record held', from: 'Probe', to: 'Sized' });
   assert.deepEqual(newsKind('approved for real money by the auditor. Clean.', 'x'), { kind: 'approved', brief: 'Clean.' });
@@ -503,10 +582,11 @@ test('mounted on a new House: the retired agent on Tuition, each position’s re
     const positions = root.querySelector('#floor-positions');
     const item = positions.withClass('pos-item').find(node => node.dataset.position === 'real:8');
     assert.equal(words(item.children[0]), 'Meriwether 2 GOOGL call debit vertical open 27m —');
-    item.children[0].click();
-    const card = positions.withClass('pos-item').find(node => node.dataset.position === 'real:8').withClass('rationale')[0];
-    assert.equal(card.withClass('rationale-thesis')[0].textContent, GOOGL_THESIS);
-    assert.equal(words(card.withClass('rationale-why')[0]), 'msft leads googl, qqq flat Tuition');
+    // The newest open agent position stands open: its reason is the first thing the panel says.
+    assert.equal(item.children[0].getAttribute('aria-expanded'), 'true');
+    const card = item.withClass('rationale')[0];
+    assert.equal(card.withClass('rationale-thesis')[0].textContent, GOOGL_THESIS, 'the whole thesis, its conclusion too');
+    assert.equal(words(card.withClass('rationale-why')[0]), 'MSFT leads GOOGL, QQQ flat Tuition');
     assert.match(words(card), /Sep 28 Oct 7 risk \$157 — → thoughts → agent$/);
     assert.equal(card.withClass('life-now').length, 1, 'open: a now tick on its life');
     // A closed one says who closed it.

@@ -278,8 +278,8 @@ test('mounted, each position is one line with its result, the House folds into a
     assert.equal(words(items[5].children[0]), 'House calibration ×1 −$2.20');
     assert.match(items[0].children[0].withClass('pos-bar-fill')[0].className, /negative/);
     assert.equal(words(box.withClass('pos-foot')[0]), 'other $0.00 · Profit +$220.40');
-    // Tap a line: its reason opens in place, one at a time.
-    items[0].children[0].click();
+    // The newest open agent position stands open with its reason until the viewer chooses; a tap opens another in place,
+    // one at a time.
     const opened = box.withClass('pos-list')[0].children[0];
     assert.equal(opened.children[0].getAttribute('aria-expanded'), 'true');
     assert.equal(opened.withClass('rationale').length, 1);

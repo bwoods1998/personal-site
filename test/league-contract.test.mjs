@@ -134,8 +134,8 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
       // The practice league is the Practice step's sheet, shown only when published.
       root.querySelector('#floor-agents').withClass('step-label').find(node => node.dataset.step === 'practice').click();
       const sheet = root.querySelector('#floor-sheet');
-      assert.equal(sheet.withClass('practice-table').length, checkpoint.practice ? 1 : 0);
-      if (checkpoint.practice) assert.equal(sheet.withClass('practice-table')[0].find('tbody')[0].find('tr').length, checkpoint.practice.rows.length);
+      assert.equal(sheet.withClass('practice-list').length, checkpoint.practice ? 1 : 0);
+      if (checkpoint.practice) assert.equal(sheet.withClass('pr-item').length, checkpoint.practice.rows.length);
       assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
       assert.match(words(root.querySelector('#floor-numbers')), /^Profit /);
       if (checkpoint.positions) {
