@@ -68,6 +68,7 @@ section { min-width: 0; }
 .tag-band { color: var(--tone-thought); }
 .tag-retired { color: var(--muted); opacity: .7; }
 .tag-incubator { color: var(--accent); border-style: dotted; cursor: help; }
+.tag-tuition { color: var(--accent); border-style: dotted; cursor: help; }
 .pos-who .tag, .pr-who .tag { margin-left: 8px; vertical-align: 1px; }
 
 /* The masthead: Profit, Net and Running, and the costs by service in one line under them. */
@@ -97,6 +98,20 @@ section { min-width: 0; }
 .number-value { font-size: clamp(26px, 3.6vw, 38px); letter-spacing: -1.2px; line-height: 1.1; white-space: nowrap; }
 .number-tick { font: 13px/1 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .number-note { font: 13px/1.4 'Courier New', Courier, monospace; }
+/* Under Profit and Net, each one's own path from the score archive, ending at the headline; a change flashes once. */
+/* `contain: inline-size`: the line takes no width of its own, so each column keeps the width of its number. */
+.number dd .spark { position: relative; flex: 0 0 100%; max-width: 120px; height: 24px; margin-top: 8px; color: var(--muted); contain: inline-size; }
+.number dd .spark.positive { color: var(--positive); } .number dd .spark.negative { color: var(--negative); }
+.number dd:has(> .spark) { column-gap: 0; }
+.spark-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.spark-line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.spark-zero { stroke: var(--line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.spark-dot { position: absolute; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--background); }
+.spark-dot.spark-stale { background: var(--background); box-shadow: 0 0 0 1px var(--muted); }
+.spark .balance-readout { top: calc(100% + 4px); left: 0; z-index: 1; }
+@keyframes wash-up { from { background: rgba(191, 208, 159, .18); } to { background: transparent; } }
+@keyframes wash-down { from { background: rgba(227, 162, 146, .18); } to { background: transparent; } }
+.wash-up { animation: wash-up 1.6s ease-out; } .wash-down { animation: wash-down 1.6s ease-out; }
 
 /* 2 — live: who is thinking now, then the feed. */
 .now { margin-top: 14px; padding: 22px 24px; border: 1px solid var(--line); border-left: 2px solid var(--tone-thought); background: var(--surface); display: grid; gap: 8px; min-width: 0; }
@@ -104,6 +119,10 @@ section { min-width: 0; }
 .now-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
 .now-pulse { background: var(--positive); }
 .now-name { font: 500 16px/1.2 Arial, Helvetica, sans-serif; letter-spacing: -.3px; color: var(--ink); }
+button.now-name { padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
+button.now-name:hover { color: var(--accent); }
+.now-queue { background: none; cursor: pointer; }
+.now-queue:hover { color: var(--accent); border-color: var(--accent); }
 .now-when { margin-left: auto; color: var(--positive); }
 .now-idle .now-when { color: var(--muted); }
 .now-idle .now-pulse { background: var(--muted); animation: none; }
@@ -145,6 +164,7 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .line-researching .feed-words { color: var(--muted); }
 .feed-pnl { flex: none; font: 12px/1.5 'Courier New', Courier, monospace; font-weight: 400; }
 .feed-count { flex: none; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font: 10px/1.5 'Courier New', Courier, monospace; color: var(--muted); }
+.feed-why { color: var(--muted); }
 .line-new { animation: line-in 1.6s ease-out; }
 .feed .empty-state { padding: 10px 0; margin: 0; }
 
@@ -164,6 +184,9 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .balance-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--background); }
 .balance-positive .balance-dot { background: var(--positive); }
 .balance-negative .balance-dot { background: var(--negative); }
+.balance-start { stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.balance-mark { position: absolute; bottom: -3.5px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--background); pointer-events: none; }
+.balance-mark-open { background: var(--background); box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 3px var(--background); }
 .balance-readout { position: absolute; top: -26px; padding: 1px 7px; border: 1px solid var(--line); background: var(--surface); font: 11px/1.6 'Courier New', Courier, monospace; white-space: nowrap; pointer-events: none; }
 
  .balance-caption { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 8px; margin: 12px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
@@ -197,6 +220,19 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .positions-table .pos-group th[scope] { padding: 16px 0 6px; }
 .positions-table .pos-body:first-of-type .pos-group th[scope] { padding-top: 6px; }
 .positions-table .pos-empty td { padding: 12px 0; margin: 0; color: var(--muted); }
+/* An agent's row: its own reason under the position, and a tap unfolds the family's thesis across the table. Gold is real money. */
+.pos-why { display: block; margin: 3px 0 0; padding: 0; border: 0; background: none; color: var(--muted);
+  font: 12px/1.5 Arial, Helvetica, sans-serif; text-align: left; overflow-wrap: anywhere; }
+button.pos-why { cursor: pointer; }
+button.pos-why::after { content: ' ▸'; font-size: 10px; }
+button.pos-why[aria-expanded="true"]::after { content: ' ▾'; }
+button.pos-why:hover { color: var(--accent); }
+.positions-table .why-open > * { border-bottom: 0; }
+.positions-table .pos-why-row > td { padding: 0 0 12px; }
+.pos-why-card { padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-left: 2px solid var(--accent); }
+.pos-thesis { margin: 0; font: 14px/1.7 Arial, Helvetica, sans-serif; color: var(--ink); overflow-wrap: anywhere; }
+.pos-why-meta { margin: 6px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
+.positions-table .pos-still-open .pulse { width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; }
 /* The practice league: shadow trades, so every figure is quiet; never real money. */
 .practice-table .pr-what, .practice-table .pr-tier, .practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins {
   font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap;
@@ -210,9 +246,12 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .practice-table .pr-total > * { border-top: 1px solid var(--muted); border-bottom: 0; }
 .practice-table .pr-total .pr-who { color: var(--muted); }
 
-/* Three stages, one button per agent. Empty stages keep their place. */
+/* The game's six rungs, one button per agent. Vacant rungs keep their place as one short line. */
 .agent-board { margin-top: 18px; position: relative; }
 .agent-board-key { display: flex; align-items: center; gap: 7px; position: absolute; right: 0; top: -39px; color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; }
+#agents { position: relative; }
+#agents .agent-board-key { top: 30px; }
+.agents-funnel { margin: 8px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); overflow-wrap: anywhere; cursor: help; }
 .agent-board-key::before { content: ''; width: 11px; height: 11px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; }
 .agent-stage { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: center; min-height: 84px; padding: 15px 0; border-top: 1px solid var(--line); }
 .agent-stage:last-of-type { border-bottom: 1px solid var(--line); }
@@ -220,7 +259,8 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .stage-level { color: var(--muted); font: 11px/1.5 'Courier New', Courier, monospace; }
 .stage-label { font-size: 13px; line-height: 1.5; }
 .stage-count { color: var(--muted); text-align: right; font: 11px/1.5 'Courier New', Courier, monospace; }
-.stage-2 .stage-level, .stage-3 .stage-level { color: var(--accent); }
+.agent-stage.stage-real .stage-level { color: var(--accent); }
+.agent-stage.stage-vacant { min-height: 44px; padding: 0; }
 .agent-dots { display: flex; flex-wrap: wrap; gap: 0; align-items: center; min-width: 0; }
 .agent-dot { position: relative; flex: 0 0 44px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
 .agent-progress-ring { position: absolute; inset: 4px; width: 36px; height: 36px; overflow: visible; fill: none; stroke-width: 1.7; pointer-events: none; transform: rotate(-90deg); }
@@ -236,6 +276,13 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .dot-probe .agent-dot-core, .dot-sized .agent-dot-core { width: 15px; height: 15px; background: var(--accent); }
 .dot-sized .agent-dot-core { width: 19px; height: 19px; }
 .dot-retired .agent-dot-core { width: 9px; height: 9px; border-style: dotted; }
+/* Dashed is shadow (the practice tag's look); dotted gold is small real money (the incubator's). */
+.level-tuition, .level-incubator { color: var(--accent); }
+.level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; background: none; }
+.level-practice .agent-dot-core { border-style: dashed; }
+/* The card's speaker, while it is deciding: its core breathes in the card's own green. */
+.dot-speaking { color: var(--positive); }
+.dot-speaking .agent-dot-core { animation: pulse 2.4s ease-in-out infinite; }
 .agent-dot:hover .agent-dot-core, .agent-dot[aria-expanded="true"] .agent-dot-core { transform: scale(1.16); }
 .agent-dot[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface); }
 .stage-empty { margin-left: 15px; color: var(--line); font: 12px 'Courier New', Courier, monospace; }
@@ -266,9 +313,11 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .progress-ready { color: var(--accent); }
 .agent-positions { list-style: none; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
 .agent-positions li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
+.agent-positions .agent-position-why { flex-basis: 100%; font: 12px/1.5 Arial, Helvetica, sans-serif; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse, .line-new, .now-thought::after { animation: none; }
+  .pulse, .line-new, .now-thought::after, .wash-up, .wash-down { animation: none; }
+  .dot-speaking .agent-dot-core { animation: none; }
   .agent-dot-core { transition: none; }
   .agent-activity { display: none; animation: none; }
 }
@@ -280,6 +329,7 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .block { padding: 26px 0; }
   .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin-top: 24px; }
   .number-value { font-size: 26px; }
+  .number dd .spark { max-width: none; height: 20px; }
   .now { padding: 12px 14px; }
   .now-when { margin-left: 0; }
   .feed-line { grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; }
@@ -290,6 +340,9 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .balance-plot { height: 140px; }
   .agent-stage { grid-template-columns: 1fr; gap: 8px; padding: 14px 0; }
   .stage-heading { grid-template-columns: 18px minmax(0, 1fr) 24px; padding-right: 0; }
+  #agents .agent-board-key { top: 22px; }
+  .agent-stage.stage-vacant { padding: 10px 0; min-height: 44px; }
+  .stage-vacant .stage-empty { display: none; }
   .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
   .agent-detail-card { padding: 14px; }
   .agent-positions li + li { margin-top: 10px; }
@@ -318,6 +371,8 @@ button.feed-text:hover .feed-words { color: var(--accent); }
   .positions-table .pos-total { border-top: 1px solid var(--muted); border-bottom: 0; }
   .positions-table .pos-total > * { border: 0; }
   .positions-table .pos-empty td { padding: 0; }
+  .positions-table .pos-why-row { display: block; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+  .positions-table .pos-why-row > td { display: block; padding: 0; }
   /* A practice row stacks too: agent and P&L, structure and return on risk, then its version and counts. */
   .practice-table .pr-who { order: 1; flex: 1 1 0; overflow-wrap: anywhere; }
   .practice-table .pr-pnl { order: 2; margin-left: auto; }

@@ -9,7 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
-import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital } from '../capital/capital.js';
+import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
+  agentStages } from '../capital/capital.js';
 import { WINDOW_READ } from '../lib/capital.mjs';
 import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 import { LEAKS, PLAIN, randomSentences } from './number-words.mjs';
@@ -137,15 +138,10 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     const original = { ...board, agents: board.agents.map(unnamed) };
     if (board.positions) original.positions = { ...board.positions, rows: board.positions.rows.map(unnamed) };
     if (board.practice) original.practice = { ...board.practice, rows: board.practice.rows.map(unnamed) };
-    // The page's read carries every block but the swarm window's: the Worker keeps `levels` and `rationale` for the window
-    // read alone (C7), so the page gets exactly the shapes it validates, and the window comes back whole on its own read.
-    const { levels, rationale, ...pageBlocks } = checkpoint;
-    assert.deepEqual(original, pageBlocks);
-    if (levels !== undefined || rationale !== undefined) {
-      const window = await (await get(capital, `/api/capital/checkpoint${WINDOW_READ}`)).json();
-      assert.deepEqual([window.levels, window.rationale], [levels, rationale]);
-      assert.equal(validCheckpoint(window, { publicRead: true }), true);
-    }
+    // The page's read is the Worker's window read (Oct 1, 2026): every block, the swarm window's `levels` and `rationale`
+    // included, comes back exactly as the publisher sent it.
+    assert.equal(CHECKPOINT_READ, WINDOW_READ);
+    assert.deepEqual(original, checkpoint);
     assert.equal(validCheckpoint(board, { publicRead: true }), true);
     const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;
     assert.equal(events.length, batch.events.length);
@@ -173,6 +169,11 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
       if (checkpoint.practice) assert.equal(root.querySelector('#floor-league').find('tbody')[0].find('tr').length, checkpoint.practice.rows.length);
       for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
       assert.equal(root.querySelector('#floor-agents').withClass('agent-dot').length, board.agents.length);
+      // With the House's levels, every agent the House places on a rung stands on it.
+      if (checkpoint.levels) {
+        const placed = new Map(agentStages(board).flatMap(stage => stage.agents.map(row => [row.id, stage.levels])));
+        for (const entry of checkpoint.levels.agents) assert.equal(entry.level === 'retired' || placed.get(entry.id)?.includes(entry.level), true, entry.id);
+      }
       assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
       assert.match(words(root.querySelector('#floor-numbers')), /^Profit /);
       if (checkpoint.positions) assert.equal(root.querySelector('#floor-positions').find('table').length, 1);

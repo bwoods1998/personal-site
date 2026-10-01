@@ -118,12 +118,12 @@ test('published progress reaches the dot and click details without changing the 
     const feed = await startCapital(root);
     const board = root.querySelector('#floor-agents');
     const dot = board.withClass('agent-dot')[0];
-    assert.match(dot.getAttribute('aria-label'), /Meriwether.*1 \/ 11 checks.*Live shadow/);
+    assert.match(dot.getAttribute('aria-label'), /^Meriwether · Train · iron condor · 1 \/ 11 checks · Candidate/);
     assert.equal(dot.find('circle').length, 2);
     assert.doesNotMatch(words(board), /Validation trades/);
     dot.click();
     const detail = board.querySelector('#agent-detail');
-    assert.match(words(detail), /Next · Live shadow 1 \/ 11 checks/);
+    assert.match(words(detail), /Next · Candidate 1 \/ 11 checks/);
     assert.match(words(detail), /Validation trades 36 \/ 100/);
     assert.match(words(detail), /Trading days 22 \/ 60/);
     assert.match(words(detail), /Validation needs improvement/);

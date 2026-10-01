@@ -115,7 +115,7 @@ test('the Worker gives the page every block, and every older read the shapes it 
   assert.equal((await post(capital, '/api/capital/checkpoint', body)).status, 200);
   const read = async query => { const response = await get(capital, `/api/capital/checkpoint${query}`); assert.equal(response.status, 200, query); return response.json(); };
   const page = await read(CHECKPOINT_READ);
-  assert.equal(CHECKPOINT_READ, '?progress=1&positions=1&practice=1');
+  assert.equal(CHECKPOINT_READ, '?progress=1&positions=1&practice=1&window=1');
   assert.equal(validCheckpoint(page, { publicRead: true }), true);
   assert.deepEqual(page.compute, BILL);
   assert.equal(page.positions.rows.find(row => row.id === 'real:8').source, 'incubator');

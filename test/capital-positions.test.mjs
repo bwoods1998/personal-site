@@ -16,8 +16,9 @@ import { swarmCheckpoint, ledgerCheckpoint, ledger, position, POSITIONS, agent, 
 
 const at = Date.parse(PUBLISHED_AT);
 const READ = '/api/capital/checkpoint?progress=1&positions=1';
-// The page's own read since Sept 30, 2026: the ledger and the practice league, Claude's cost and the incubator route.
-const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1';
+// The page's own read since Oct 1, 2026: the ledger and the practice league, Claude's cost, the incubator route, and the
+// House's `levels` and `rationale`.
+const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1&window=1';
 const withRows = (rows, extra = {}) => ledgerCheckpoint({ positions: ledger({ rows, ...extra }) });
 const patchRow = (index, patch) => withRows(POSITIONS.map((row, n) => (n === index ? { ...row, ...patch } : row)));
 const cents = value => { const [whole, fraction = ''] = value.replace('-', '').split('.'); const size = BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2)); return value.startsWith('-') ? -size : size; };
@@ -350,7 +351,7 @@ test('forbidden fields never reach the page: a smuggled ledger is refused whole,
   assert.doesNotMatch(JSON.stringify(book), /571|1\.23|4\.56|7\.89|9\.99|strike|fill_price|"mark"|"bid"/);
 });
 
-test('the section is quiet: text nodes only, no motion, and it stacks on a phone without widening the page', async () => {
+test('the section is quiet: text nodes only, its own rules never move (the open pulse and one wash are shared rules), and it stacks on a phone', async () => {
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|outerHTML/);
   const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');

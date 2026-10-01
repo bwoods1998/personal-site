@@ -573,7 +573,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     const lines = root.querySelector('#floor-feed').withClass('feed-line').map(textOf);
     assert.equal(lines.length, 5, 'the note on stage is not repeated below it');
     assert.match(lines[0], /thinking Scholes The gap down held/);
-    assert.match(lines[1], /trading Hilibrand real money closed 2 SPY debit verticals \+\$31\.00$/);
+    assert.match(lines[1], /trading Hilibrand real money closed 2 SPY debit verticals — Target reached before the lunch lull\. \+\$31\.00$/);
     assert.match(lines[4], /news Meriwether moves from Probe to Sized/);
     const account = root.querySelector('#floor-account');
     assert.equal(account.find('svg').length, 1);
@@ -582,7 +582,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.equal(account.withClass('account-lines').length, 0);
     assert.equal(account.withClass('balance-max').length, 0);
     const board = root.querySelector('#floor-agents');
-    assert.deepEqual(board.withClass('stage-heading').map(textOf), ['3 Increased capital 1', '2 Live trading 2', '1 Practice 8']);
+    assert.deepEqual(board.withClass('stage-heading').map(textOf), ['6 Sized 1', '5 Probe 2', '4 Candidate 3', '3 Tuition 0', '2 Validation 0', '1 Train 5']);
     assert.equal(board.withClass('agent-dot').length, 12, 'all agents have a dot, retired ones in the closed archive');
     assert.equal(board.find('table').length, 0);
     assert.equal(board.querySelector('#agent-detail').hidden, true);
@@ -627,7 +627,7 @@ test('after the reset, before the House publishes, every section says so and the
     const feed = await startCapital(first);
     feed.stop();
     assert.match(textOf(first.querySelector('#floor-numbers')), /^Profit — Net — Running /);
-    assert.deepEqual(first.querySelector('#floor-agents').withClass('stage-heading').map(textOf), ['3 Increased capital 0', '2 Live trading 0', '1 Practice 0']);
+    assert.deepEqual(first.querySelector('#floor-agents').withClass('stage-heading').map(textOf), ['6 Sized 0', '5 Probe 0', '4 Candidate 0', '3 Tuition 0', '2 Validation 0', '1 Train 0']);
     assert.equal(textOf(first.querySelector('#floor-now')), 'No agent has written a note yet.');
   });
 });
