@@ -1,6 +1,6 @@
 import {
   MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, COMPUTE_PARTS, OTHER_PARTS, AGENT_SOURCES, PARTNER_NAMES, agentId, computeParts, validCheckpoint,
-  validPublicEvent, validDisplayName, validProgress, validScorePoint, socketMatches, tapeName,
+  validPublicEvent, validDisplayName, validProgress, validScorePoint, socketMatches, tapeName, numbered, plainGlyphs, MAX_PUBLIC_CHECKPOINT_BYTES,
 } from './schema.js';
 
 // AI agents trading options on the Brokerage Account, drawn from the House's own record with text
@@ -18,7 +18,6 @@ export function tapeOf(search) {
 export const apiBase = search => { const tape = tapeOf(search); return tape ? `${API}/t/${tape}` : API; };
 const pageSearch = () => (typeof window === 'undefined' ? '' : window.location?.search);
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
-const MAX_CHECKPOINT_BYTES = 512 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
 const HISTORY_LIMIT = 2048;
 const MARK = 'account.mark';
@@ -637,69 +636,15 @@ export function heroNote(events, current = null, { holdMs = 45000 } = {}) {
 // The page's own copy of the House's sentence rules for a thesis (league/swarm/public.py `thesis_text`), used only while the
 // House has not sent its own: whole sentences in order, none with a digit, a colon, a bracket, a code mark or a number
 // written as a word (the pronoun "one" aside), within the limit. Null when nothing survives: the card then shows no
-// thesis rather than a raw mechanism. The House's thesis always replaces this one.
+// thesis rather than a raw mechanism. The House's thesis always replaces this one. The number rules themselves
+// (`numbered`, `plainGlyphs`) live in schema.js, the House's word for word, so the Worker refuses exactly what the page
+// would hide.
 const CODE_MARKS = /[=_{}[\]<>`#|\\]|->|::|\bctx\.|\bnp\.|\bPARAMS\b|\bNEEDS\b|\bdef\s|\breturn\s|\bimport\s|\blambda\b/;
-const UNITS_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
-const TENS_WORDS = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-const ORDINAL_WORDS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth',
-  'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth', 'thirtieth', 'fortieth', 'fiftieth',
-  'sixtieth', 'seventieth', 'eightieth', 'ninetieth', 'hundredth', 'thousandth', 'millionth', 'billionth'];
-// Every way a number hides in a word (as the House's `league/swarm/public.py` reads it, Oct 1, 2026): the cardinals and their
-// ordinals (and plurals: "two thirds", "the twelfths"), decades, multiples ("twice", "doubled", "threefold"), money's coins,
-// a fortnight, the quantiles, and the words that only carry a measure ("percent", "basis").
-const NUMBER_WORDS = new Set([
-  'zero', ...UNITS_WORDS, 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', ...TENS_WORDS,
-  'hundred', 'hundreds', 'thousand', 'thousands', 'million', 'millions', 'billion', 'billions', 'trillion', 'dozen', 'dozens',
-  'tens', 'teens', 'twenties', 'thirties', 'forties', 'fifties', 'sixties', 'seventies', 'eighties', 'nineties',
-  ...ORDINAL_WORDS, ...ORDINAL_WORDS.filter(word => word !== 'first' && word !== 'second').map(word => `${word}s`),
-  'half', 'halves', 'halve', 'halved', 'halving', 'quarter', 'quarters', 'twice', 'thrice', 'double', 'doubles', 'doubled', 'doubling', 'triple',
-  'triples', 'tripled', 'tripling', 'quadruple', 'quadrupled', 'fortnight', 'fortnights', 'nickel', 'nickels', 'dime', 'dimes', 'penny', 'pennies',
-  'tercile', 'terciles', 'quartile', 'quartiles', 'quintile', 'quintiles', 'decile', 'deciles',
-  'point', 'percent', 'percentage', 'percentages', 'fraction', 'fractions', 'basis', 'bps', 'pct',
-]);
-const UNIT_WORDS = new Set(['day', 'days', 'session', 'sessions', 'week', 'weeks', 'month', 'months', 'year', 'years', 'hour', 'hours', 'hr', 'hrs',
-  'minute', 'minutes', 'min', 'mins', 'sec', 'secs', 'wk', 'wks', 'mo', 'mos', 'yr', 'yrs', 'bar', 'bars', 'standard', 'sigma', 'sigmas', 'deviation',
-  'deviations', 'sd', 'sds', 'stdev', 'stdevs', 'atr', 'atrs', 'strike', 'strikes', 'contract', 'contracts', 'lot', 'lots', 'leg', 'legs', 'percent',
-  'point', 'points', 'dte', 'delta', 'deltas', 'times', 'x', 'tick', 'ticks', 'cent', 'cents', 'dollar', 'dollars', 'notch', 'notches', 'handle',
-  'handles', 'bp', 'pip', 'pips']);
-// A unit of spread: "a sigma", "an ATR", "a single standard deviation" are each a number of them.
-const SPREAD_WORDS = new Set(['sigma', 'stdev', 'sd', 'standard', 'deviation', 'atr']);
-// The words that make the "one" before them a measure even with a word between: "one trading session", "one full standard
-// deviation", "one more week".
-const MEASURE_WORDS = new Set([...UNIT_WORDS, 'trading', 'business', 'calendar', 'full', 'whole', 'more', 'less', 'extra', 'additional', 'further']);
-// A number word run together with another, or with a unit ("twentyfive", "tenpercent", "fivedays"), and "-fold" multiples.
-const runTogether = token => (/^[a-z]+fold$/.test(token) && token !== 'fold')
-  || [...NUMBER_WORDS].some(head => head.length > 2 && token.length > head.length && token.startsWith(head)
-    && (NUMBER_WORDS.has(token.slice(head.length)) || UNIT_WORDS.has(token.slice(head.length))));
-// The pronoun "one" passes only where English uses it as a pronoun ("one another", "one of", "one on the other's capex",
-// "no one", "the one", "each one"), and never before a measure or beside another number ("the one day", "one twenty").
-const PRONOUN_BEFORE = new Set(['no', 'the', 'each', 'any', 'every', 'either', 'neither', 'which', 'this', 'that']);
-const PRONOUN_LINKS = new Set(['on', 'to', 'over', 'or', 'against', 'versus', 'vs', 'after', 'from', 'than', 'and']);
-function pronounOne(tokens, index) {
-  const [before, after, next, last] = [tokens[index - 1] || '', tokens[index + 1] || '', tokens[index + 2] || '', tokens[index + 3] || ''];
-  if (NUMBER_WORDS.has(before) || NUMBER_WORDS.has(after) || MEASURE_WORDS.has(after) || runTogether(after)) return false;
-  return after === 'another' || after === 'of' || after === 'sided' || PRONOUN_BEFORE.has(before)
-    || (PRONOUN_LINKS.has(after) && next === 'the' && /^other/.test(last)) || (PRONOUN_LINKS.has(after) && /^other/.test(next));
-}
-// A number written as a word, except the pronoun "one". Tokens are read after NFKC folding, so a fullwidth "ｏｎｅ" is "one".
-export function numbered(sentence) {
-  const tokens = show(sentence).normalize('NFKC').toLowerCase().match(/[a-z']+/g) || [];
-  return tokens.some((token, index) => {
-    const word = token.replace(/'s$/, '');
-    if (word === 'one') return !pronounOne(tokens, index);
-    // "single" before a unit, and "a"/"an" before a unit of spread, are each a count of one.
-    if (word === 'single' || word === 'singles') return MEASURE_WORDS.has(tokens[index + 1]) || SPREAD_WORDS.has(tokens[index + 1]);
-    if ((word === 'a' || word === 'an') && SPREAD_WORDS.has(tokens[index + 1])) return true;
-    return NUMBER_WORDS.has(word) || runTogether(word);
-  });
-}
-// Characters no public sentence carries: any numeral in any script ("½", "Ⅻ", "٣"), an invisible format mark (a soft
-// hyphen or a zero-width space that splits a number word), and a letter outside Latin-1 (a Greek "ο" in "οne").
-const HIDDEN_NUMBER = /[\p{N}\p{Cf}]/u;
-const FOREIGN_LETTER = /(?![\u0000-\u00ff])\p{L}/u;
-// One sentence the public may read: no digit, numeral or hidden mark, no colon or bracket, no code, no number word.
-export const plainSentence = sentence => Boolean(sentence) && !HIDDEN_NUMBER.test(sentence) && !FOREIGN_LETTER.test(sentence)
-  && !CODE_MARKS.test(sentence) && !/[:()]/.test(sentence) && !numbered(sentence);
+export { numbered };
+// One sentence the public may read: no numeral of any script, hidden mark or foreign letter, no colon or bracket, no code,
+// no number word.
+export const plainSentence = sentence => Boolean(sentence) && plainGlyphs(sentence) && !CODE_MARKS.test(sentence) && !/[:()]/.test(sentence)
+  && !numbered(sentence);
 // A short tag (an order's `why`) under the same rules, within its limit.
 export const plainTag = (value, limit = 80) => {
   const text = plainNote(value);
@@ -718,6 +663,12 @@ export function tickerCase(text, symbols = []) {
   return text.replace(/\b[a-z]{1,5}\b/gi, word => (TICKERS.has(word.toLowerCase()) || own.has(word.toLowerCase()) ? word.toUpperCase() : word));
 }
 export const sentencesOf = text => show(text).replace(/\s+/g, ' ').trim().replace(/([.!?…])\s+/g, '$1\u0000').split('\u0000').filter(Boolean);
+// The units a cut number leaves behind it ("exceeds standard deviations"): the page's own list, apart from the House's rules.
+const CUT_UNITS = new Set(['day', 'days', 'session', 'sessions', 'week', 'weeks', 'month', 'months', 'year', 'years', 'hour', 'hours', 'hr', 'hrs',
+  'minute', 'minutes', 'min', 'mins', 'sec', 'secs', 'wk', 'wks', 'mo', 'mos', 'yr', 'yrs', 'bar', 'bars', 'standard', 'sigma', 'sigmas', 'deviation',
+  'deviations', 'sd', 'sds', 'stdev', 'stdevs', 'atr', 'atrs', 'strike', 'strikes', 'contract', 'contracts', 'lot', 'lots', 'leg', 'legs', 'percent',
+  'point', 'points', 'dte', 'delta', 'deltas', 'times', 'x', 'tick', 'ticks', 'cent', 'cents', 'dollar', 'dollars', 'notch', 'notches', 'handle',
+  'handles', 'bp', 'pip', 'pips']);
 // A sentence an older publisher has already cut a number out of ("exceeds standard deviations", "IV above ."): the House's
 // news strips decimals and brackets, which can leave a sentence that reads whole but says something else. Never shown.
 const COMPARATORS = new Set(['exceeds', 'exceed', 'exceeding', 'above', 'below', 'under', 'over', 'than', 'beyond', 'past', 'within', 'by', 'at',
@@ -725,7 +676,7 @@ const COMPARATORS = new Set(['exceeds', 'exceed', 'exceeding', 'above', 'below',
 export function cutNumber(sentence) {
   if (/\s[.,;!?…]/.test(sentence)) return true;
   const tokens = show(sentence).toLowerCase().match(/[a-z']+/g) || [];
-  return tokens.some((token, index) => COMPARATORS.has(token) && UNIT_WORDS.has(tokens[index + 1]));
+  return tokens.some((token, index) => COMPARATORS.has(token) && CUT_UNITS.has(tokens[index + 1]));
 }
 // Whole sentences in order while they fit, each one plain and ending ".", "!" or "?". `interim`: text an older publisher
 // may have cut numbers out of, so a sentence that reads as cut is dropped too.
@@ -793,14 +744,30 @@ export function openMoney(checkpoint) {
   return held;
 }
 const publishedLevels = checkpoint => new Map((Array.isArray(checkpoint?.levels?.agents) ? checkpoint.levels.agents : []).map(row => [row?.id, row?.level]));
+// The level an open row of an agent's money stands on: the route its trade names when the House sent one (Tuition, the
+// Incubator, Probe, Sized), else the Incubator for an incubator row and Tuition for any other agent row (the one real step a
+// Gym agent reaches without the holdout).
+const ROUTE_LEVELS = { tuition: 'tuition', incubator: 'incubator', probe: 'probe', sized: 'sized' };
+const rowLevel = (row, routes) => ROUTE_LEVELS[routes.get(row.id)] || (row.source === 'incubator' ? 'incubator' : 'tuition');
+const tradeRoutes = checkpoint => new Map((Array.isArray(checkpoint?.rationale?.trades) ? checkpoint.rationale.trades : []).map(trade => [trade?.id, trade?.route]));
+// Each agent's first open row in the ledger (newest first), as the level that row stands on.
+export function moneyLevels(checkpoint, routes = tradeRoutes(checkpoint)) {
+  const levels = new Map();
+  for (const row of Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : []) {
+    if (row?.status === 'open' && AGENT_SOURCES.includes(row.source) && agentId(row.agent) && !levels.has(row.agent)) levels.set(row.agent, rowLevel(row, routes));
+  }
+  return levels;
+}
 // Where an agent stands: the House's own word when it sends `levels`; else what the roster and the ledger can say for
-// certain. A band above the Gym is its own level; real money on a Gym agent with no incubator tag can only be tuition.
-export function levelOf(agent, checkpoint, held = openMoney(checkpoint), published = publishedLevels(checkpoint)) {
+// certain. A band above the Gym is its own level; real money on a Gym agent with no incubator tag can only be tuition. A
+// retired agent still holding money stands on that money's step (its ledger row's route, as `moneyLevels` reads it, or
+// Tuition or the Incubator by the money's kind when only a structure says so), never in the graveyard while the money is open.
+export function levelOf(agent, checkpoint, held = openMoney(checkpoint), published = publishedLevels(checkpoint), rows = moneyLevels(checkpoint)) {
   if (published.has(agent?.id)) return published.get(agent.id);
   const band = agent?.band;
   if (['candidate', 'probe', 'sized'].includes(band)) return band;
   const money = held.get(agent?.id);
-  if (band === 'retired') return money?.incubator ? 'incubator' : 'retired';
+  if (band === 'retired') return !money ? 'retired' : rows.get(agent.id) || (money.real ? 'tuition' : money.incubator ? 'incubator' : 'retired');
   if (money?.incubator) return 'incubator';
   if (money?.real) return 'tuition';
   return 'train';
@@ -810,7 +777,6 @@ export function levelOf(agent, checkpoint, held = openMoney(checkpoint), publish
 export const moneyOf = (level, money) => (money?.real ? 'real' : money?.incubator ? 'incubator' : level === 'practice' || money?.shadow ? 'shadow' : 'research');
 export const MONEY_WORDS = { research: 'researching', shadow: 'trading the shadow book', incubator: 'incubator money open', real: 'real money open' };
 const countOf = value => (Number.isSafeInteger(value) && value >= 0 ? value : null);
-const ROUTE_STEPS = { tuition: 'tuition', incubator: 'incubator', probe: 'probe', sized: 'sized' };
 // The whole map: each step's agents now and its families ever, the graveyard, the House's own trades and the holdout's
 // looks. A count the House has not published is null and reads "—", never 0. `born` adds provisional dots for births on
 // the tape the checkpoint has not confirmed yet; `gone` takes off the map the agents the tape has just retired.
@@ -819,13 +785,14 @@ export function climbModel(checkpoint, { born = [], gone = [] } = {}) {
   const funnel = levels?.funnel && typeof levels.funnel === 'object' ? levels.funnel : null;
   const held = openMoney(checkpoint);
   const published = publishedLevels(checkpoint);
+  const rowLevels = moneyLevels(checkpoint);
   const steps = Object.fromEntries(STEPS.map(step => [step.key, { ...step, agents: [], now: null, everCount: null }]));
   const roster = (Array.isArray(checkpoint?.agents) ? checkpoint.agents : []).filter(agent => agent && typeof agent === 'object');
   const dots = new Map();
   const leaving = new Set(gone);
   let left = 0;
   for (const agent of roster) {
-    const level = levelOf(agent, checkpoint, held, published);
+    const level = levelOf(agent, checkpoint, held, published, rowLevels);
     const key = STEP_OF_LEVEL[level];
     if (!key) continue;
     if (leaving.has(agent.id) && !held.has(agent.id)) { left += 1; continue; }
@@ -835,16 +802,15 @@ export function climbModel(checkpoint, { born = [], gone = [] } = {}) {
     dots.set(dot.id, dot);
   }
   // An agent off the roster (the roster keeps only a few recent retirements) that still holds open real money stands, retired,
-  // on that money's step all the same: the step its trade's route names, else the Incubator for an incubator row and
-  // Tuition for any other agent row (the one real step a Gym agent reaches without the holdout).
+  // on that money's step all the same, read as a retired roster agent's is (`moneyLevels`).
   const onRoster = new Set(roster.map(agent => agent.id));
-  const routes = new Map((Array.isArray(checkpoint?.rationale?.trades) ? checkpoint.rationale.trades : []).map(trade => [trade?.id, trade?.route]));
   for (const row of Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : []) {
     if (row?.status !== 'open' || !AGENT_SOURCES.includes(row.source) || !agentId(row.agent) || onRoster.has(row.agent) || dots.has(row.agent)) continue;
-    const key = ROUTE_STEPS[routes.get(row.id)] || (row.source === 'incubator' ? 'incubator' : 'tuition');
+    const level = rowLevels.get(row.agent);
+    const key = STEP_OF_LEVEL[level];
     const name = validDisplayName(row.display_name) ? row.display_name : titleCase(row.agent);
-    const dot = { id: row.agent, name, ordinal: ordinalOf(name), level: STEPS.find(step => step.key === key).level, step: key, band: 'retired',
-      money: row.source === 'incubator' ? 'incubator' : 'real', retired: true, provisional: false, progress: null };
+    const dot = { id: row.agent, name, ordinal: ordinalOf(name), level, step: key, band: 'retired',
+      money: moneyOf(level, held.get(row.agent)), retired: true, provisional: false, progress: null };
     steps[key].agents.push(dot);
     dots.set(dot.id, dot);
   }
@@ -1155,7 +1121,7 @@ async function loadEvents(query) {
 }
 async function loadCheckpoint() {
   // Both opt-ins: the promotion checklist and the positions ledger. Pages already open ask for less and keep working.
-  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint${CHECKPOINT_READ}`, MAX_CHECKPOINT_BYTES);
+  const data = await fetchJson(`${apiBase(pageSearch())}/checkpoint${CHECKPOINT_READ}`, MAX_PUBLIC_CHECKPOINT_BYTES);
   if (!validCheckpoint(data, { publicRead: true })) throw new Error('Invalid checkpoint.');
   return data;
 }
@@ -1992,12 +1958,14 @@ function openGraveyard(state, opener) {
 }
 // An agent's card: its thesis, its record, its open structures, its checklist when the House publishes one, and its
 // last five thoughts. Clicking a dot on the map also follows it on the tape (its "→ thoughts" does, from anywhere).
-function recordLine(agent) {
+export function recordLine(agent) {
   const record = agent?.record;
   if (!record) return '';
   const tally = (label, row) => `${label} ${row.wins}/${row.trades} ${signedMoney(row.pnl_usd)}`;
+  // `record.real` is the evidence record: the real trades the bands judge, never tuition, the incubator or the House's own
+  // (league/live/step.py `_export_real`). It shows only when the House sends one, and says what it is.
   return [`trials ${Number(record.trials).toLocaleString('en-US')}`, `revisions ${Number(record.revisions).toLocaleString('en-US')}`,
-    record.forward ? tally('forward', record.forward) : '', tally('real', record.real || { wins: 0, trades: 0, pnl_usd: '0' })].filter(Boolean).join(' · ');
+    record.forward ? tally('forward', record.forward) : '', record.real ? tally('real evidence', record.real) : ''].filter(Boolean).join(' · ');
 }
 function openAgent(state, id, opener, { follow = true, quiet = false } = {}) {
   if (!agentId(id)) return;
@@ -2546,22 +2514,38 @@ export function scoreModel(checkpoint, score, now = Date.now()) {
   };
 }
 // Labels at the end of each line are the legend. On a wide plot they sit in the right margin on short keys, moved apart along
-// leader lines; on a narrow one they sit inside the plot, over their line's end. Kept apart and inside their panel.
+// leader lines, kept apart and inside their panel. On a narrow one (a phone, or the chart's column on a small desktop) there
+// is no margin to spare, so they are a key in a strip of their own right above their panel, read left to right, and never
+// sit on a line, a marker or each other (`NARROW_KEY` pixels of the chart's height).
+const NARROW_KEY = 14;
+export const labelWidth = text => Math.ceil(String(text).length * 6.7);
+export function narrowKeys(entries, edge) {
+  const out = [];
+  let right = edge;
+  for (const entry of entries.filter(Boolean).reverse()) {
+    const width = labelWidth(entry.label);
+    out.unshift({ key: entry.key, label: entry.label, textEnd: right, keyFrom: right - width - 13, keyTo: right - width - 5 });
+    right -= width + 13 + 12;
+  }
+  return out;
+}
 function endLabels(nodes, entries, { edge, top, bottom, narrow }) {
+  if (narrow) {
+    for (const entry of narrowKeys(entries, edge)) {
+      nodes.push(svgElement('line', { x1: entry.keyFrom, x2: entry.keyTo, y1: top - NARROW_KEY / 2 - 1.5, y2: top - NARROW_KEY / 2 - 1.5, class: `key key-${entry.key}` }));
+      const label = svgElement('text', { x: entry.textEnd, y: top - 5, class: `end-label end-${entry.key}`, 'text-anchor': 'end' });
+      label.textContent = entry.label;
+      nodes.push(label);
+    }
+    return;
+  }
   const list = entries.filter(Boolean).sort((a, b) => a.y - b.y);
-  const lift = narrow ? 6 : 0;
-  list.forEach((entry, index) => { entry.ly = Math.max(entry.y - lift, index ? list[index - 1].ly + 14 : top + 8); });
+  list.forEach((entry, index) => { entry.ly = Math.max(entry.y, index ? list[index - 1].ly + 14 : top + 8); });
   for (let index = list.length - 1; index >= 0; index--) {
     const below = index < list.length - 1 ? list[index + 1].ly - 14 : bottom + 4;
     list[index].ly = Math.min(list[index].ly, below);
   }
   for (const entry of list) {
-    if (narrow) {
-      const label = svgElement('text', { x: edge - 2, y: entry.ly - 2, class: `end-label end-${entry.key}`, 'text-anchor': 'end' });
-      label.textContent = entry.label;
-      nodes.push(label);
-      continue;
-    }
     const from = entry.x ?? edge;
     if (Math.abs(entry.ly - entry.y) > 1 || from < edge - 1) nodes.push(svgElement('path', { d: `M${from + 3},${entry.y}L${edge + 6},${entry.ly}`, class: 'leader' }));
     nodes.push(svgElement('line', { x1: edge + 8, x2: edge + 16, y1: entry.ly, y2: entry.ly, class: `key key-${entry.key}` }));
@@ -2589,9 +2573,10 @@ function scoreChart(state, plot) {
   };
   // The right margin fits the longest end label (11px Courier: about 6.7 pixels a character), past its key.
   const longest = Math.max(0, ...Object.values(labels).filter(Boolean).map(text => text.length));
-  const margin = { left: 46, right: narrow ? 10 : Math.ceil(longest * 6.7) + 30, top: 12, bottom: 22 };
+  const margin = { left: 46, right: narrow ? 10 : Math.ceil(longest * 6.7) + 30, top: narrow ? 12 + NARROW_KEY : 12, bottom: 22 };
   const plotW = W - margin.left - margin.right;
-  const gap = 16;
+  // Between the panels: the open markers under the trading chart, then (narrow) the costs' key.
+  const gap = narrow ? 16 + NARROW_KEY : 16;
   const costH = Math.max(40, Math.round((H - margin.top - margin.bottom - gap) * 0.3));
   const tradeTop = margin.top;
   const tradeBottom = H - margin.bottom - costH - gap;
@@ -2838,6 +2823,13 @@ function followAgent(state, id) {
     drawTape(state);
   }).catch(() => {});
 }
+// Whose money a trade on the tape moved: the shadow book's, the incubator's (real money from an agent on the Incubator
+// step, where an agent trades nothing else), or real money. Null for a line that is no trade.
+export function tradeMoney(line, dot = null) {
+  if (line?.tape !== 'trade' || typeof line.real !== 'boolean') return null;
+  if (!line.real) return 'shadow';
+  return dot && (dot.step === 'incubator' || dot.money === 'incubator') ? 'incubator' : 'real';
+}
 function drawTape(state) {
   const list = state.box.feed;
   if (!list) return;
@@ -2853,6 +2845,10 @@ function drawTape(state) {
     const row = button(null, `tape-row${open ? ' is-open' : ''}`);
     row.setAttribute('aria-expanded', String(open));
     const text = element('span', null, 'tape-text');
+    // A trade off real money says so in words, not only in a fainter colour: "shadow", or "incubator" for real money at
+    // tuition size.
+    const kind = tradeMoney(line, line.agentId ? state.model?.dots?.get(line.agentId) : null);
+    if (kind === 'shadow' || kind === 'incubator') text.append(moneyTag(kind === 'incubator', kind === 'incubator'));
     text.append(element('span', open ? (line.tape === 'trade' && line.why ? `${line.text} · ${line.why}` : line.text) : line.brief, 'tape-words'));
     if (line.pnl) text.append(element('b', line.pnl, `tape-pnl ${line.tone}`.trim()));
     if (line.count > 1) text.append(element('span', `×${line.count}`, 'tape-count'));

@@ -4,16 +4,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LEVELS, ROUTES, EXITS, FUNNEL_KEYS, FUNNEL_CHAINS, OPTIONAL_CHECKPOINT_FIELDS, MAX_AGENTS, thesisWords, validCheckpoint, validLevels, validRationale, validFunnel,
-  scorePoint, validScorePoint,
+  scorePoint, validScorePoint, numberTokens, MAX_STRUCTURES, MAX_CHECKPOINT_BYTES, MAX_PUBLIC_CHECKPOINT_BYTES, MAX_NAMED_ROWS, MAX_POSITIONS, MAX_PRACTICE_ROWS, byteLength,
 } from '../capital/schema.js';
 import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
 import {
   CHECKPOINT_READ, STEPS, climbModel, climbLayout, levelOf, thesisText, houseThesis, agentThesis, plainTag, tickerCase, cutNumber, numbered, interimRationale,
   rationaleFor, riskShare, pitchFor,
   realizedSteps, realizedAt, scoreSeries, scoreModel, marketClosedBands, niceTicks, newsKind, feedLine, netNumber, lastKnown, holdMs, ordinalOf,
-  HOUSE_RATIONALE, nyInstant,
+  HOUSE_RATIONALE, nyInstant, tradeMoney, recordLine, narrowKeys, labelWidth,
 } from '../capital/capital.js';
 import { floor, post, get } from './harness.mjs';
+import { LEAKS, PLAIN } from './number-words.mjs';
 import {
   swarmCheckpoint, ledgerCheckpoint, ledger, position, agent, structure, note, trade, news, POSITIONS, PUBLISHED_AT, RESET_AT, GOOGL_THESIS,
   WINDOW_AGENTS, WINDOW_POSITIONS, LEVEL_OF, funnel, levelsBlock, rationaleBlock, rationaleTrade, windowCheckpoint,
@@ -165,6 +166,41 @@ test('every read but the window read is byte for byte what it was, with the bloc
   for (const query of ['?window=1', '?progress=1&positions=1&window=1', '?progress=1&positions=1&practice=1&window=0', '?window=1&progress=1&positions=1&practice=1']) {
     assert.equal((await get(capital, `/api/capital/checkpoint${query}`)).status, 404, query);
   }
+});
+
+test('a checkpoint fitted to the limit and read back with every row named still validates on the page', async () => {
+  // The House fits its body under the stored limit; the public read names every roster agent, ledger row and practice row,
+  // up to 508 of them. Built from the longest values the schema takes (three-byte mechanisms, two-byte theses), then trimmed
+  // to just under the limit, with the longest names an ordinal can make.
+  assert.equal(MAX_NAMED_ROWS, MAX_AGENTS + MAX_POSITIONS + MAX_PRACTICE_ROWS);
+  const id = n => `${'a'.repeat(34)}-${String(n).padStart(5, '0')}`;
+  const agents = Array.from({ length: MAX_AGENTS }, (_, n) => agent(id(n), { family: id(n), mechanism: '€'.repeat(240) }));
+  const rows = Array.from({ length: MAX_POSITIONS }, (_, n) => position(`real:${n + 100}`, { agent: id(n % MAX_AGENTS), pnl_usd: '0.00', status: 'closed',
+    open_quantity: 0, opened_at: '2026-09-28T13:00:00.000Z', closed_at: '2026-09-28T14:00:00.000Z' }));
+  const structures = Array.from({ length: MAX_STRUCTURES }, (_, n) => structure(`st-${'x'.repeat(190)}-${n}`, { agent: id(n) }));
+  const practiceRows = Array.from({ length: MAX_PRACTICE_ROWS }, (_, n) => ({ agent: id(n), family: id(n), structure: 'iron_condor', tier: 'validated',
+    status: 'alive', sessions: 10, trades: 9, wins: 5, pnl_usd: '0.00', return_on_risk: '0.12' }));
+  const theses = Array.from({ length: MAX_AGENTS }, () => `${'é'.repeat(278)}.`);
+  const body = () => swarmCheckpoint({ agents, structures, trading: { as_of: PUBLISHED_AT, pnl_usd: '0.00' },
+    positions: ledger({ rows, other: { ...ledger().other, fees_usd: '0.00', crypto_usd: '0.00' } }),
+    practice: { as_of: PUBLISHED_AT, sessions: 10, capital_usd: '10000.00', totals: { families: MAX_PRACTICE_ROWS, trades: 9 * MAX_PRACTICE_ROWS, wins: 5 * MAX_PRACTICE_ROWS, pnl_usd: '0.00' }, rows: practiceRows },
+    levels: { as_of: PUBLISHED_AT, agents: agents.map(row => ({ id: row.id, level: 'validation' })), funnel: funnel() },
+    rationale: { as_of: PUBLISHED_AT, agents: agents.map((row, n) => ({ id: row.id, thesis: theses[n] })),
+      trades: rows.map(row => ({ id: row.id, route: 'tuition', open_why: 'é'.repeat(79), close_why: 'é'.repeat(79), exit: 'agent', max_loss_usd: '157.00' })) } });
+  for (let n = 0; byteLength(body()) > MAX_CHECKPOINT_BYTES - 64 && n < MAX_AGENTS; n++) theses[n] = null;
+  const stored = body();
+  assert.ok(byteLength(stored) <= MAX_CHECKPOINT_BYTES && byteLength(stored) > MAX_CHECKPOINT_BYTES - 1024, `stored ${byteLength(stored)}`);
+  assert.equal(validCheckpoint(stored), true);
+  const { capital } = floor(at + 30000);
+  for (const [n, row] of agents.entries()) capital.sql.exec('INSERT INTO agent_names (id, ordinal) VALUES (?, ?)', row.id, 999999999999000 + n);
+  assert.equal((await post(capital, '/api/capital/checkpoint', stored)).status, 200);
+  const text = await (await get(capital, `/api/capital/checkpoint${WINDOW_READ}`)).text();
+  const read = JSON.parse(text);
+  assert.match(read.agents[0].display_name, /^[A-Z][a-z]+ \d{14}$/);
+  const size = new TextEncoder().encode(text).length;
+  assert.ok(size > MAX_CHECKPOINT_BYTES, `the named read is over the stored limit (${size})`);
+  assert.ok(size <= MAX_PUBLIC_CHECKPOINT_BYTES, `and within the public one (${size})`);
+  assert.equal(validCheckpoint(read, { publicRead: true }), true, 'the page takes it');
 });
 
 test('one agent’s tape: its notes and trades, and the swarm’s news about it, with kind, cursor and limit', async () => {
@@ -358,6 +394,43 @@ test('an agent off the roster that still holds real money stands, retired, on th
   assert.equal(wide.pitch, 18);
 });
 
+test('a trade’s money on the tape and an agent’s evidence record say what they are', () => {
+  const line = (real, tape = 'trade') => ({ tape, real });
+  assert.equal(tradeMoney(line(false)), 'shadow');
+  assert.equal(tradeMoney(line(true)), 'real');
+  assert.equal(tradeMoney(line(true), { step: 'incubator', money: 'research' }), 'incubator', 'an agent on the Incubator trades nothing else');
+  assert.equal(tradeMoney(line(true), { step: 'train', money: 'incubator' }), 'incubator');
+  assert.equal(tradeMoney(line(true), { step: 'probe', money: 'real' }), 'real');
+  assert.equal(tradeMoney(line(null, 'thought')), null);
+  // `record.real` is the evidence record (never tuition, the incubator or the House's): shown only when sent, and named so.
+  const record = { trials: 131, revisions: 6, forward: null, real: null };
+  assert.equal(recordLine({ record }), 'trials 131 · revisions 6', 'no evidence record: no "real 0/0"');
+  assert.equal(recordLine({ record: { ...record, real: { trades: 4, wins: 2, pnl_usd: '-18.30' } } }), 'trials 131 · revisions 6 · real evidence 2/4 −$18.30');
+});
+
+test('a retired agent on the roster still holding real money stands on that money’s step without the House’s levels', () => {
+  // The window fixture with neither block: GOOGL's tuition lot is open, so Tuition holds its dot, never 0 (S2, Oct 1).
+  const { levels: _l, rationale: _r, ...bare } = windowCheckpoint();
+  const model = climbModel(bare);
+  const googl = model.dots.get('googl-lags');
+  assert.deepEqual([googl?.step, googl?.money, googl?.retired, googl?.level], ['tuition', 'real', true, 'tuition']);
+  assert.equal(model.steps.tuition.now, 1, 'Tuition counts the open lot');
+  assert.equal(model.dots.has('reversal-1'), false, 'retired with no money: still in the graveyard');
+  assert.equal(levelOf(bare.agents.find(row => row.id === 'googl-lags'), bare), 'tuition');
+  // Rationale without levels: the trade's own route names the step, as it does off the roster.
+  const { levels: _l2, ...routedOnly } = windowCheckpoint({ rationale: rationaleBlock({ trades: rationaleBlock().trades.map(row => (row.id === 'real:8' ? { ...row, route: 'probe' } : row)) }) });
+  assert.equal(climbModel(routedOnly).dots.get('googl-lags').step, 'probe');
+  // Only a real structure says so (a House before the ledger): Tuition; an incubator structure: the Incubator.
+  const noLedger = { ...bare, trading: undefined, positions: undefined };
+  delete noLedger.trading;
+  delete noLedger.positions;
+  const viaStructure = { ...noLedger, structures: [...noLedger.structures, structure('st-googl', { agent: 'googl-lags', underlying: 'GOOGL', structure: 'debit_vertical', legs: 2 })] };
+  assert.equal(climbModel(viaStructure).dots.get('googl-lags').step, 'tuition');
+  const incubated = { ...noLedger, structures: [...noLedger.structures, structure('st-googl', { agent: 'googl-lags', route: 'incubator' })] };
+  assert.equal(climbModel(incubated).dots.get('googl-lags').step, 'incubator');
+  assert.equal(climbModel(noLedger).dots.has('googl-lags'), false, 'no money open: the graveyard');
+});
+
 // ---------------------------------------------------------------------------- the rationale
 test('the page’s thesis filter keeps whole safe sentences, like the House’s', () => {
   assert.equal(thesisText(GOOGL_THESIS), GOOGL_THESIS, 'the pronoun "one" passes; both sentences fit');
@@ -408,6 +481,29 @@ test('every number hidden in words or other scripts is refused; only the pronoun
   assert.equal(tickerCase('it is on', ['ON']), 'it is on', 'a ticker that is an ordinary word stays a word');
   assert.equal(plainTag('msft up 4 sessions, googl flat'), null);
   assert.equal(plainTag('a'.repeat(81)), null);
+});
+
+test('every sentence the safety reviews named is refused on every path, the Worker’s contract too; plain words and the pronoun pass', () => {
+  for (const text of LEAKS) {
+    assert.equal(thesisText(text), null, text);
+    assert.equal(houseThesis(text), null, `House: ${text}`);
+    assert.equal(plainTag(text.replace(/\.$/, '')), null, `tag: ${text}`);
+    assert.equal(thesisWords(text, 280), false, `contract: ${text}`);
+    assert.equal(thesisWords(text.replace(/\.$/, ''), 80), false, `contract, as a tag: ${text}`);
+  }
+  for (const text of PLAIN) {
+    assert.equal(thesisText(text), text, text);
+    assert.equal(houseThesis(text), text, `House: ${text}`);
+    assert.equal(thesisWords(text, 280), true, `contract: ${text}`);
+  }
+  // The words as the rules read them: accents folded off, split at apostrophes but "one's".
+  assert.deepEqual(numberTokens("Wait \u2018Tw\u00e9nty\u2019 days; one\u2019s fifty's o'clock"), ['wait', 'twenty', 'days', "one's", 'fifty', 's', 'o', 'clock']);
+  // A whole window: a thesis or a tag with a number in words is refused by the Worker, as the House's own check refuses it
+  // (its publisher then sends the checkpoint without the window).
+  assert.equal(validCheckpoint(windowCheckpoint({ rationale: rationaleBlock({ agents: [{ id: 'orb-4', thesis: 'Hold for a fortnight.' }] }) })), false);
+  const trades = rationaleBlock().trades.map(row => (row.id === 'real:8' ? { ...row, open_why: 'hold a couple of sessions' } : row));
+  assert.equal(validCheckpoint(windowCheckpoint({ rationale: rationaleBlock({ trades }) })), false);
+  assert.equal(validCheckpoint(windowCheckpoint({ rationale: rationaleBlock({ agents: [{ id: 'orb-4', thesis: 'Funds dress their books at quarter-end.' }] }) })), true);
 });
 
 test('the rationale: the House’s block first, else the tape’s open trade and the roster’s mechanism; House rows are fixed lines', () => {
@@ -494,6 +590,17 @@ test('Realized steps exactly at each close from the ledger; the archive’s line
   assert.deepEqual(lastKnown(null, at), { profit: null, net: null });
 });
 
+test('on a narrow chart the end labels are a key above their panel, left to right, apart and inside the box', () => {
+  // A phone's chart (328 wide: the key ends at 318) with the widest labels the Climb's money can make.
+  const keys = narrowKeys([{ key: 'realized', label: 'Realized +$12,345.67' }, null, { key: 'profit', label: 'Profit +$12,345.67' }], 318);
+  assert.deepEqual(keys.map(entry => entry.key), ['realized', 'profit'], 'read left to right in the given order');
+  assert.equal(keys.at(-1).textEnd, 318, 'the last ends at the edge');
+  keys.forEach((entry, index) => {
+    assert.ok(entry.keyFrom >= 0 && entry.keyFrom < entry.keyTo && entry.keyTo < entry.textEnd - labelWidth(entry.label), `${entry.key}: its swatch before its words`);
+    if (index) assert.ok(keys[index - 1].textEnd + 8 <= entry.keyFrom, 'never on each other');
+  });
+});
+
 test('market-closed bands are the hours outside 9:30 to 4:00 New York time on weekdays; ticks are clean', () => {
   const bands = marketClosedBands(Date.parse('2026-09-26T06:25:30.000Z'), Date.parse('2026-09-30T23:00:00.000Z'))
     .map(([from, to]) => [new Date(from).toISOString(), new Date(to).toISOString()]);
@@ -555,7 +662,8 @@ test('mounted on a new House: the retired agent on Tuition, each position’s re
   assert.equal((await post(capital, '/api/capital/checkpoint', unpriced)).status, 200);
   const events = [trade('googl-lags', { underlying: 'GOOGL', structure: 'debit_vertical', legs: 2, expiry: '2026-10-07', max_loss_usd: '157.00', why: 'msft leads googl, qqq flat' }, '2026-09-28T14:31:40.000Z'),
     note('googl-lags', 'GOOGL has not followed MSFT yet; the vertical stays on.', '2026-09-28T14:45:00.000Z'),
-    news('retired: the family left the Gym after review.', '2026-09-28T14:46:00.000Z', 'reversal-1')];
+    news('retired: the family left the Gym after review.', '2026-09-28T14:46:00.000Z', 'reversal-1'),
+    trade('ironfly-quiet', { real: false, underlying: 'SPY', structure: 'iron_butterfly', legs: 4, max_loss_usd: '312.00', why: 'quiet morning' }, '2026-09-28T14:44:00.000Z')];
   assert.equal((await post(capital, '/api/capital/events', batch(...events))).status, 200);
   const root = stubPage('floor', FLOOR_IDS);
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
@@ -595,6 +703,11 @@ test('mounted on a new House: the retired agent on Tuition, each position’s re
     assert.equal(words(closed.withClass('rationale-why')[0]), 'the open broke higher on heavy volume ↩ target reached before the lunch lull · agent Probe');
     assert.match(words(closed), /\+32% of risk/);
     assert.equal(words(positions.withClass('pos-foot')[0]), 'other — · Profit —', 'while Profit is unknown, so is the sum');
+    // A trade off real money says so in words on the tape, not only in a fainter colour; real money is the default.
+    const tapeLines = root.querySelector('#floor-feed').withClass('tape-line').filter(node => node.dataset.kind === 'trade');
+    const shadowLine = tapeLines.find(node => node.className.includes('is-shadow'));
+    assert.deepEqual(shadowLine.withClass('tag').map(node => [node.className, node.textContent]), [['tag tag-shadow', 'shadow']]);
+    assert.ok(tapeLines.some(node => !node.className.includes('is-shadow') && node.withClass('tag').length === 0), 'a real trade carries no tag');
     // The tape's filters: Life alone.
     const filters = root.querySelector('#floor-filters').withClass('filter');
     filters[0].click();

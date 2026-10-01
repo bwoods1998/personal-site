@@ -6,11 +6,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree } from '../capital/schema.js';
+import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
 import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
   climbModel, rationaleFor } from '../capital/capital.js';
 import { floor, post, get, words, FLOOR_IDS, BUSY_IDS, stubPage, withBrowser } from './harness.mjs';
+import { LEAKS, PLAIN, randomSentences } from './number-words.mjs';
 
 const FIXTURES = process.env.LTCM_FIXTURES || fileURLToPath(new URL('../../long-term-capital-management/league/tests/fixtures/', import.meta.url));
 const files = ['site_checkpoint.json', 'site_events.json'].map(name => `${FIXTURES.replace(/\/?$/, '/')}${name}`);
@@ -45,6 +47,43 @@ test('the House narrows its funnel by the same chains as the site', { skip: publ
   assert.deepEqual(houseChains(readFileSync(publishFile, 'utf8')), FUNNEL_CHAINS);
   const [checkpoint] = loadWindow();
   if (checkpoint.levels) assert.equal(validFunnel(checkpoint.levels.funnel), true, 'the window fixture’s funnel');
+});
+// The House's own number rules (league/swarm/public.py `numbered` and `plain_glyphs`), run in its checkout on the same
+// sentences as the site's copy in schema.js: the Worker's contract refuses a thesis or a tag the House's publisher refuses,
+// so the two must agree sentence for sentence, or the House's window is refused (or a leak passes). Oct 1, 2026.
+const houseRoot = fileURLToPath(new URL('../../../', `file://${FIXTURES.replace(/\/?$/, '/')}`));
+const publicFile = `${houseRoot}league/swarm/public.py`;
+const python = spawnSync('python3', ['--version'], { encoding: 'utf8' }).status === 0;
+const paritySkip = windowSkip || (!existsSync(publicFile) && `the runtime's number rules are not at ${publicFile}`) || (!python && 'python3 is not installed');
+// The House's own case list for the number rules (league/tests/fixtures/number_words.json), which both sides test against.
+const casesFile = `${FIXTURES.replace(/\/?$/, '/')}number_words.json`;
+const casesSkip = windowSkip || (!existsSync(casesFile) && `the runtime's fixtures at ${FIXTURES} predate its number-word case list`);
+const loadCases = () => JSON.parse(readFileSync(casesFile, 'utf8'));
+test('the House’s case list of numbers in words: each is refused by the site’s rules and its contract, each plain sentence passes', { skip: casesSkip }, () => {
+  const cases = loadCases();
+  assert.ok(cases.numbered.length >= 40 && cases.plain.length >= 10);
+  for (const text of cases.numbered) {
+    assert.ok(numbered(text) || !plainGlyphs(text), text);
+    assert.equal(thesisWords(text, 280), false, `contract: ${text}`);
+  }
+  for (const text of cases.plain) {
+    assert.deepEqual([numbered(text), plainGlyphs(text)], [false, true], text);
+    assert.equal(thesisWords(text, 280), true, `contract: ${text}`);
+  }
+});
+test('the House and the site read a number in words alike, sentence for sentence', { skip: paritySkip }, () => {
+  const shared = casesSkip ? [] : [...loadCases().numbered, ...loadCases().plain];
+  const corpus = [...LEAKS, ...PLAIN, ...shared, ...randomSentences(5000)];
+  const script = 'import json, sys\nfrom league.swarm import public\nprint(json.dumps([[public.numbered(s), public.plain_glyphs(s)] for s in json.load(sys.stdin)]))';
+  const done = spawnSync('python3', ['-c', script], { cwd: houseRoot, input: JSON.stringify(corpus), encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.equal(done.status, 0, done.stderr);
+  const house = JSON.parse(done.stdout);
+  assert.equal(house.length, corpus.length);
+  const differ = corpus.map((text, index) => ({ text, house: house[index], site: [numbered(text), plainGlyphs(text)] }))
+    .filter(row => row.house[0] !== row.site[0] || row.house[1] !== row.site[1]);
+  assert.deepEqual(differ.slice(0, 12), [], `${differ.length} of ${corpus.length} sentences read differently`);
+  for (const text of LEAKS) assert.ok(house[corpus.indexOf(text)].join() !== 'false,true', `the House refuses: ${text}`);
+  for (const text of PLAIN) assert.deepEqual(house[corpus.indexOf(text)], [false, true], `the House passes: ${text}`);
 });
 const PAGE_IDS = FLOOR_IDS;
 // Every name a quote, a greek, a surface or a fitted parameter goes by. None is a key anywhere.

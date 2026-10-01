@@ -51,17 +51,20 @@ Both choices are remembered per viewer only.
    that still holds open real money stands, retired, on that money's step: its trade's route, else the Incubator for an
    incubator row and Tuition for any other. With a House that publishes `levels`, every step and count is the House's; with an
    older House the page places dots by band and the ledger (real money on a Gym agent with no incubator tag can only be
-   tuition) and shows "—" for Validation and Practice. Every dot is a native button (one tab stop per step; the arrow keys
+   tuition; a retired agent on the roster still holding money stands on that money's step the same way, so Tuition never
+   reads 0 while a tuition lot is open) and shows "—" for Validation and Practice. Every dot is a native button (one tab stop per step; the arrow keys
    move between its dots) whose accessible name says its level, its money and its checks; the pointer need only come
-   within twelve pixels. A dot opens its card: the agent's thesis in whole sentences, its record (trials, revisions, real
-   and forward tallies), its open structures, its promotion checklist and blocker when the House publishes one, and its
+   within twelve pixels. A dot opens its card: the agent's thesis in whole sentences, its record (trials, revisions, the
+   forward tally, and the "real evidence" tally only when the House sends one: the real trades the bands judge, never
+   tuition, the incubator or the House's own), its open structures, its promotion checklist and blocker when the House publishes one, and its
    last five thoughts; a dot on the map also makes the tape follow it (a card opened from a list is a look, not a follow;
    its "→ thoughts" follows). A step's name opens its roster, each agent's name over the first sentence of its thesis in
    two lines at most; Practice opens the practice league (below).
    Motion follows real events only: a birth drops a dot onto Train, a retirement slides one into the heap, a move or a
    level change glides, a trade ripples (four at most at once), and dots that spoke in the last ten minutes glow faintly.
    Loading history moves nothing. On a phone the Climb is a ladder of 44px rungs, summit first: each rung's name over how
-   many families ever reached it, its dots, its count now, and ⟳ beside Train's dots.
+   many families ever reached it, its dots, its count now, and ⟳ beside Train's dots; the graveyard and the House's ⌂
+   under it are 44px wide at the least, a one-digit count too.
 4. **Positions, each with its reason.** Every real position on the Brokerage Account since the reset: open first, then
    closed, newest first, in the publisher's order. One line each: the agent's dot and partner name with what it is in words
    ("GOOGL call debit vertical", never cut) under them, how long it has been open or was held, its P&L after fees (a dash while unpriced) and a
@@ -92,7 +95,9 @@ Both choices are remembered per viewer only.
    line through the archived points where the House could price them, broken across every unknown point and every gap
    over fifteen minutes (three samples, once the archive is sampled). Below, about a third of the height, Costs is a solid
    line through the archived bills, anchored by a hollow dot at $0 at the reset and joined to nothing it did not record.
-   The end labels are the legend: in a margin sized to the longest, or over each line's end on a narrow plot. Faint bands
+   The end labels are the legend: in a margin sized to the longest, or, on a narrow plot (under 520 pixels wide: a phone, or the
+   chart's column on a small desktop such as 1280 × 720), as a key in a strip of its own above each panel, read left to right, never on a
+   line, a marker or each other. Faint bands
    mark the hours outside 9:30 to 4:00 New York time on weekdays. Each closed position is a dot on Realized where it
    closed (the House's smaller and muted, the incubator's dotted) and each open one a ▸ under the trading chart where it opened;
    the crosshair snaps to every point and marker, ←/→ step through them, a tap pins it, and a marker opens its position.
@@ -102,7 +107,9 @@ Both choices are remembered per viewer only.
    Balance is not Profit.
 6. **The tape.** Newest first, one line each: a mark for its kind (● a thought, ◆ a trade, ✦ a birth read as its idea, ↑
    a move, × a retirement read as its cause, ✓/✗ the auditor's verdict, ⌂ the House's own news), the name, the words and
-   the age. Repeats fold into ×N. Tapping a line opens its whole text and a way to its agent. Thoughts, Trades and Life
+   the age. A trade off real money says so in words, not only in a fainter colour: "shadow" for the shadow book's,
+   "incubator" for real money at tuition size (an agent on the Incubator step trades nothing else); real money is the
+   default and carries no tag. Repeats fold into ×N. Tapping a line opens its whole text and a way to its agent. Thoughts, Trades and Life
    filter it; following an agent shows only it (its notes, trades and the swarm's news about it) until its chip is
    cleared. Balance marks never appear here.
 
@@ -196,10 +203,18 @@ below the holdout; a retired agent is retired unless it still holds open real mo
 `levels.funnel` counts families since the reset at each level by union (a family counts at a level when it reached it or
 any higher level on its track): each a counter or null, and each track only narrows. `rationale.agents` is each agent's
 thesis, whole sentences with no number (a digit or a numeral in any script; a number word, cardinal, ordinal, fraction,
-decade, multiple, coin, quantile or run together, "twentyfive", "threefold"; "a sigma" or "a single" unit; and "one"
-anywhere but as a pronoun, "one another", "one of", "one on the other's", "no one", "the one"), no invisible format mark,
-no letter beyond Latin-1, no colon, bracket, code mark or parameter name, at most 280 characters, or null (the schema
-refuses any numeral and any format mark; the House applies the whole rule and the page applies it again before showing); `rationale.trades` is each ledger row's route (fitting its source), the opening and
+a cardinal's plural, "fives", decade, multiple, "quintuple", coin, quantile, "a couple", "unity", "a score of", or run
+together, "twentyfive", "threefold", "twentyish", "tenpct"; a word split by marks that joins into one, "twen·ty"; "a sigma"
+or "a single" unit; "ones" beside a number or a unit; and "one" anywhere but as a pronoun, "one another", "one of", "one on
+the other's", "no one", "the one", "one's"; read in lower case with accents folded off, "twénty", and split at apostrophes,
+"fifty's"), no invisible format or combining mark, no letter beyond Latin-1, no colon, bracket, code mark or parameter
+name, at most 280 characters, or null. The schema applies the House's number rule word for word (`numbered` and
+`plainGlyphs` in schema.js, mirroring league/swarm/public.py; both sides test the House's case list, and a parity test runs
+the House's own code beside the site's), so the Worker refuses a window whose thesis or tag carries a number the House
+missed (the House then sends the checkpoint without the window); the parameter-name rule stays with the House, which
+knows the names, and the page applies the whole rule again before showing. A public read names every roster agent, ledger
+row and practice row, so it may run past the stored limit by at most 508 names of 40 characters; the page takes it.
+`rationale.trades` is each ledger row's route (fitting its source), the opening and
 closing orders' own tags (at most 80 characters, under the same rules, null on House rows and a close's on an open row),
 the exit as an enum (agent, House or expiry) and the maximum loss. Never program code, parameter values, thresholds,
 strikes, prices, marks or a maximum gain. Only the page's own read, `?progress=1&positions=1&practice=1&window=1`, carries

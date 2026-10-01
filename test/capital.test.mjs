@@ -596,7 +596,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     dot.click();
     assert.equal(sheet.hidden, false);
     assert.match(textOf(sheet), /^× Meriwether Sized Sells short-dated index premium/);
-    assert.match(textOf(sheet), /trials 5,812 · revisions 41 · forward 45\/64 \+\$1,284\.20 · real 16\/22 \+\$212\.40/);
+    assert.match(textOf(sheet), /trials 5,812 · revisions 41 · forward 45\/64 \+\$1,284\.20 · real evidence 16\/22 \+\$212\.40/);
     assert.match(textOf(sheet), /real money XSP iron condor · 4 legs · Sep 28 · ×1 risk \$184\.00 \+\$12\.50/);
     assert.match(textOf(root.querySelector('#floor-filters')), /following Meriwether ×$/, 'the tape follows the agent');
     assert.ok(root.querySelector('#floor-feed').withClass('tape-line').every(line => /^Meriwether /.test(textOf(line))));

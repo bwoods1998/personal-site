@@ -524,6 +524,7 @@ i.key-net { background: var(--ink); }
 .tape-count { flex: none; padding: 0 5px; border: 1px solid var(--line); border-radius: 999px; font: 10px/1.5 var(--mono); color: var(--muted); }
 .tape-time { justify-self: end; font: 11px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .tape-line.is-shadow .tape-words { color: var(--muted); }
+.tape-text .tag { flex: none; align-self: center; }
 .tape-agent { margin: 0 0 6px 32px; }
 .tape-more { padding: 4px 12px 8px; }
 .glyph { width: 12px; height: 12px; flex: none; overflow: visible; }
@@ -582,7 +583,7 @@ i.key-net { background: var(--ink); }
   .rung-rule::before { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 1px; background: var(--accent); opacity: .75; }
   .rung-dollar { position: absolute; left: 50%; top: 0; transform: translateX(-50%); padding: 0 6px; background: var(--surface); color: var(--accent); font: 11px/13px var(--mono); }
   .rung-foot { display: flex; justify-content: space-between; padding: 4px 8px 0; }
-  .rung-grave, .rung-house { min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; font: 12px/1 var(--mono); }
+  .rung-grave, .rung-house { min-width: 44px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; font: 12px/1 var(--mono); }
   .positions > div, .performance > div { height: auto; }
   .pos-list { max-height: none; -webkit-mask-image: none; mask-image: none; }
   .pos-line {
