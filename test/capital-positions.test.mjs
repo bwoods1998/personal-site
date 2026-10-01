@@ -17,7 +17,7 @@ import { swarmCheckpoint, ledgerCheckpoint, ledger, position, POSITIONS, agent, 
 const at = Date.parse(PUBLISHED_AT);
 const READ = '/api/capital/checkpoint?progress=1&positions=1';
 // The page's own read since Sept 30, 2026: the ledger and the practice league, Claude's cost and the incubator route.
-const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1';
+const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1&window=1';
 const withRows = (rows, extra = {}) => ledgerCheckpoint({ positions: ledger({ rows, ...extra }) });
 const patchRow = (index, patch) => withRows(POSITIONS.map((row, n) => (n === index ? { ...row, ...patch } : row)));
 const cents = value => { const [whole, fraction = ''] = value.replace('-', '').split('.'); const size = BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2)); return value.startsWith('-') ? -size : size; };
@@ -251,7 +251,8 @@ test('structures read in words, and shares are exact tenths of a percent', () =>
 });
 
 // ---------------------------------------------------------------------------- the page
-async function mounted(checkpoint, work, routes) {
+// The ledger table is the ≡ view of the positions panel; `table` opens it first.
+async function mounted(checkpoint, work, routes, { table = true } = {}) {
   const { capital } = floor(at + 30000);
   if (checkpoint) assert.equal((await post(capital, '/api/capital/checkpoint', checkpoint)).status, 200);
   const root = stubPage('floor', FLOOR_IDS);
@@ -259,12 +260,43 @@ async function mounted(checkpoint, work, routes) {
   await withBrowser('', path => { asked.push(path); return routes ? routes(path, capital) : capital.fetch(new Request('https://blakewoods.us' + path)); }, async () => {
     const feed = await startCapital(root);
     feed.stop();
-    await work(root.querySelector('#floor-positions'), root, asked);
+    const box = root.querySelector('#floor-positions');
+    if (table) box.withClass('pos-table-toggle')[0]?.click();
+    await work(box, root, asked);
   });
 }
 const rowText = row => words(row);
 
-test('mounted, the ledger sits under the chart as one table whose total is the headline', async () => {
+test('mounted, each position is one line with its result, the House folds into a group, and a footer adds up to Profit', async () => {
+  await mounted(ledgerCheckpoint(), async (box, root) => {
+    const [open, closed, table] = [box.withClass('chip')[0], box.withClass('chip')[1], box.withClass('pos-table-toggle')[0]];
+    assert.deepEqual([open.textContent, closed.textContent, table.getAttribute('aria-pressed')], ['Open 2', 'Closed 4', 'false']);
+    const items = box.withClass('pos-list')[0].children;
+    assert.deepEqual(items.map(item => item.dataset.position || item.dataset.group), ['real:6', 'real:7', 'real:5', 'real:4', 'real:3', 'calibration']);
+    assert.equal(words(items[0].children[0]), 'Scholes SPY call debit vertical open 50m −$8.00');
+    assert.equal(words(items[2].children[0]), 'Scholes SPY call debit vertical held 49m +$31.00');
+    assert.equal(words(items[5].children[0]), 'House calibration ×1 −$2.20');
+    assert.match(items[0].children[0].withClass('pos-bar-fill')[0].className, /negative/);
+    assert.equal(words(box.withClass('pos-foot')[0]), 'other $0.00 · Profit +$220.40');
+    // Tap a line: its reason opens in place, one at a time.
+    items[0].children[0].click();
+    const opened = box.withClass('pos-list')[0].children[0];
+    assert.equal(opened.children[0].getAttribute('aria-expanded'), 'true');
+    assert.equal(opened.withClass('rationale').length, 1);
+    // Its thesis, its level at open, its life from opening to expiry, and its result against its risk.
+    assert.equal(words(opened.withClass('rationale')[0]), 'Trades the break of the opening range in the direction of the break, with a vertical sized by its maximum loss. '
+      + 'Probe Sep 28 Sep 28 risk $96 −8% of risk → thoughts → agent');
+    box.withClass('pos-list')[0].children[2].children[0].click();
+    assert.equal(box.withClass('rationale').length, 1, 'one open at a time');
+    // Filters: open only, closed only.
+    box.withClass('chip')[0].click();
+    assert.deepEqual(box.withClass('pos-list')[0].children.map(item => item.dataset.position || item.dataset.group), ['real:6', 'real:7']);
+    box.withClass('chip')[1].click();
+    assert.deepEqual(box.withClass('pos-list')[0].children.map(item => item.dataset.position || item.dataset.group), ['real:5', 'real:4', 'real:3', 'calibration']);
+  }, null, { table: false });
+});
+
+test('mounted, the ledger table (≡) is one table whose total is the headline', async () => {
   await mounted(ledgerCheckpoint(), async (box, root, asked) => {
     assert.ok(asked.includes(PAGE_READ), 'the page asks for the ledger');
     assert.equal(box.getAttribute('aria-busy'), 'false');
@@ -274,7 +306,7 @@ test('mounted, the ledger sits under the chart as one table whose total is the h
     assert.equal(box.withClass('positions-scroll').length, 1, 'it scrolls within its own box, never the page');
     assert.deepEqual(table.find('thead')[0].find('th').map(words), ['Who', 'Position', 'Qty', 'Expiry', 'Opened', 'Closed', 'P&L', 'Share']);
     assert.deepEqual(table.find('thead')[0].find('th').map(node => node.getAttribute('scope')), Array(8).fill('col'));
-    assert.deepEqual(table.withClass('pos-group').map(words), ['Open', 'Closed']);
+    assert.deepEqual(table.withClass('pos-group-head').map(words), ['Open', 'Closed']);
     const rows = table.withClass('pos-row');
     assert.deepEqual(rows.map(row => row.dataset.position), ['real:6', 'real:7', 'real:5', 'real:4', 'real:1', 'real:3']);
     assert.equal(rowText(rows[0]), 'Scholes SPY call debit vertical ×2 Sep 28 Sep 28, 10:10 open −$8.00 −3.6%');
@@ -330,10 +362,10 @@ test('a difference, a fold and an empty book each read plainly, and a page befor
     assert.equal(words(box.withClass('positions-caption')[0]).startsWith('0 open · 0 closed'), true);
   });
   await mounted(swarmCheckpoint(), async box => {
-    assert.equal(words(box), 'No positions have been published yet.');
+    assert.equal(words(box), 'No real positions yet.');
   });
   await mounted(null, async box => {
-    assert.equal(words(box), 'No positions have been published yet.');
+    assert.equal(words(box), 'No real positions yet.');
     assert.equal(box.getAttribute('aria-busy'), 'false');
   });
 });
@@ -342,7 +374,7 @@ test('forbidden fields never reach the page: a smuggled ledger is refused whole,
   const smuggled = patchRow(0, { strike: '571', fill_price: '1.23', mark: '4.56', bid: '7.89' });
   // Straight to the browser, past the record: the page's own validation refuses the whole checkpoint.
   await mounted(null, async (box, root) => {
-    assert.equal(words(box), 'No positions have been published yet.');
+    assert.equal(words(box), 'No real positions yet.');
     assert.doesNotMatch(root.textContent, /571|1\.23|4\.56|7\.89/);
   }, path => (path.startsWith('/api/capital/checkpoint') ? smuggled : null));
   // And the model copies named fields only, whatever else an object carries.
@@ -350,17 +382,19 @@ test('forbidden fields never reach the page: a smuggled ledger is refused whole,
   assert.doesNotMatch(JSON.stringify(book), /571|1\.23|4\.56|7\.89|9\.99|strike|fill_price|"mark"|"bid"/);
 });
 
-test('the section is quiet: text nodes only, no motion, and it stacks on a phone without widening the page', async () => {
+test('the section is quiet: text nodes only, one wash for a new line and nothing else moves, and it stacks on a phone', async () => {
   const source = await readFile(new URL('../capital/capital.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\.innerHTML|insertAdjacentHTML|outerHTML/);
   const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
-  const ledgerRules = css.split('\n').filter(line => /positions|pos-/.test(line));
+  const ledgerRules = css.split('\n').filter(line => /positions|pos-/.test(line) && !/line-new/.test(line));
   assert.ok(ledgerRules.length > 10);
   assert.doesNotMatch(ledgerRules.join('\n'), /animation|transition/, 'nothing in the ledger moves');
-  const phone = css.slice(css.indexOf('@media (max-width: 720px)'));
+  assert.match(css, /\.pos-item\.line-new > \.pos-line \{ animation: line-in 1\.6s ease-out; \}/, 'but a new or newly closed line washes once');
+  const phone = css.slice(css.indexOf('@media (max-width: 759px)'));
   assert.match(phone, /\.positions-table tr \{ display: flex; flex-wrap: wrap;/);
   assert.match(phone, /\.positions-table thead \{ position: absolute;/);
-  assert.match(css, /\.positions-scroll \{[^}]*overflow-x: auto;/);
+  assert.match(css, /\.positions-scroll \{[^}]*overflow: auto;/);
+  assert.match(phone, /\.pos-line \{\s*min-height: 44px;/, 'a 44px target on a phone');
   const html = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(html, /<section id="positions" class="block positions" aria-labelledby="positions-title">\s*<h2 id="positions-title">Positions<\/h2>\s*<div id="floor-positions" aria-busy="true">/);
+  assert.match(html, /<section id="positions" class="panel positions" aria-labelledby="positions-title">\s*<h2 id="positions-title" class="visually-hidden">Positions<\/h2>\s*<div id="floor-positions" aria-busy="true">/);
 });

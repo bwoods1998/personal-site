@@ -502,9 +502,115 @@ export function validPractice(value, publishedAt, { publicRead = false } = {}) {
     && rows.reduce((sum, row) => sum + scaledAmount(row.pnl_usd), 0n) === scaledAmount(totals.pnl_usd);
 }
 
+// ------------------------------------------------------------------------ the swarm window (Oct 1, 2026)
+// Two blocks the House adds together, each optional: `levels` (where each agent stands in the game, and how many
+// families have ever reached each level since the reset) and `rationale` (each agent's thesis in whole sentences, and why
+// each real position opened and closed). Both are allowlists built key by key on the House, and checked again here.
+//
+// The game's levels. The main stairs: Train (the Gym), Validation, Tuition (D2: one real contract), Candidate (past the
+// holdout look), Probe and Sized. The side path: Practice (shadow trades on live quotes) and the Incubator (real money at
+// tuition size, never evidence), which never reaches the top. Retired is off the map.
+export const LEVELS = ['train', 'practice', 'validation', 'incubator', 'tuition', 'candidate', 'probe', 'sized', 'retired'];
+// The route a real position was opened on, and who closed it.
+export const ROUTES = ['tuition', 'incubator', 'probe', 'sized', 'calibration', 'house'];
+export const EXITS = ['agent', 'house', 'expiry'];
+// Families counted since `since` (the reset), each a counter or null when the House could not read its source.
+export const FUNNEL_KEYS = ['since', 'born', 'practice', 'validation', 'tuition', 'incubator', 'looks', 'looks_passed', 'candidate', 'probe',
+  'sized', 'retired', 'calibration', 'live_test'];
+const FUNNEL_COUNTS = FUNNEL_KEYS.filter(key => key !== 'since');
+// Each chain only ever narrows: a family counts at a level when it reached that level or any higher one on its track.
+const FUNNEL_CHAINS = [['sized', 'probe', 'candidate', 'tuition', 'validation', 'born'], ['incubator', 'practice', 'born'], ['retired', 'born'],
+  ['looks_passed', 'looks']];
+// A level's band on the roster: a band above the Gym is its own level; a Gym family is somewhere on the way up; a retired
+// family is retired, unless it still holds open real money, when it stands on that money's step.
+export const LEVELS_BY_BAND = {
+  gym: ['train', 'practice', 'validation', 'incubator', 'tuition'],
+  candidate: ['candidate'], probe: ['probe'], sized: ['sized'],
+  retired: ['retired', 'tuition', 'incubator', 'probe', 'sized'],
+};
+// The route each kind of ledger row may carry.
+export const ROUTES_BY_SOURCE = { calibration: ['calibration'], house: ['house'], incubator: ['incubator'], agent: ['tuition', 'probe', 'sized'] };
+// A thesis or a trade's tag: quote-free words with no digit and no mark that only code or a formula uses. The publisher
+// also drops every sentence with a number word (except the pronoun "one") or a fitted parameter's name; that rule lives
+// with the publisher, which knows the names.
+const THESIS_MARKS = /[:()[\]{}<>=_`#|\\]/;
+export const thesisWords = (value, max) => words(value, max) && !/\d/.test(value) && !THESIS_MARKS.test(value);
+const idsOf = list => new Set((Array.isArray(list) ? list : []).map(row => row?.id));
+export function validFunnel(value) {
+  if (!exact(value, FUNNEL_KEYS) || !instant(value.since) || !FUNNEL_COUNTS.every(key => nullable(value[key], counter))) return false;
+  return FUNNEL_CHAINS.every(chain => {
+    const known = chain.map(key => value[key]).filter(count => count !== null);
+    return known.every((count, index) => index === 0 || known[index - 1] <= count);
+  });
+}
+export function validLevels(value, checkpoint, at) {
+  if (!exact(value, ['as_of', 'agents', 'funnel']) || !notAfter(value.as_of, at)) return false;
+  const bands = new Map((Array.isArray(checkpoint?.agents) ? checkpoint.agents : []).map(agent => [agent?.id, agent?.band]));
+  const { agents } = value;
+  if (!Array.isArray(agents) || agents.length > MAX_AGENTS || new Set(agents.map(row => row?.id)).size !== agents.length) return false;
+  return agents.every(row => exact(row, ['id', 'level']) && agentId(row.id) && bands.has(row.id) && LEVELS.includes(row.level)
+    && (LEVELS_BY_BAND[bands.get(row.id)] || []).includes(row.level)) && validFunnel(value.funnel);
+}
+export function validRationaleTrade(value, row) {
+  if (!exact(value, ['id', 'route', 'open_why', 'close_why', 'exit', 'max_loss_usd']) || !plainObject(row)) return false;
+  const open = row.status === 'open';
+  const house = !AGENT_SOURCES.includes(row.source);
+  return positionId(value.id) && nullable(value.route, route => (ROUTES_BY_SOURCE[row.source] || []).includes(route))
+    && nullable(value.open_why, why => !house && thesisWords(why, 80))
+    && nullable(value.close_why, why => !house && !open && thesisWords(why, 80))
+    && nullable(value.exit, exit => !open && EXITS.includes(exit))
+    && nullable(value.max_loss_usd, amount => money(amount) && centsAmount(amount));
+}
+export function validRationale(value, checkpoint, at, { publicRead: _publicRead = false } = {}) {
+  if (!exact(value, ['as_of', 'agents', 'trades']) || !notAfter(value.as_of, at)) return false;
+  const { agents, trades } = value;
+  const roster = idsOf(checkpoint?.agents);
+  if (!Array.isArray(agents) || agents.length > MAX_AGENTS || new Set(agents.map(row => row?.id)).size !== agents.length
+    || !agents.every(row => exact(row, ['id', 'thesis']) && agentId(row.id) && roster.has(row.id) && nullable(row.thesis, thesis => thesisWords(thesis, 280)))) return false;
+  const rows = new Map((Array.isArray(checkpoint?.positions?.rows) ? checkpoint.positions.rows : []).map(row => [row?.id, row]));
+  if (!Array.isArray(trades) || trades.length > MAX_POSITIONS || new Set(trades.map(row => row?.id)).size !== trades.length) return false;
+  return trades.every(trade => rows.has(trade?.id) && validRationaleTrade(trade, rows.get(trade.id)));
+}
+
+// Performance over time: one point of the Worker's score archive from a checkpoint, measured against its own
+// `published_at` only. Profit as published while fresh; the itemized bill's total while fresh; and Net by the page's own
+// rule (`netNumber` in capital.js): Profit without open gains or an unreconciled gain, less the bill. Each null when
+// unknown. Every amount is summed in whole cents, as the page does.
+const toCents = value => {
+  const scaled = scaledAmount(value);
+  const size = scaled < 0n ? -scaled : scaled;
+  const whole = (size + 500000n) / 1000000n;
+  return scaled < 0n ? -whole : whole;
+};
+const fromCents = amount => { const size = amount < 0n ? -amount : amount; return `${amount < 0n ? '-' : ''}${size / 100n}.${(size % 100n).toString().padStart(2, '0')}`; };
+const freshAgainst = (at, publishedAt) => instant(at) && Math.abs(Date.parse(publishedAt) - Date.parse(at)) <= 10 * 60 * 1000;
+export function scorePoint(checkpoint) {
+  const at = checkpoint?.published_at;
+  const trading = checkpoint?.trading;
+  const profit = trading && signedMoney(trading.pnl_usd) && freshAgainst(trading.as_of, at) ? trading.pnl_usd : null;
+  const compute = checkpoint?.compute;
+  const itemized = plainObject(compute) && Object.hasOwn(compute, 'claude_usd');
+  const costs = itemized && freshAgainst(compute.as_of, at) && COMPUTE_PARTS.every(part => money(compute[part]))
+    ? fromCents(COMPUTE_PARTS.reduce((sum, part) => sum + toCents(compute[part]), 0n)) : null;
+  let net = null;
+  const block = checkpoint?.positions;
+  if (profit !== null && costs !== null && plainObject(block) && Array.isArray(block.rows) && block.as_of === trading.as_of) {
+    const gains = [...block.rows.filter(row => row?.status === 'open').map(row => row.pnl_usd), block.unreconciled_usd];
+    if (gains.every(value => signedMoney(value))) {
+      const unrealized = gains.reduce((sum, value) => sum + (toCents(value) > 0n ? toCents(value) : 0n), 0n);
+      net = fromCents(toCents(profit) - unrealized - toCents(costs));
+    }
+  }
+  return { at, profit_usd: profit, costs_usd: costs, net_usd: net };
+}
+export function validScorePoint(value) {
+  return exact(value, ['at', 'profit_usd', 'costs_usd', 'net_usd']) && instant(value.at) && nullable(value.profit_usd, signedMoney)
+    && nullable(value.costs_usd, money) && nullable(value.net_usd, signedMoney);
+}
+
 // Blocks a newer House adds, each optional so an older House's checkpoint still validates: Profit (`trading`), the
-// positions ledger beside it, and the practice league.
-export const OPTIONAL_CHECKPOINT_FIELDS = ['trading', 'positions', 'practice'];
+// positions ledger beside it, the practice league, and the swarm window's levels and rationale.
+export const OPTIONAL_CHECKPOINT_FIELDS = ['trading', 'positions', 'practice', 'levels', 'rationale'];
 export function validCheckpoint(checkpoint, { publicRead = false } = {}) {
   try {
     if (!plainObject(checkpoint) || !CHECKPOINT_FIELDS.every(field => Object.hasOwn(checkpoint, field))
@@ -527,6 +633,9 @@ export function validCheckpoint(checkpoint, { publicRead = false } = {}) {
       || !agents.every(agent => validAgent(agent, at, { publicRead }))) return false;
     if (!Array.isArray(structures) || structures.length > MAX_STRUCTURES || new Set(structures.map(row => row?.id)).size !== structures.length
       || !structures.every(row => validStructure(row, at))) return false;
+    // The swarm window reads the roster and the ledger, so it is checked after them.
+    if (Object.hasOwn(checkpoint, 'levels') && !nullable(checkpoint.levels, value => validLevels(value, checkpoint, at))) return false;
+    if (Object.hasOwn(checkpoint, 'rationale') && !nullable(checkpoint.rationale, value => validRationale(value, checkpoint, at, { publicRead }))) return false;
     return byteLength(checkpoint) <= MAX_CHECKPOINT_BYTES;
   } catch { return false; }
 }

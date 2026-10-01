@@ -247,7 +247,7 @@ test('the reset reaches the real record and each tape on its own object, and era
     assert.equal((await send('POST', '/api/capital/reset', {})).response.status, 400);
     for (const [base, object] of [['/api/capital', 'capital-v1'], ['/api/capital/t/test', 'capital-tape-test'], ['/api/capital/t/canary', 'capital-tape-canary']]) {
       const { response } = await send('POST', `${base}/reset?confirm=erase-everything`);
-      assert.deepEqual(await response.json(), { reset: true, cleared: { events: 1, floor_history: 0, checkpoint: 1, desks: 0, agent_names: 1 } }, base);
+      assert.deepEqual(await response.json(), { reset: true, cleared: { events: 1, floor_history: 0, checkpoint: 1, desks: 0, agent_names: 1, score_history: 1 } }, base);
       assert.equal(calls.at(-1).object, object);
       // What the gateway watchdog reads next: a 404, which it records and never answers with a restart.
       assert.equal((await send('GET', `${base}/checkpoint`, { auth: null })).response.status, 404, base);

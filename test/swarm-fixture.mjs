@@ -132,3 +132,43 @@ export const TAPE = () => [
   note('condor-vrp-3', 'Realized volatility since the open is running under half of what the index options expect. Holding the condor; closing at the first touch of either short strike.', '2026-09-28T14:52:00.000Z'),
   mark('5694.37', '2026-09-28T14:55:00.000Z', '5210.12'),
 ];
+
+// The swarm window (Oct 1, 2026): a new House's checkpoint with `levels` and `rationale`, a retired agent pinned to the
+// roster while its tuition position is open, and a closed incubator row. 220.40 − 3.00 − 4.00 = 213.40.
+export const GOOGL_THESIS = "MSFT and GOOGL sell competing AI-cloud and search products, and investors reprice one on the other's capex or product news with a delay. When MSFT moves strongly over several sessions, QQQ is flat and GOOGL has not followed, GOOGL is expected to close part of the gap.";
+export const WINDOW_AGENTS = [...AGENTS, agent('googl-lags', { band: 'retired', structure: 'debit_vertical', retired_at: '2026-09-28T14:30:00.000Z',
+  mechanism: GOOGL_THESIS.slice(0, 240), record: { trials: 131, revisions: 6, forward: null, real: tally(0, 0, '0.00') } })];
+export const WINDOW_POSITIONS = [
+  position('real:8', { agent: 'googl-lags', underlying: 'GOOGL', structure: 'debit_vertical', right: 'call', legs: 2, expiry: '2026-10-07',
+    opened_at: '2026-09-28T14:31:00.000Z', pnl_usd: '-3.00' }),
+  ...POSITIONS,
+  position('real:9', { source: 'incubator', agent: 'gap-drift', underlying: 'SPY', structure: 'long_call', right: 'call', legs: 1,
+    status: 'closed', open_quantity: 0, opened_at: '2026-09-28T13:20:00.000Z', closed_at: '2026-09-28T13:50:00.000Z', pnl_usd: '-4.00' }),
+];
+export const LEVEL_OF = { 'condor-vrp-3': 'sized', 'putspread-dip-2': 'probe', 'orb-4': 'probe', 'ironfly-quiet': 'candidate', 'butterfly-pin': 'candidate',
+  'trend-vertical': 'candidate', 'gap-drift': 'validation', 'skew-revert': 'practice', 'calendar-term': 'train', 'strangle-cheap': 'train', 'eod-drift': 'train',
+  'reversal-1': 'retired', 'googl-lags': 'tuition' };
+export const funnel = (overrides = {}) => ({ since: RESET_AT, born: 49, practice: 3, validation: 9, tuition: 7, incubator: 1, looks: 4, looks_passed: 3,
+  candidate: 6, probe: 3, sized: 1, retired: 37, calibration: 1, live_test: 0, ...overrides });
+export const levelsBlock = (overrides = {}) => ({ as_of: PUBLISHED_AT, agents: WINDOW_AGENTS.map(row => ({ id: row.id, level: LEVEL_OF[row.id] })),
+  funnel: funnel(), ...overrides });
+export const rationaleTrade = (id, overrides = {}) => ({ id, route: null, open_why: null, close_why: null, exit: null, max_loss_usd: null, ...overrides });
+export const rationaleBlock = (overrides = {}) => ({
+  as_of: PUBLISHED_AT,
+  agents: [{ id: 'googl-lags', thesis: GOOGL_THESIS }, { id: 'orb-4', thesis: 'The opening range breaks in the direction the day keeps. A vertical rides it with a known worst case.' },
+    { id: 'reversal-1', thesis: null }],
+  trades: [
+    rationaleTrade('real:8', { route: 'tuition', open_why: 'msft leads googl, qqq flat', max_loss_usd: '157.00' }),
+    rationaleTrade('real:7', { route: 'sized', open_why: 'realized running under what the options price', max_loss_usd: '184.00' }),
+    rationaleTrade('real:6', { route: 'probe', open_why: 'the open broke higher on heavy volume', max_loss_usd: '96.00' }),
+    rationaleTrade('real:5', { route: 'probe', open_why: 'the open broke higher on heavy volume', close_why: 'target reached before the lunch lull', exit: 'agent', max_loss_usd: '96.00' }),
+    rationaleTrade('real:4', { route: 'probe', exit: 'expiry', max_loss_usd: '61.00' }),
+    rationaleTrade('real:1', { route: 'calibration', exit: 'house', max_loss_usd: '5.00' }),
+    rationaleTrade('real:9', { route: 'incubator', open_why: 'gap not confirmed', exit: 'agent', max_loss_usd: '40.00' }),
+  ],
+  ...overrides,
+});
+export const windowCheckpoint = (overrides = {}) => swarmCheckpoint({
+  trading: { as_of: PUBLISHED_AT, pnl_usd: '213.40' }, agents: WINDOW_AGENTS, positions: ledger({ rows: WINDOW_POSITIONS }),
+  levels: levelsBlock(), rationale: rationaleBlock(), ...overrides,
+});

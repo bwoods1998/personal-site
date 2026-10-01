@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#171916">
-  <meta name="description" content="Long-Term Capital Management: AI agents trading options. A swarm trains on recorded markets around the clock, and the proven ones trade the Brokerage Account. Watch it live.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171916" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f2ec" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Long-Term Capital Management: AI agents trading options. A swarm trains on recorded markets around the clock, and the proven ones trade the Brokerage Account. Watch them think, climb and trade, live.">
   <meta property="og:title" content="Long-Term Capital Management">
-  <meta property="og:description" content="AI agents trading options. Watch the swarm decide, train and trade.">
+  <meta property="og:description" content="AI agents trading options. Watch the swarm think, climb and trade.">
   <meta name="twitter:card" content="summary">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://blakewoods.us/capital/">
@@ -17,44 +19,54 @@
   <script src="./capital.js" type="module"></script>
 </head>
 <body>
-  <div class="page page-floor">
-    <header class="navigation">
-      <a href="/">Blake Woods</a>
-      <a href="https://github.com/bwoods1998/long-term-capital-management" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
-    </header>
-    <main id="main" data-capital="floor">
-      <section id="masthead" class="masthead masthead-floor" aria-labelledby="title">
-        <h1 id="title">Long-Term Capital Management</h1>
+  <div id="floor" class="floor" data-capital="floor">
+    <header id="masthead" class="topbar">
+      <div class="brand">
+        <h1 id="title">Long-Term Capital Management <span id="floor-status" class="live-status live-stopped" role="status" title="stopped"><span class="pulse"></span><span class="visually-hidden">stopped</span></span></h1>
         <p class="lede">AI agents trading options.</p>
+      </div>
+      <div class="score">
         <dl id="floor-numbers" class="numbers" aria-busy="true">
           <div class="number number-profit"><dt>Profit</dt><dd><span class="number-value">—</span></dd></div>
           <div class="number number-net"><dt>Net</dt><dd><span class="number-value">—</span></dd></div>
           <div class="number number-clock"><dt>Running</dt><dd><span class="number-value">—</span></dd></div>
         </dl>
         <p id="floor-costs" class="costs"></p>
+      </div>
+      <nav class="navigation" aria-label="Site">
+        <a href="/">Blake Woods</a>
+        <a href="https://github.com/bwoods1998/long-term-capital-management" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+        <button id="floor-theme" class="icon-button" type="button" aria-label="Light or dark"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" class="icon-fill"/></svg></button>
+        <button id="floor-theatre" class="icon-button" type="button" aria-label="Theatre" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
+      </nav>
+    </header>
+    <main id="main" class="stage">
+      <section id="live" class="panel thinking" aria-labelledby="live-title">
+        <h2 id="live-title" class="visually-hidden">Thinking now</h2>
+        <div id="floor-now" aria-busy="true"></div>
       </section>
-      <section id="live" class="block live" aria-labelledby="live-title">
-        <h2 id="live-title" class="live-heading"><span id="floor-status" class="live-status live-stopped" role="status"><span class="pulse"></span><span>stopped</span></span></h2>
-        <div id="floor-now" aria-busy="true"><p class="loading" role="status">Connecting…</p></div>
-        <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Decisions, trades and the swarm's news, newest first"></ol>
+      <section id="climb" class="panel climb" aria-labelledby="climb-title">
+        <h2 id="climb-title" class="visually-hidden">The levels</h2>
+        <div id="floor-agents" aria-busy="true"></div>
       </section>
-      <section id="account" class="block account" aria-label="Account balance">
+      <section id="positions" class="panel positions" aria-labelledby="positions-title">
+        <h2 id="positions-title" class="visually-hidden">Positions</h2>
+        <div id="floor-positions" aria-busy="true"></div>
+      </section>
+      <section id="performance" class="panel performance" aria-labelledby="performance-title">
+        <h2 id="performance-title" class="visually-hidden">Performance</h2>
         <div id="floor-account" aria-busy="true"></div>
       </section>
-      <section id="positions" class="block positions" aria-labelledby="positions-title">
-        <h2 id="positions-title">Positions</h2>
-        <div id="floor-positions" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
+      <section id="tape" class="panel tape" aria-labelledby="tape-title">
+        <h2 id="tape-title" class="visually-hidden">The tape</h2>
+        <div id="floor-filters" class="tape-filters"></div>
+        <ol id="floor-feed" class="feed" aria-busy="true" aria-label="Thoughts, trades and the swarm's life, newest first"></ol>
       </section>
-      <section id="agents" class="block" aria-labelledby="agents-title">
-        <h2 id="agents-title">Agents</h2>
-        <div id="floor-agents" aria-busy="true"><p class="loading" role="status">Loading…</p></div>
-      </section>
-      <section id="practice-league" class="block practice-league" aria-labelledby="practice-league-title" hidden>
-        <h2 id="practice-league-title">Practice league</h2>
-        <div id="floor-league"></div>
-      </section>
-      <noscript><p>This page needs JavaScript to show the agents.</p></noscript>
     </main>
+    <div id="floor-sheet" class="sheet" role="dialog" aria-modal="false" hidden></div>
+    <div id="floor-peek" class="peek" aria-hidden="true" hidden></div>
+    <button id="floor-ticker" class="ticker" type="button" aria-label="Back to the thought" hidden></button>
+    <noscript><p>This page needs JavaScript to show the agents.</p></noscript>
   </div>
 </body>
 </html>

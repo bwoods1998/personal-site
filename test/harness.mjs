@@ -39,7 +39,22 @@ export class StubElement {
   constructor(tag) {
     this.tag = tag; this.children = []; this._text = ''; this.attributes = {};
     this.className = ''; this.dataset = {}; this.listeners = new Map(); this.id = '';
+    const style = {};
+    style.setProperty = (name, value) => { style[name] = value; };
+    this.style = style;
+    const classes = () => String(this.className).split(' ').filter(Boolean);
+    this.classList = {
+      contains: name => classes().includes(name),
+      add: name => { if (!classes().includes(name)) this.className = [...classes(), name].join(' '); },
+      remove: name => { this.className = classes().filter(entry => entry !== name).join(' '); },
+      toggle: (name, force) => { const on = force ?? !classes().includes(name); if (on) this.classList.add(name); else this.classList.remove(name); return on; },
+    };
   }
+  remove() { if (this.parentNode) { this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; } }
+  prepend(...nodes) { const rest = this.children; this.children = []; this.append(...nodes); for (const node of rest) this.children.push(node); }
+  contains(node) { return node === this || this.descendants().includes(node); }
+  closest() { return null; }
+  removeAttribute(name) { delete this.attributes[name]; }
   set textContent(value) { this._text = String(value); this.children = []; }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(' '); }
   append(...nodes) {
@@ -53,7 +68,8 @@ export class StubElement {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   addEventListener(name, handler) { this.listeners.set(name, [...(this.listeners.get(name) || []), handler]); }
-  click() { for (const handler of this.listeners.get('click') || []) handler(); }
+  click() { for (const handler of this.listeners.get('click') || []) handler({ stopPropagation() {}, preventDefault() {}, target: this }); }
+  fire(name, event = {}) { for (const handler of this.listeners.get(name) || []) handler({ stopPropagation() {}, preventDefault() {}, target: this, ...event }); }
   descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
   querySelector(selector) { return this.descendants().find(node => node.id === selector.slice(1)) || null; }
   querySelectorAll() { return []; }
@@ -61,7 +77,11 @@ export class StubElement {
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 export const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-positions', 'floor-agents'];
+// The page's sections in reading order (the top bar, the thought, the Climb, positions, the chart, the tape), and its sheet.
+export const FLOOR_IDS = ['floor-numbers', 'floor-costs', 'floor-status', 'floor-now', 'floor-agents', 'floor-positions', 'floor-account', 'floor-filters',
+  'floor-feed', 'floor-sheet'];
+// The sections that say they are drawn (aria-busy false) once the page has read the record.
+export const BUSY_IDS = ['floor-numbers', 'floor-now', 'floor-agents', 'floor-positions', 'floor-account', 'floor-feed'];
 export function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;
