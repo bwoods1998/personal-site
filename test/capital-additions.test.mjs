@@ -88,6 +88,13 @@ test('a sparkline never joins across a null point or a gap over fifteen minutes,
   // A live reading more than fifteen minutes after the archive starts its own segment; one no later than the archive is not added.
   assert.equal(sparkSeries(points.slice(0, 2), 'profit_usd', { at: Date.parse('2026-09-28T13:40:00.000Z'), cents: 0n }).segments.length, 2);
   assert.equal(sparkSeries(points.slice(0, 2), 'profit_usd', { at: Date.parse('2026-09-28T13:05:00.000Z'), cents: 0n }).points.length, 2);
+  // Unpriced buckets after the last priced point: the live reading starts its own segment, never a bridge across them.
+  const trailing = sparkSeries([point('13:30', '10.00'), point('13:35', null), point('13:40', null)], 'profit_usd',
+    { at: Date.parse('2026-09-28T13:44:00.000Z'), cents: 900n });
+  assert.equal(trailing.segments.length, 2);
+  assert.deepEqual(trailing.segments.map(segment => segment.points.length), [1, 1]);
+  assert.equal(sparkSeries([point('13:30', '10.00'), point('13:35', null), point('13:40', null), point('13:44', '9.00')], 'profit_usd').segments.length, 2,
+    'the same archive with the reading recorded: the same two segments');
   // Fewer than two priced points: nothing.
   assert.equal(sparkSeries([point('13:00', '1.00')], 'profit_usd'), null);
   assert.equal(sparkSeries([point('13:00', null), point('13:05', null)], 'profit_usd', { at: Date.parse('2026-09-28T13:06:00.000Z'), cents: 5n }), null);
@@ -241,9 +248,14 @@ async function mounted(checkpoint, events, work, routes = () => undefined) {
   await withBrowser('', answer, async () => {
     const intervals = new Map();
     globalThis.setInterval = (callback, delay) => { intervals.set(delay, callback); return 0; };
+    // The page's own document listeners (visibilitychange), so a test can fire them.
+    const listeners = new Map();
+    globalThis.document.addEventListener = (name, handler) => listeners.set(name, [...(listeners.get(name) || []), handler]);
+    globalThis.document.removeEventListener = (name, handler) => listeners.set(name, (listeners.get(name) || []).filter(entry => entry !== handler));
     const feed = await startCapital(root);
     await settle();
-    try { await work(root, capital, { refresh: async () => { intervals.get(30000)(); await settle(); await settle(); }, poll: async () => { intervals.get(8000)(); await settle(); await settle(); } }); }
+    const fire = async name => { for (const handler of listeners.get(name) || []) handler(); await settle(); await settle(); };
+    try { await work(root, capital, { refresh: async () => { intervals.get(30000)(); await settle(); await settle(); }, poll: async () => { intervals.get(8000)(); await settle(); await settle(); }, fire }); }
     finally { feed.stop(); }
   });
 }
@@ -281,12 +293,23 @@ test('mounted: a reason under each agent position, a tap unfolds the thesis in p
     const box = root.querySelector('#floor-positions');
     assert.equal(byPosition(root, 'real:4').withClass('pos-why').length, 0);
     assert.equal(byPosition(root, 'real:5').withClass('pos-why')[0].textContent, '“the open broke higher on heavy volume → target reached before the lunch lull”');
+    // Whose words the quote is, on hover: the agent's note, or the family's thesis when it sent none.
+    assert.equal(reason.getAttribute('title'), 'The agent’s own words when it opened the position. Tap for the family’s thesis.');
+    assert.equal(byPosition(root, 'real:3').withClass('pos-why')[0].getAttribute('title'), 'From the family’s thesis; the agent sent no note for this order.');
     // House calibration: no reason, no tag, one line as before.
     const calibration = byPosition(root, 'real:1');
     assert.equal(calibration.withClass('pos-why').length, 0);
     assert.equal(calibration.withClass('tag').length, 0);
     assert.equal(words(calibration), 'House calibration SPY call debit vertical ×1 Sep 29 Sep 28, 10:10 Sep 28, 10:10 −$2.20 −1.0%');
     assert.equal(box.withClass('pos-why-row').every(node => node.find('td').length === 1), true);
+  });
+  // A reason with no thesis behind it: a plain quote, titled all the same.
+  const unexplained = windowed({ rationale: rationaleBlock({ agents: rationaleBlock().agents.map(entry => (entry.id === 'orb-4' ? { id: 'orb-4', thesis: null } : entry)) }) });
+  await mounted(unexplained, [], async root => {
+    const [reason] = byPosition(root, 'real:6').withClass('pos-why');
+    assert.equal(reason.tag, 'span');
+    assert.equal(reason.textContent, '“the open broke higher on heavy volume”');
+    assert.equal(reason.getAttribute('title'), 'The agent’s own words when it opened the position.');
   });
 });
 
@@ -328,11 +351,12 @@ test('mounted: Profit and Net each draw their path to the headline; a 404 draws 
     const numbers = root.querySelector('#floor-numbers');
     const [profit, net, clock] = ['number-profit', 'number-net', 'number-clock'].map(name => numbers.withClass(name)[0]);
     assert.equal(svgClass(profit, 'spark-line').length, 1);
-    assert.match(profit.find('svg')[0].getAttribute('aria-label'), /^Profit since .*: \+\$190\.00 to \+\$220\.40\.$/, 'the line ends at the headline, to the cent');
+    assert.equal(profit.find('svg')[0].getAttribute('aria-label'), 'Profit, recorded from Sep 28, 10:40 AM EDT to Sep 28, 10:58 AM EDT: +$190.00 to +$220.40.',
+      'the line ends at the headline, to the cent; the label names the recorded span, never a basis');
     assert.equal(words(profit.withClass('number-value')[0]), '+$220.40');
     assert.equal(profit.withClass('spark')[0].className, 'spark positive');
     assert.equal(words(net.withClass('number-value')[0]), '−$120.89');
-    assert.match(net.find('svg')[0].getAttribute('aria-label'), /^Net since .*: −\$110\.00 to −\$120\.89\.$/, 'Net\'s own path, to its headline');
+    assert.equal(net.find('svg')[0].getAttribute('aria-label'), 'Net, recorded from Sep 28, 10:40 AM EDT to Sep 28, 10:58 AM EDT: −$110.00 to −$120.89.', 'Net\'s own path, to its headline');
     assert.equal(clock.withClass('spark').length, 0);
     assert.equal(profit.withClass('spark-dot')[0].className, 'spark-dot');
     assert.equal(numbers.withClass('wash-up').length + numbers.withClass('wash-down').length, 0, 'the first draw never flashes');
@@ -346,7 +370,8 @@ test('mounted: Profit and Net each draw their path to the headline; a 404 draws 
     const profit = root.querySelector('#floor-numbers').withClass('number-profit')[0];
     assert.equal(words(profit.withClass('number-value')[0]), '—');
     assert.equal(profit.withClass('spark-dot')[0].className, 'spark-dot spark-stale', 'the last path the House could price, ending hollow');
-    assert.match(profit.find('svg')[0].getAttribute('aria-label'), /to \+\$211\.00\.$/);
+    assert.equal(profit.find('svg')[0].getAttribute('aria-label'), 'Profit, recorded from Sep 28, 10:40 AM EDT to Sep 28, 10:55 AM EDT: +$190.00 to +$211.00; no current figure.',
+      'the last archived figure is not spoken as current');
   });
   // Two successive checkpoints, Profit then lower: one red wash on Profit; the open row the House revalued washes too.
   let current = ledgerCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '-96.15' },
@@ -368,6 +393,38 @@ test('mounted: Profit and Net each draw their path to the headline; a 404 draws 
     assert.equal(root.querySelector('#floor-numbers').withClass('wash-down').length, 0, 'no change, no flash');
     assert.equal(byPosition(root, 'real:7').withClass('pos-pnl')[0].className, 'pos-pnl negative');
   }, path => (path.includes('/checkpoint') ? current : undefined));
+  // Profit then higher: one green wash on Profit, and on the open row the House revalued up.
+  let rising = ledgerCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '-105.65' },
+    positions: ledger({ rows: POSITIONS.map(row => (row.id === 'real:7' ? { ...row, pnl_usd: '-313.55' } : row)) }) });
+  await mounted(rising, [], async (root, _capital, { refresh }) => {
+    rising = { ...rising, trading: { as_of: PUBLISHED_AT, pnl_usd: '-96.15' },
+      positions: ledger({ rows: POSITIONS.map(row => (row.id === 'real:7' ? { ...row, pnl_usd: '-304.05' } : row)) }) };
+    await refresh();
+    const washed = root.querySelector('#floor-numbers').withClass('wash-up');
+    assert.equal(washed.length, 1);
+    assert.equal(washed[0].className, 'number-value wash-up');
+    assert.equal(words(washed[0]), '−$96.15');
+    assert.equal(root.querySelector('#floor-numbers').withClass('wash-down').length, 0);
+    assert.equal(byPosition(root, 'real:7').withClass('pos-pnl')[0].className, 'pos-pnl negative wash-up');
+    assert.equal(byPosition(root, 'real:6').withClass('pos-pnl')[0].className, 'pos-pnl negative', 'unchanged: no wash');
+  }, path => (path.includes('/checkpoint') ? rising : undefined));
+});
+
+test('mounted: a malformed score archive draws no line and stops nothing else', async () => {
+  const bucket = n => ({ at: new Date(Date.parse('2026-09-20T00:00:00.000Z') + n * 300000).toISOString(), profit_usd: '1.00', costs_usd: '0.00', net_usd: '1.00' });
+  const malformed = {
+    'a schema version the page does not read': { ...SCORE, schema_version: 1 },
+    'more points than the archive may hold': { ...SCORE, points: Array.from({ length: 2049 }, (_, n) => bucket(n)) },
+    'a last_profit that is not a figure': { ...SCORE, last_profit: { at: PUBLISHED_AT, profit_usd: 'ten' } },
+  };
+  for (const [why, archive] of Object.entries(malformed)) {
+    await mounted(ledgerCheckpoint(), [], async root => {
+      const numbers = root.querySelector('#floor-numbers');
+      assert.equal(numbers.withClass('spark').length, 0, why);
+      assert.equal(words(numbers.withClass('number-profit')[0].withClass('number-value')[0]), '+$220.40', `${why}: the refresh went on`);
+      assert.equal(root.querySelector('#floor-agents').withClass('stage-heading').length, 6, `${why}: the board drew`);
+    }, path => (path.endsWith('/score') ? archive : undefined));
+  }
 });
 
 test('mounted: the balance chart has its start rule and a gold mark at each agent opening, open ones hollow', async () => {
@@ -435,6 +492,72 @@ test('mounted: the card plays a burst in order with a "+N" count, the feed gets 
   });
 });
 
+test('mounted: a tab that comes back keeps only the newest queued note', async () => {
+  const opening = note('calendar-term', 'Holding the calendar while the term structure stays flat.', '2026-09-28T14:50:00.000Z');
+  await mounted(windowed(), [opening], async (root, capital, { poll, fire }) => {
+    const timers = fakeTimers(NOW);
+    try {
+      const now = root.querySelector('#floor-now');
+      const burst = [note('eod-drift', 'First of the burst.', '2026-09-28T14:59:10.000Z'), note('strangle-cheap', 'Second of the burst.', '2026-09-28T14:59:20.000Z'),
+        note('skew-revert', 'Third of the burst.', '2026-09-28T14:59:30.000Z')];
+      await post(capital, '/api/capital/events', batch(...burst));
+      await poll();
+      assert.equal(words(now.withClass('now-queue')[0]), '+3');
+      // Going hidden changes nothing.
+      globalThis.document.visibilityState = 'hidden';
+      await fire('visibilitychange');
+      assert.equal(words(now.withClass('now-queue')[0]), '+3');
+      // Visible again: only the newest queued note is kept, so the card catches up instead of replaying what it missed.
+      globalThis.document.visibilityState = 'visible';
+      await fire('visibilitychange');
+      assert.equal(words(now.withClass('now-queue')[0]), '+1');
+      assert.match(words(now), /Holding the calendar/, 'the note on the card keeps it');
+      timers.tick(holdFor(opening.payload.text, true) + 20);
+      assert.match(words(now), /Third of the burst/);
+      assert.equal(now.withClass('now-queue')[0].hidden, true);
+      const feed = words(root.querySelector('#floor-feed'));
+      assert.match(feed, /First of the burst/);
+      assert.match(feed, /Second of the burst/);
+      assert.doesNotMatch(feed, /Third of the burst/);
+    } finally { timers.restore(); }
+  });
+});
+
+test('mounted: a speaker off the roster keeps the name a plain span', async () => {
+  const opening = note('calendar-term', 'Holding the calendar while the term structure stays flat.', '2026-09-28T14:50:00.000Z');
+  await mounted(windowed(), [opening], async (root, capital, { poll }) => {
+    const timers = fakeTimers(NOW);
+    try {
+      const now = root.querySelector('#floor-now');
+      assert.equal(now.withClass('now-name')[0].tag, 'button');
+      await post(capital, '/api/capital/events', batch(note('ghost-family-9', 'Not on the roster, still thinking.', '2026-09-28T14:59:30.000Z')));
+      await poll();
+      timers.tick(holdFor(opening.payload.text, true) + 20);
+      assert.match(words(now), /Not on the roster/);
+      const name = now.withClass('now-name')[0];
+      assert.equal(name.tag, 'span');
+      assert.notEqual(words(name), '', 'named all the same: the Worker gives the tape a partner name');
+      assert.equal(name.getAttribute('aria-controls'), null);
+      assert.equal(name.listeners.size, 0, 'nothing to open');
+      assert.equal(now.withClass('now-band')[0].children.length, 0, 'no level tag either');
+      assert.equal(root.querySelector('#floor-agents').withClass('dot-speaking').length, 0, 'no dot to breathe');
+    } finally { timers.restore(); }
+  });
+});
+
+test('mounted: the feed\'s reason says whose words it is, at the open or at the close', async () => {
+  const events = [trade('orb-4', { underlying: 'SPY', structure: 'debit_vertical', legs: 2, quantity: 2, max_loss_usd: '96.00', why: 'the open broke higher on heavy volume' }, '2026-09-28T14:10:00.000Z'),
+    trade('orb-4', { action: 'close', underlying: 'SPY', structure: 'debit_vertical', legs: 2, quantity: 2, max_loss_usd: '96.00', pnl_usd: '31.00', why: 'target reached before the lunch lull' }, '2026-09-28T14:30:00.000Z')];
+  await mounted(windowed(), events, async root => {
+    const lines = root.querySelector('#floor-feed').withClass('feed-line');
+    const why = line => line.withClass('feed-why')[0];
+    assert.deepEqual(lines.map(line => [words(line.withClass('feed-words')[0]), why(line).getAttribute('title')]), [
+      ['closed 2 SPY debit verticals — target reached before the lunch lull', 'The agent’s own words when it closed the position.'],
+      ['opened 2 SPY debit verticals · Sep 28 · max loss $96 — the open broke higher on heavy volume', 'The agent’s own words when it opened the position.'],
+    ]);
+  });
+});
+
 test('mounted: "+N" jumps to the newest note and drops the rest into the feed; the name opens its dot; the card\'s tag is the level', async () => {
   const opening = note('calendar-term', 'Holding the calendar while the term structure stays flat.', '2026-09-28T14:50:00.000Z');
   await mounted(windowed(), [opening], async (root, capital, { poll }) => {
@@ -452,24 +575,28 @@ test('mounted: "+N" jumps to the newest note and drops the rest into the feed; t
       now.withClass('now-queue')[0].click();
       assert.match(words(now), /Third of the burst/);
       assert.equal(now.withClass('now-queue')[0].hidden, true);
-      assert.match(words(root.querySelector('#floor-feed')), /First of the burst[^]*|Second of the burst/);
       assert.match(words(root.querySelector('#floor-feed')), /Second of the burst/);
       assert.match(words(root.querySelector('#floor-feed')), /First of the burst/);
       // The retired agent paying tuition: its level's tag, and the gold border of real money.
       assert.equal(words(now.withClass('now-band')[0]), 'Tuition');
       assert.equal(now.withClass('tag-tuition')[0].getAttribute('title'), LEVEL_TITLES.tuition);
       assert.match(card().className, /\bnow-real\b/);
-      // The name is a button that opens its dot's detail on the board.
+      // The name is a button that opens its dot's detail on the board, says so on hover, and puts focus on the dot.
       const name = now.withClass('now-name')[0];
       assert.equal(name.tag, 'button');
+      assert.equal(name.getAttribute('aria-controls'), 'agent-detail');
+      assert.equal(name.getAttribute('title'), 'Show this agent on the board');
       const scrolls = [];
       root.querySelector('#agent-detail').scrollIntoView = options => scrolls.push(options);
+      const focused = [];
+      root.querySelector('#floor-agents').withClass('agent-dot').find(dot => dot.dataset.agent === 'googl-lags').focus = options => focused.push(options);
       name.click();
       const detail = root.querySelector('#agent-detail');
       assert.equal(detail.hidden, false);
       assert.equal(detail.withClass('agent-detail-card').length, 1);
       assert.match(words(detail), new RegExp(`^${words(name)} Tuition ×`));
       assert.deepEqual(scrolls, [{ block: 'nearest', behavior: 'auto' }]);
+      assert.deepEqual(focused, [{ preventScroll: true }], 'focus lands on the dot');
       // A Validation speaker: its tag, no gold border.
       await post(capital, '/api/capital/events', batch(note('gap-drift', 'Validation notes, quietly.', '2026-09-28T14:59:40.000Z')));
       await poll();
@@ -483,8 +610,16 @@ test('mounted: "+N" jumps to the newest note and drops the rest into the feed; t
       timers.tick(30000);
       assert.match(words(now), /Retired, still talking/);
       assert.equal(words(now.withClass('now-band')[0]), 'Retired');
-      assert.equal(root.querySelector('#floor-agents').withClass('agents-retired')[0].open, false);
+      const archive = root.querySelector('#floor-agents').withClass('agents-retired')[0];
+      assert.equal(archive.open, false);
       assert.equal(root.querySelector('#floor-agents').withClass('dot-speaking').length, 0, 'never inside the collapsed summary');
+      // Opening the summary lets the retired speaker's dot breathe at once; closing it stops the dot.
+      archive.open = true;
+      for (const handler of archive.listeners.get('toggle')) handler();
+      assert.deepEqual(root.querySelector('#floor-agents').withClass('dot-speaking').map(dot => dot.dataset.agent), ['reversal-1']);
+      archive.open = false;
+      for (const handler of archive.listeners.get('toggle')) handler();
+      assert.equal(root.querySelector('#floor-agents').withClass('dot-speaking').length, 0);
       now.withClass('now-name')[0].click();
       assert.equal(root.querySelector('#floor-agents').withClass('agents-retired')[0].open, true);
       assert.match(words(root.querySelector('#agent-detail')), /Retired ×/);
@@ -508,7 +643,8 @@ test('mounted: the board is six rungs with the funnel under its heading, the key
     assert.equal(googl.className, 'agent-dot dot-retired level-tuition');
     assert.equal(googl.dataset.level, 'tuition');
     assert.equal(stages[3].withClass('agent-dot')[0], googl, 'on the Tuition rung, holding its spread');
-    assert.match(googl.getAttribute('aria-label'), /^\S+(?: \d+)? · Tuition · debit vertical$/);
+    assert.match(googl.getAttribute('aria-label'), /^\S+(?: \d+)? · Tuition · debit vertical · retired$/, 'a retired agent on a money rung says so');
+    assert.doesNotMatch(stages[5].withClass('agent-dot')[0].getAttribute('aria-label'), /retired/);
     assert.equal(googl.getAttribute('title'), googl.getAttribute('aria-label'));
     assert.equal(words(box.withClass('agents-retired')[0].find('summary')[0]), '1 retired');
     assert.deepEqual(stages[5].withClass('agent-dot').map(dot => dot.className), ['agent-dot dot-gym level-practice', 'agent-dot dot-gym level-train',
@@ -519,6 +655,7 @@ test('mounted: the board is six rungs with the funnel under its heading, the key
     assert.equal(detail.withClass('tag-tuition').length, 1);
     assert.equal(words(detail.withClass('agent-strategy')[0]), `debit vertical ${GOOGL_THESIS}`);
     assert.equal(words(detail.withClass('agent-position-why')[0]), '“MSFT leads GOOGL, QQQ flat”');
+    assert.equal(detail.withClass('agent-position-why')[0].getAttribute('title'), 'The agent’s own words when it opened the position.');
     assert.match(words(detail.withClass('agent-positions')[0]), /^real money GOOGL debit vertical · 2 legs · Oct 7 · ×1 max loss \$157\.00 −\$3\.00 “MSFT leads GOOGL, QQQ flat”$/);
     // A thesis the House filtered to nothing: the structure alone.
     box.withClass('agents-retired')[0].open = true;

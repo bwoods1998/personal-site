@@ -18,15 +18,18 @@ training and orders; visiting this page starts none of those things.
    part not yet metered says so and Net is a dash; so is a bill that does not name Claude (an older House:
    "Costs are not itemized yet."), or a Profit or bill that is not fresh. Running ticks from the House's
    first start on its new record. Under Profit and Net, a small line traces each one's path from the Worker's
-   score archive (`/api/capital/score`); unpriced time is never drawn or bridged, the line ends at the headline,
-   and a change flashes once.
+   score archive (`/api/capital/score`); unpriced time is never drawn or bridged (a live reading after an unpriced
+   bucket starts its own segment), segments sit a fixed three pixels apart (narrowed only when the gaps would take
+   more than half the line), the line ends at the headline, takes no width of its own (`contain: inline-size`, and no
+   column gap before it, so each column keeps the width of its number) and its label names the recorded span, saying
+   when there is no current figure; a change flashes once.
 2. **Thoughts first.** A generous, legible space for an actual published note, the agent's name, a
    subtle tag for its game level and when it was written. New notes wait long enough for the current one to be read.
    Long thoughts expand and remain until the reader closes them. The feed below carries actual
    thinking, trades and news, newest first; repeats fold into one line. No invented activity. A burst of
-   live notes plays on the card in order (a "+N" count while notes wait; a tap jumps to the newest), a note
-   reaches the feed only after the card has shown it, the name opens the agent's dot, and the speaker's dot on
-   the board breathes while it is deciding.
+   live notes plays on the card in order (a "+N" count while notes wait, labelled "N more notes; show the newest",
+   singular for one; a tap jumps to the newest), a note reaches the feed only after the card has shown it, the name
+   opens the agent's dot and puts focus on it, and the speaker's dot on the board breathes while it is deciding.
 3. **The balance chart.** The recorded account balance since the reset (or since the chart's own later
    start: the owner's Sept 27 deposit is funding, so the chart starts after it), without a heading, axes or
    reconciliation paragraphs. Only the current balance and its timestamp sit below it. Hover can
@@ -48,13 +51,16 @@ training and orders; visiting this page starts none of those things.
    table says "No real positions yet." and still shows the footer. On a phone each row stacks into a short
    block (who and P&L, what and share, then contracts and dates); on a narrow desktop the table scrolls
    inside its own box. The page never scrolls sideways. An agent row shows its route tag (Tuition, Probe,
-   Sized, or the Incubator's) and, under the position, the agent's own reason in quotes; a tap unfolds the
-   family's thesis and its maximum loss across the table. Reasons pass the House's plain-words rule again on
-   the page. The P&L's title gives it against the maximum loss, the Closed time's title says who closed it, an
-   open row has the gold pulse, and an open row's P&L washes once when the House revalues it. Nothing else moves.
+   Sized, or the Incubator's) and, under the position, the agent's own reason in quotes (its title says whose words
+   they are: the agent's note at the order, or the family's first sentence when it sent none); a tap unfolds the
+   family's thesis and its maximum loss across the table, and the redraw keeps a reader's focus on that button.
+   Reasons pass the House's plain-words rule again on the page. The P&L's title gives it against the maximum loss,
+   the Closed time's title says who closed it, an open row has the gold pulse, and an open row's P&L washes once
+   when the House revalues it. Nothing else moves.
 5. **Agents.** The stages are the game's rungs (6 Sized, 5 Probe, 4 Candidate, 3 Tuition, 2 Validation,
    1 Train), placed by the House's `levels` (an older House's band otherwise); a vacant rung is one short line.
-   A retired agent still holding money stands on its money's rung. Practice dots are dashed and incubator or
+   A retired agent still holding money stands on its money's rung, in its level's look at the retired size, and its
+   label says retired. Practice dots are dashed and incubator or
    tuition dots dotted gold; Candidates are filled dots; Train and Validation agents are rings. One caption line
    gives the funnel since the reset. A quiet gold ring fills from the House's current promotion
    prerequisites, including partial trade/day counts; it is a checklist, never odds or a deadline.

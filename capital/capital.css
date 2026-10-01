@@ -99,7 +99,9 @@ section { min-width: 0; }
 .number-tick { font: 13px/1 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .number-note { font: 13px/1.4 'Courier New', Courier, monospace; }
 /* Under Profit and Net, each one's own path from the score archive, ending at the headline; a change flashes once. */
-/* `contain: inline-size`: the line takes no width of its own, so each column keeps the width of its number. */
+/* `contain: inline-size`: the line takes no width of its own, so each column keeps the width of its number. The column
+   gap goes too: a wrapping flex cell is as wide as its items laid in one line, gaps included, so the 8 px gap before the
+   line would widen the Profit column by 8 px and move Net and Running (measured at 1440; the spark hidden, nothing shows it). */
 .number dd .spark { position: relative; flex: 0 0 100%; max-width: 120px; height: 24px; margin-top: 8px; color: var(--muted); contain: inline-size; }
 .number dd .spark.positive { color: var(--positive); } .number dd .spark.negative { color: var(--negative); }
 .number dd:has(> .spark) { column-gap: 0; }
@@ -224,8 +226,9 @@ button.feed-text:hover .feed-words { color: var(--accent); }
 .pos-why { display: block; margin: 3px 0 0; padding: 0; border: 0; background: none; color: var(--muted);
   font: 12px/1.5 Arial, Helvetica, sans-serif; text-align: left; overflow-wrap: anywhere; }
 button.pos-why { cursor: pointer; }
-button.pos-why::after { content: ' ▸'; font-size: 10px; }
-button.pos-why[aria-expanded="true"]::after { content: ' ▾'; }
+/* The caret is not read aloud (an empty alternative): `aria-expanded` already says whether the thesis is unfolded. */
+button.pos-why::after { content: ' ▸' / ''; font-size: 10px; }
+button.pos-why[aria-expanded="true"]::after { content: ' ▾' / ''; }
 button.pos-why:hover { color: var(--accent); }
 .positions-table .why-open > * { border-bottom: 0; }
 .positions-table .pos-why-row > td { padding: 0 0 12px; }
@@ -280,6 +283,12 @@ button.pos-why:hover { color: var(--accent); }
 .level-tuition, .level-incubator { color: var(--accent); }
 .level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; background: none; }
 .level-practice .agent-dot-core { border-style: dashed; }
+/* A retired agent still holding money keeps its level's look at the retired size: filled gold on Probe and Sized, filled
+   pale on Candidate (the dotted core above is Tuition's and the Incubator's own look). */
+.level-probe, .level-sized { color: var(--accent); }
+.level-probe .agent-dot-core, .level-sized .agent-dot-core { border-style: solid; background: var(--accent); }
+.level-candidate { color: var(--tone-thought); }
+.level-candidate .agent-dot-core { border-style: solid; background: var(--tone-thought); }
 /* The card's speaker, while it is deciding: its core breathes in the card's own green. */
 .dot-speaking { color: var(--positive); }
 .dot-speaking .agent-dot-core { animation: pulse 2.4s ease-in-out infinite; }
