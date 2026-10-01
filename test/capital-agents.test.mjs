@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Capital } from '../lib/capital.mjs';
 import { validCheckpoint, validPublicEvent, displayNameFor } from '../capital/schema.js';
-import { tradingProfit, mastheadNumbers, agentStages, agentName, startCapital } from '../capital/capital.js';
+import { tradingProfit, mastheadNumbers, climbModel, agentName, startCapital, holdMs } from '../capital/capital.js';
 import { floor, post, get, token, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
 import { swarmCheckpoint, emptyCheckpoint, agent, note, news, PUBLISHED_AT } from './swarm-fixture.mjs';
 
@@ -81,19 +81,21 @@ test('a rejected event batch rolls back its tentative name allocation', async ()
   assert.equal(capital.nameOf('second'), 'Hilibrand');
 });
 
-test('every published agent gets a dot at the actual stage; training totals never imply a promotion', () => {
-  const many = Array.from({ length: 100 }, (_, n) => agent(`family-${n}`));
-  const stages = agentStages(swarmCheckpoint({ agents: many }));
-  assert.deepEqual(stages.map(stage => stage.agents.length), [0, 0, 100]);
-  assert.deepEqual(agentStages(swarmCheckpoint()).map(stage => stage.agents.map(row => row.band)),
-    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate', 'gym', 'gym', 'gym', 'gym', 'gym']]);
+test('every published agent gets a dot where it stands; training totals never move it', () => {
+  const many = Array.from({ length: 100 }, (_, n) => agent(`family-${n}`, { record: { trials: n * 1000, revisions: n, forward: null, real: null } }));
+  const crowd = climbModel(swarmCheckpoint({ agents: many }));
+  assert.equal(crowd.steps.train.agents.length, 100);
+  assert.ok(['validation', 'tuition', 'holdout', 'probe', 'sized'].every(key => crowd.steps[key].agents.length === 0));
+  const swarm = climbModel(swarmCheckpoint());
+  assert.deepEqual(['sized', 'probe', 'holdout', 'train'].map(key => swarm.steps[key].agents.map(dot => dot.band)),
+    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate'], ['gym', 'gym', 'gym', 'gym', 'gym']]);
 });
 
-test('a new thought waits for the current thought to be read while its feed entry arrives immediately', async () => {
+test('a note is held while it is read; newer notes queue behind a +N pill, which skips to the newest', async () => {
   const { capital } = floor();
   const original = note('one', 'I am testing the opening range and waiting for evidence before I change the program.', PUBLISHED_AT);
   await post(capital, '/api/capital/events', batch(original));
-  await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one')], structures: [] }));
+  await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one'), agent('two')], structures: [] }));
   const root = stubPage('floor', FLOOR_IDS);
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
     let socket;
@@ -105,29 +107,54 @@ test('a new thought waits for the current thought to be read while its feed entr
     let clock = at;
     Date.now = () => clock;
     const feed = await startCapital(root);
-    const next = { ...note('one', 'The next revision will test whether that pattern survives another session.', PUBLISHED_AT), seq: 2, display_name: 'Meriwether' };
+    const card = () => root.querySelector('#floor-now');
+    const shown = () => card().withClass('think-text')[0].textContent;
+    const pill = () => card().withClass('think-queue')[0];
+    assert.match(shown(), /testing the opening range/);
+    assert.equal(holdMs(original.payload.text), 6000, 'sixteen words: the six-second floor');
+    let seq = 1;
+    const send = (agentId, text, name) => { seq += 1; socket.handlers.get('message')({ data: JSON.stringify({ ...note(agentId, text, new Date(clock).toISOString()), seq, display_name: name }) }); };
     clock += 1000;
-    socket.handlers.get('message')({ data: JSON.stringify(next) });
-    assert.match(words(root.querySelector('#floor-now')), /testing the opening range/);
-    assert.match(words(root.querySelector('#floor-feed')), /next revision/);
-    clock += 60000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:later', seq: 3 }) });
-    assert.match(words(root.querySelector('#floor-now')), /next revision/);
-    clock += 60000;
+    send('two', 'The next revision will test whether that pattern survives another session.', 'Hilibrand');
+    assert.match(shown(), /testing the opening range/, 'held while it is read');
+    assert.deepEqual([pill().hidden, pill().textContent], [false, '+1']);
+    assert.match(words(root.querySelector('#floor-feed')), /next revision/, 'the tape has it at once');
+    clock += 1000;
+    send('two', 'A third thought arrives while the first is still on the card.', 'Hilibrand');
+    assert.equal(pill().textContent, '+2');
+    clock += 10000;
+    send('one', 'A fourth thought, once the first has been read.', 'Meriwether');
+    assert.match(shown(), /next revision/, 'the queue moves in order once the hold is over');
+    assert.equal(card().withClass('think-name')[0].textContent, 'Hilibrand');
+    assert.equal(pill().textContent, '+2');
+    pill().click();
+    assert.match(shown(), /A fourth thought/, '+N skips to the newest');
+    assert.equal(pill().hidden, true);
+    // A note the card cuts gets a ↓ (measured: how much fits depends on the card's width), and an expanded note stays until
+    // its reader closes it. A note that fits has none, however long it is.
+    const more = card().withClass('think-more')[0];
+    assert.equal(more.hidden, true, 'a note that fits: no ↓');
+    clock += 30000;
+    Object.assign(card().withClass('think-text')[0], { scrollHeight: 216, clientHeight: 135 });
     const full = 'I am checking whether the same mechanism holds in another market session. '.repeat(9).trim();
-    const long = { ...note('one', full, PUBLISHED_AT), seq: 4, display_name: 'Meriwether' };
-    socket.handlers.get('message')({ data: JSON.stringify(long) });
-    const more = root.querySelector('#floor-now').withClass('thought-more')[0];
-    assert.equal(more.hidden, false);
+    send('two', full, 'Hilibrand');
+    assert.equal(more.hidden, false, 'a cut note: ↓');
     more.click();
-    assert.equal(root.querySelector('#floor-now').withClass('now-thought')[0].textContent, full);
+    assert.equal(more.getAttribute('aria-expanded'), 'true');
     clock += 60000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:queued', seq: 5 }) });
-    assert.equal(root.querySelector('#floor-now').withClass('now-thought')[0].textContent, full, 'an expanded thought waits for its reader');
+    send('one', 'Waiting behind an open note.', 'Meriwether');
+    assert.equal(shown(), full, 'an expanded thought waits for its reader');
     more.click();
-    clock += 13000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:ready', seq: 6 }) });
-    assert.match(words(root.querySelector('#floor-now')), /next revision/);
+    clock += 7000;
+    send('one', 'And after it closes, the queue moves again.', 'Meriwether');
+    assert.match(shown(), /Waiting behind an open note/);
+    // A note written more than ten minutes ago dims the card; it keeps the thought and its true age, and never a placeholder.
+    clock += 11 * 60000;
+    feed.state.think.readUntil = 0;
+    send('one', 'One more.', 'Meriwether');
+    assert.match(shown(), /And after it closes/);
+    assert.match(card().withClass('think-card')[0].className, /is-quiet/);
+    assert.equal(card().withClass('think-age')[0].textContent, '11m');
     feed.stop();
   });
 });

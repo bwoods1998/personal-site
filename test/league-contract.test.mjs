@@ -6,10 +6,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validCheckpoint, validEventBatch, validEvent, EVENT_KINDS, BANDS, SCHEMA_VERSION, quoteFree } from '../capital/schema.js';
-import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital } from '../capital/capital.js';
-import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
+import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
+import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
+  climbModel, rationaleFor } from '../capital/capital.js';
+import { floor, post, get, words, FLOOR_IDS, BUSY_IDS, stubPage, withBrowser } from './harness.mjs';
+import { LEAKS, PLAIN, randomSentences } from './number-words.mjs';
 
 const FIXTURES = process.env.LTCM_FIXTURES || fileURLToPath(new URL('../../long-term-capital-management/league/tests/fixtures/', import.meta.url));
 const files = ['site_checkpoint.json', 'site_events.json'].map(name => `${FIXTURES.replace(/\/?$/, '/')}${name}`);
@@ -27,8 +30,62 @@ const loadLedger = () => [JSON.parse(readFileSync(ledgerFile, 'utf8')), load()[1
 const practiceFile = `${FIXTURES.replace(/\/?$/, '/')}site_checkpoint_practice.json`;
 const practiceSkip = skip || (!existsSync(practiceFile) && `the runtime's fixtures at ${FIXTURES} predate the practice league`);
 const loadPractice = () => [JSON.parse(readFileSync(practiceFile, 'utf8')), load()[1]];
-// The page's own sections, and the two it draws only when there is something to show.
-const PAGE_IDS = [...FLOOR_IDS, 'floor-costs', 'practice-league', 'floor-league'];
+// The swarm window (Oct 1, 2026): the publisher's checkpoint with `levels` and `rationale`, built from fixed inputs.
+const windowFile = `${FIXTURES.replace(/\/?$/, '/')}site_checkpoint_window.json`;
+const windowSkip = skip || (!existsSync(windowFile) && `the runtime's fixtures at ${FIXTURES} predate the swarm window`);
+const loadWindow = () => [JSON.parse(readFileSync(windowFile, 'utf8')), load()[1]];
+// The House's own funnel chains (league/publish.py `FUNNEL_CHAINS`): the two sides must narrow the same way, or the House's
+// window is refused and dropped for half an hour at a time (Oct 1, 2026: Tuition became its own chain under Validation).
+const publishFile = fileURLToPath(new URL('../../publish.py', `file://${FIXTURES.replace(/\/?$/, '/')}`));
+const publishSkip = windowSkip || (!existsSync(publishFile) && `the runtime's publisher is not at ${publishFile}`);
+function houseChains(source) {
+  const match = /^FUNNEL_CHAINS\s*=\s*\(([\s\S]*?)\)\s*$/m.exec(source);
+  if (!match) return null;
+  return [...match[1].matchAll(/\(([^()]*)\)/g)].map(group => [...group[1].matchAll(/"([a-z_]+)"/g)].map(name => name[1]));
+}
+test('the House narrows its funnel by the same chains as the site', { skip: publishSkip }, () => {
+  assert.deepEqual(houseChains(readFileSync(publishFile, 'utf8')), FUNNEL_CHAINS);
+  const [checkpoint] = loadWindow();
+  if (checkpoint.levels) assert.equal(validFunnel(checkpoint.levels.funnel), true, 'the window fixture’s funnel');
+});
+// The House's own number rules (league/swarm/public.py `numbered` and `plain_glyphs`), run in its checkout on the same
+// sentences as the site's copy in schema.js: the Worker's contract refuses a thesis or a tag the House's publisher refuses,
+// so the two must agree sentence for sentence, or the House's window is refused (or a leak passes). Oct 1, 2026.
+const houseRoot = fileURLToPath(new URL('../../../', `file://${FIXTURES.replace(/\/?$/, '/')}`));
+const publicFile = `${houseRoot}league/swarm/public.py`;
+const python = spawnSync('python3', ['--version'], { encoding: 'utf8' }).status === 0;
+const paritySkip = windowSkip || (!existsSync(publicFile) && `the runtime's number rules are not at ${publicFile}`) || (!python && 'python3 is not installed');
+// The House's own case list for the number rules (league/tests/fixtures/number_words.json), which both sides test against.
+const casesFile = `${FIXTURES.replace(/\/?$/, '/')}number_words.json`;
+const casesSkip = windowSkip || (!existsSync(casesFile) && `the runtime's fixtures at ${FIXTURES} predate its number-word case list`);
+const loadCases = () => JSON.parse(readFileSync(casesFile, 'utf8'));
+test('the House’s case list of numbers in words: each is refused by the site’s rules and its contract, each plain sentence passes', { skip: casesSkip }, () => {
+  const cases = loadCases();
+  assert.ok(cases.numbered.length >= 40 && cases.plain.length >= 10);
+  for (const text of cases.numbered) {
+    assert.ok(numbered(text) || !plainGlyphs(text), text);
+    assert.equal(thesisWords(text, 280), false, `contract: ${text}`);
+  }
+  for (const text of cases.plain) {
+    assert.deepEqual([numbered(text), plainGlyphs(text)], [false, true], text);
+    assert.equal(thesisWords(text, 280), true, `contract: ${text}`);
+  }
+});
+test('the House and the site read a number in words alike, sentence for sentence', { skip: paritySkip }, () => {
+  const shared = casesSkip ? [] : [...loadCases().numbered, ...loadCases().plain];
+  const corpus = [...LEAKS, ...PLAIN, ...shared, ...randomSentences(5000)];
+  const script = 'import json, sys\nfrom league.swarm import public\nprint(json.dumps([[public.numbered(s), public.plain_glyphs(s)] for s in json.load(sys.stdin)]))';
+  const done = spawnSync('python3', ['-c', script], { cwd: houseRoot, input: JSON.stringify(corpus), encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.equal(done.status, 0, done.stderr);
+  const house = JSON.parse(done.stdout);
+  assert.equal(house.length, corpus.length);
+  const differ = corpus.map((text, index) => ({ text, house: house[index], site: [numbered(text), plainGlyphs(text)] }))
+    .filter(row => row.house[0] !== row.site[0] || row.house[1] !== row.site[1]);
+  assert.deepEqual(differ.slice(0, 12), [], `${differ.length} of ${corpus.length} sentences read differently`);
+  for (const text of LEAKS) assert.ok(house[corpus.indexOf(text)].join() !== 'false,true', `the House refuses: ${text}`);
+  for (const text of PLAIN) assert.deepEqual(house[corpus.indexOf(text)], [false, true], `the House passes: ${text}`);
+});
+const PAGE_IDS = FLOOR_IDS;
 // Every name a quote, a greek, a surface or a fitted parameter goes by. None is a key anywhere.
 const FORBIDDEN_KEYS = /^(?:bid|ask|mid|mark|last|spread|iv|implied_vol|vol|delta|gamma|theta|vega|rho|greeks?|surface|strike|strikes|price|prices|entry_price|exit_price|mark_price|underlying_price|params|parameters|quote|quotes|nbbo|program|code|legs_detail)$/i;
 function keysOf(value, found = []) {
@@ -50,7 +107,8 @@ async function publishedRecord(checkpoint, batch) {
   return capital;
 }
 
-for (const [label, read, skipped] of [['', load, skip], [' (with the positions ledger)', loadLedger, ledgerSkip], [' (with the practice league)', loadPractice, practiceSkip]]) {
+for (const [label, read, skipped] of [['', load, skip], [' (with the positions ledger)', loadLedger, ledgerSkip], [' (with the practice league)', loadPractice, practiceSkip],
+  [' (with the swarm window)', loadWindow, windowSkip]]) {
   test(`the publisher’s fixtures pass the site’s own validators and carry no quote, greek, surface or parameter${label}`, { skip: skipped }, () => {
     const [checkpoint, batch] = read();
     assert.equal(validCheckpoint(checkpoint), true, 'site_checkpoint.json');
@@ -79,6 +137,14 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     if (board.positions) original.positions = { ...board.positions, rows: board.positions.rows.map(unnamed) };
     if (board.practice) original.practice = { ...board.practice, rows: board.practice.rows.map(unnamed) };
     assert.deepEqual(original, checkpoint);
+    // The window's blocks, once the publisher sends them: every agent placed, and each real position with its reason.
+    if (checkpoint.levels) {
+      const model = climbModel(board);
+      for (const entry of checkpoint.levels.agents) if (entry.level !== 'retired') assert.ok(model.dots.has(entry.id), entry.id);
+    }
+    if (checkpoint.rationale && checkpoint.positions) {
+      for (const row of checkpoint.positions.rows) assert.ok(rationaleFor(row, board), row.id);
+    }
     assert.equal(validCheckpoint(board, { publicRead: true }), true);
     const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;
     assert.equal(events.length, batch.events.length);
@@ -102,13 +168,22 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
       const feed = await startCapital(root);
       feed.stop();
-      assert.equal(root.querySelector('#practice-league').hidden, !checkpoint.practice, 'the practice league shows only when published');
-      if (checkpoint.practice) assert.equal(root.querySelector('#floor-league').find('tbody')[0].find('tr').length, checkpoint.practice.rows.length);
-      for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
-      assert.equal(root.querySelector('#floor-agents').withClass('agent-dot').length, board.agents.length);
+      for (const id of BUSY_IDS) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
+      assert.equal(root.querySelector('#floor-agents').withClass('dot').length, climbModel(board).dots.size);
+      // The practice league is the Practice step's sheet, shown only when published.
+      root.querySelector('#floor-agents').withClass('step-label').find(node => node.dataset.step === 'practice').click();
+      const sheet = root.querySelector('#floor-sheet');
+      assert.equal(sheet.withClass('practice-list').length, checkpoint.practice ? 1 : 0);
+      if (checkpoint.practice) assert.equal(sheet.withClass('pr-item').length, checkpoint.practice.rows.length);
       assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
       assert.match(words(root.querySelector('#floor-numbers')), /^Profit /);
-      if (checkpoint.positions) assert.equal(root.querySelector('#floor-positions').find('table').length, 1);
+      if (checkpoint.positions) {
+        const box = root.querySelector('#floor-positions');
+        assert.equal(box.withClass('pos-item').filter(item => item.dataset.position).length
+          + box.withClass('pos-group').reduce((sum, group) => sum + Number(/×(\d+)/.exec(words(group))?.[1] || 0), 0), checkpoint.positions.rows.length);
+        box.withClass('pos-table-toggle')[0].click();
+        assert.equal(box.find('table').length, 1);
+      }
     });
   });
 }

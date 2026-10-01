@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PROGRESS_CHECKS, validAgent, validCheckpoint } from '../capital/schema.js';
-import { agentProgress, agentStages, freshAgentActivity, startCapital } from '../capital/capital.js';
+import { agentProgress, climbModel, freshAgentActivity, startCapital } from '../capital/capital.js';
 import { floor, post, get, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
 import { agent, swarmCheckpoint, PUBLISHED_AT, note, news } from './swarm-fixture.mjs';
 
@@ -100,16 +100,16 @@ test('progress reads are opt-in so existing tabs keep their exact agent shape an
   assert.equal((await post(capital, '/api/capital/checkpoint?progress=1', body)).status, 400, 'only public reads accept the opt-in');
 });
 
-test('dot positions remain stable within a band as attempts, returns and prerequisite counts change', () => {
+test('dot positions remain stable within a step as attempts, returns and prerequisite counts change', () => {
   const a = agent('alpha', { progress: progress() }), b = agent('beta', { progress: progress() });
-  const ids = agents => agentStages(swarmCheckpoint({ agents })).at(-1).agents.map(row => row.id);
+  const ids = agents => climbModel(swarmCheckpoint({ agents })).steps.train.agents.map(row => row.id);
   assert.deepEqual(ids([b, a]), ['alpha', 'beta']);
   b.record.trials = 99999; a.record.trials = 1;
   b.progress.checks[0].done = 1;
   assert.deepEqual(ids([b, a]), ['alpha', 'beta']);
 });
 
-test('published progress reaches the dot and click details without changing the thought-first page', async () => {
+test('published progress reaches the dot and its card without changing the thought-first page', async () => {
   const { capital } = floor();
   const row = agent('one', { progress: progress('candidate', { validation_run: 1, validation_trades: 36, validation_days: 22 }) });
   assert.equal((await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [row], structures: [] }))).status, 200);
@@ -117,17 +117,17 @@ test('published progress reaches the dot and click details without changing the 
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
     const feed = await startCapital(root);
     const board = root.querySelector('#floor-agents');
-    const dot = board.withClass('agent-dot')[0];
-    assert.match(dot.getAttribute('aria-label'), /Meriwether.*1 \/ 11 checks.*Live shadow/);
-    assert.equal(dot.find('circle').length, 2);
+    const dot = board.withClass('dot')[0];
+    assert.equal(dot.getAttribute('aria-label'), 'Meriwether, Train, researching, 1 of 11 checks');
+    assert.match(dot.className, /has-progress/);
     assert.doesNotMatch(words(board), /Validation trades/);
     dot.click();
-    const detail = board.querySelector('#agent-detail');
-    assert.match(words(detail), /Next · Live shadow 1 \/ 11 checks/);
-    assert.match(words(detail), /Validation trades 36 \/ 100/);
-    assert.match(words(detail), /Trading days 22 \/ 60/);
-    assert.match(words(detail), /Validation needs improvement/);
-    assert.equal(detail.withClass('progress-check').length, 11);
+    const card = root.querySelector('#floor-sheet');
+    assert.match(words(card), /Next · Live shadow 1 \/ 11 checks/);
+    assert.match(words(card), /Validation trades 36 \/ 100/);
+    assert.match(words(card), /Trading days 22 \/ 60/);
+    assert.match(words(card), /Validation needs improvement/);
+    assert.equal(card.withClass('progress-check').length, 11);
     feed.stop();
   });
 });
@@ -141,7 +141,7 @@ test('activity cues require a fresh agent publication and never use balances or 
   assert.equal(freshAgentActivity({ kind: 'account.mark', at: PUBLISHED_AT }, at), null);
 });
 
-test('a failed refresh expires the visible rings and selected checklist while preserving the selected agent', async () => {
+test('a failed refresh expires the visible rings and the open card’s checklist while keeping the card open', async () => {
   const { capital } = floor();
   await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one', {
     progress: progress('candidate', { validation_run: 1, validation_trades: 70 }) })], structures: [] }));
@@ -154,18 +154,20 @@ test('a failed refresh expires the visible rings and selected checklist while pr
     globalThis.setInterval = (callback, delay) => { if (delay === 30000) refresh = callback; return 0; };
     const feed = await startCapital(root);
     const board = root.querySelector('#floor-agents');
-    board.withClass('agent-dot')[0].click();
-    assert.equal(board.withClass('agent-dot')[0].find('circle').length, 2);
-    assert.match(words(board.querySelector('#agent-detail')), /1 \/ 11 checks/);
+    board.withClass('dot')[0].click();
+    assert.match(board.withClass('dot')[0].className, /has-progress/);
+    const card = root.querySelector('#floor-sheet');
+    assert.match(words(card), /1 \/ 11 checks/);
     failing = true; clock += 16 * 60000;
     refresh();
     await new Promise(resolve => setImmediate(resolve));
     assert.match(words(root.querySelector('#floor-status')), /stopped/);
-    const selected = board.withClass('agent-dot')[0];
-    assert.equal(selected.getAttribute('aria-expanded'), 'true');
-    assert.equal(selected.find('circle').length, 1);
-    assert.match(words(board.querySelector('#agent-detail')), /Progress unavailable/);
-    assert.doesNotMatch(words(board.querySelector('#agent-detail')), /1 \/ 11 checks/);
+    const dot = board.withClass('dot')[0];
+    assert.doesNotMatch(dot.className, /has-progress/);
+    assert.equal(dot.getAttribute('aria-label'), 'Meriwether, Train, researching');
+    assert.equal(card.hidden, false, 'the card stays open');
+    assert.doesNotMatch(words(card), /checks/);
+    assert.equal(card.withClass('progress-check').length, 0);
     feed.stop();
   });
 });
