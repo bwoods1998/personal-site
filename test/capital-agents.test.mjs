@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Capital } from '../lib/capital.mjs';
 import { validCheckpoint, validPublicEvent, displayNameFor } from '../capital/schema.js';
-import { tradingProfit, mastheadNumbers, agentStages, agentName, startCapital } from '../capital/capital.js';
+import { tradingProfit, headline, agentStages, agentName, startCapital } from '../capital/capital.js';
 import { floor, post, get, token, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
 import { swarmCheckpoint, emptyCheckpoint, agent, note, news, PUBLISHED_AT } from './swarm-fixture.mjs';
 
@@ -13,7 +13,7 @@ const checkpoint = (minute, agents) => swarmCheckpoint({ published_at: `2026-09-
 test('Profit accepts only a complete, fresh live-options total; account flows, costs and clipped agents cannot change it', () => {
   const source = swarmCheckpoint({ trading: { as_of: PUBLISHED_AT, pnl_usd: '0' } });
   assert.equal(tradingProfit(source, at), '0');
-  assert.deepEqual(mastheadNumbers(source, at).map(row => [row.label, row.value]), [['Profit', '$0.00'], ['Net', '—'], ['Running', '55h 55m']]);
+  assert.equal(headline({ ...source, account: null }, at).profit.value, '$0.00', 'the ledger stands in while the account is unknown');
   assert.equal(tradingProfit({ ...source, agents: [], account: { ...source.account, equity: '999999' },
     performance: { ...source.performance, net_flows: '7777' }, compute: null }, at), '0');
   assert.equal(tradingProfit({ ...source, trading: { as_of: PUBLISHED_AT, pnl_usd: '-3.12' } }, at), '-3.12');
@@ -90,11 +90,11 @@ test('every published agent gets a dot at the actual stage; training totals neve
     [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate'], [], [], ['gym', 'gym', 'gym', 'gym', 'gym']]);
 });
 
-test('a new thought waits for the current thought to be read, and reaches the feed once the card has shown it', async () => {
+test('a live thought lands at the top of the stream; a birth joins the births above it; nothing shows twice', async () => {
   const { capital } = floor();
   const original = note('one', 'I am testing the opening range and waiting for evidence before I change the program.', PUBLISHED_AT);
   await post(capital, '/api/capital/events', batch(original));
-  await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one')], structures: [] }));
+  await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [agent('one'), agent('two')], structures: [] }));
   const root = stubPage('floor', FLOOR_IDS);
   await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
     let socket;
@@ -103,35 +103,21 @@ test('a new thought waits for the current thought to be read, and reaches the fe
       addEventListener(kind, fn) { this.handlers.set(kind, fn); }
       close() {}
     };
-    let clock = at;
-    Date.now = () => clock;
     const feed = await startCapital(root);
+    const stream = () => root.querySelector('#floor-stream').withClass('entry').map(words);
+    assert.equal(stream().length, 1);
+    assert.match(stream()[0], /^Meriwether Train .* testing the opening range/);
     const next = { ...note('one', 'The next revision will test whether that pattern survives another session.', PUBLISHED_AT), seq: 2, display_name: 'Meriwether' };
-    clock += 1000;
     socket.handlers.get('message')({ data: JSON.stringify(next) });
-    assert.match(words(root.querySelector('#floor-now')), /testing the opening range/);
-    // The new note waits for the card, counted on it, and is not in the feed before the card has shown it.
-    assert.doesNotMatch(words(root.querySelector('#floor-feed')), /next revision/);
-    assert.equal(words(root.querySelector('#floor-now').withClass('now-queue')[0]), '+1');
-    clock += 60000;
-    const full = 'I am checking whether the same mechanism holds in another market session. '.repeat(9).trim();
-    const long = { ...note('one', full, PUBLISHED_AT), seq: 3, display_name: 'Meriwether' };
-    socket.handlers.get('message')({ data: JSON.stringify(long) });
-    assert.match(words(root.querySelector('#floor-now')), /next revision/);
-    assert.match(words(root.querySelector('#floor-feed')), /testing the opening range/, 'the shown note moves down to the feed');
-    clock += 60000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:later', seq: 4 }) });
-    const more = root.querySelector('#floor-now').withClass('thought-more')[0];
-    assert.equal(more.hidden, false);
-    more.click();
-    assert.equal(root.querySelector('#floor-now').withClass('now-thought')[0].textContent, full);
-    clock += 60000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:queued', seq: 5 }) });
-    assert.equal(root.querySelector('#floor-now').withClass('now-thought')[0].textContent, full, 'an expanded thought waits for its reader');
-    more.click();
-    clock += 13000;
-    socket.handlers.get('message')({ data: JSON.stringify({ ...next, id: 'note:one:ready', seq: 6 }) });
-    assert.match(words(root.querySelector('#floor-now')), /next revision/);
+    assert.match(stream()[0], /next revision/);
+    assert.match(stream()[1], /testing the opening range/);
+    socket.handlers.get('message')({ data: JSON.stringify(next) });
+    assert.equal(stream().length, 2, 'the same event twice shows once');
+    const born = (id, seq, who, name) => ({ ...news('is born, forked from its parent.', PUBLISHED_AT, who), id, seq, display_name: name });
+    socket.handlers.get('message')({ data: JSON.stringify(born('news:b1', 3, 'one', 'Meriwether')) });
+    socket.handlers.get('message')({ data: JSON.stringify(born('news:b2', 4, 'two', 'Hilibrand')) });
+    assert.equal(stream().length, 3);
+    assert.match(stream()[0], /^Hilibrand and Meriwether are born\./);
     feed.stop();
   });
 });

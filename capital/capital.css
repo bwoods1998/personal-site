@@ -1,398 +1,271 @@
-/* Long-Term Capital Management: AI agents trading options. Dark editorial, Courier New for every
-   number and label, one column, three headline numbers. No webfont, no external request. */
+/* Long-Term Capital Management: AI agents trading options. Dark editorial, Courier New for every number and label, one
+   column, five sections: Profit and Running, the balance, the agents live, the positions, the swarm. No webfont, no
+   external request. */
 :root {
   color-scheme: dark;
   --background: #171916;
   --surface: #1e211c;
   --ink: #eceee6;
   --muted: #a6ad9d;
+  --faint: #7f8777;
   --line: #363d31;
   --accent: #d4ab72;
   --positive: #bfd09f;
   --negative: #e3a292;
   --tone-thought: #cfd6c4;
-  --tone-tool: #9fb8c8;
-  --tone-lab: #b9b0e0;
-  --tone-evolution: #a8c98a;
-  /* Real money's gold, softened: the top edge and the wash of the two real-money floors. */
-  --real-line: var(--accent);
-  --real-wash: transparent;
+  --mono: 'Courier New', Courier, monospace;
+  --sans: Arial, Helvetica, sans-serif;
   color: var(--ink);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--sans);
   font-synthesis: none;
 }
-@supports (color: color-mix(in srgb, red 50%, blue)) {
-  :root { --real-line: color-mix(in srgb, var(--accent) 45%, var(--line)); --real-wash: color-mix(in srgb, var(--accent) 5%, transparent); }
-}
 * { box-sizing: border-box; }
-body { margin: 0; }
+body { margin: 0; background: var(--background); }
 button { -webkit-tap-highlight-color: transparent; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 ::selection { background: var(--accent); color: var(--background); }
 [hidden] { display: none !important; }
-.page { width: min(920px, calc(100% - 64px)); margin: 0 auto; }
+.page { width: min(920px, calc(100% - 64px)); margin: 0 auto; padding-bottom: 72px; }
 
 h1 { font-size: clamp(30px, 5vw, 50px); font-weight: 500; letter-spacing: -1.8px; line-height: 1.06; margin: 0; }
-h2 { font-size: 15px; font-weight: 500; margin: 0; letter-spacing: -.1px; }
-h3 { font-size: 13px; font-weight: 500; margin: 0; }
+h2, h3 { margin: 0; font-weight: 500; }
 section { min-width: 0; }
-.section-heading { display: flex; justify-content: space-between; gap: 6px 18px; align-items: baseline; flex-wrap: wrap; }
-.section-heading > span { overflow-wrap: anywhere; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.block { padding: 34px 0; border-top: 1px solid var(--line); }
+.block { padding: 40px 0 0; }
+.section-title { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; font: 12px/1.6 var(--mono); text-transform: uppercase; letter-spacing: 1px; color: var(--ink); }
 .positive { color: var(--positive); }
 .negative { color: var(--negative); }
 .empty-state { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 12px 0 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.loading { font-size: 13px; color: var(--muted); line-height: 1.8; padding: 20px 0; margin: 0; }
-
-.chip {
-  background: none; border: 1px solid var(--line); color: var(--muted); cursor: pointer;
-  padding: 4px 12px; min-height: 32px; font: 10px/1.6 'Courier New', Courier, monospace; letter-spacing: .4px;
-}
-.chip:hover { color: var(--accent); border-color: var(--accent); }
-.chip-on { color: var(--background); background: var(--accent); border-color: var(--accent); }
-.chip-on:hover { color: var(--background); }
-.more, .empty-state + .chip { margin-top: 10px; }
 
 .pulse { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .35; transform: scale(.7); }
 }
-@keyframes think-blink { to { opacity: 0; } }
-@keyframes line-in { from { background: rgba(212, 171, 114, .14); } to { background: transparent; } }
-.tag { display: inline-block; padding: 0 5px; border: 1px solid var(--line); font: 9px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); white-space: nowrap; }
-.tag-real { color: var(--accent); border-color: #6b5836; }
-.tag-practice, .tag-shadow { border-style: dashed; }
-.tag-band { color: var(--tone-thought); }
-.tag-retired { color: var(--muted); opacity: .7; }
-.tag-incubator { color: var(--accent); border-style: dotted; cursor: help; }
-.tag-tuition { color: var(--accent); border-style: dotted; cursor: help; }
-.pos-who .tag, .pr-who .tag { margin-left: 8px; vertical-align: 1px; }
-
-/* The masthead: Profit, Net and Running, and the costs by service in one line under them. */
-.masthead { padding: 48px 0 34px; }
-.navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 'Courier New', Courier, monospace; }
-.navigation a { color: var(--muted); text-decoration: none; }
-.navigation a:hover { color: var(--ink); }
-.masthead-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
-.masthead .lede { max-width: 640px; margin: 14px 0 0; font-size: clamp(16px, 1.9vw, 20px); line-height: 1.5; color: var(--ink); }
-.live-status { display: inline-flex; align-items: center; gap: 7px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap; }
-.live-status:empty { display: none; }
-.live-status .pulse { background: var(--muted); animation: none; }
-.live-live .pulse { background: var(--positive); animation: pulse 2.4s ease-in-out infinite; }
-.live-stopped { color: var(--negative); }
-.live-stopped .pulse { background: var(--negative); animation: none; }
-.live-live { color: var(--positive); }
-.live-heading { margin: 0; font: inherit; }
-.live-heading .live-status { font: 13px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .8px; }
-.live-heading .pulse { width: 9px; height: 9px; }
-.numbers { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: 18px 72px; margin: 30px 0 0; }
-.number[title] dt { cursor: help; }
-.costs { max-width: 760px; margin: 16px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.costs:empty { display: none; }
-.number { min-width: 0; }
-.number dt { font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); letter-spacing: .3px; }
-.number dd { margin: 4px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; min-width: 0; }
-.number-value { font-size: clamp(26px, 3.6vw, 38px); letter-spacing: -1.2px; line-height: 1.1; white-space: nowrap; }
-.number-tick { font: 13px/1 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
-.number-note { font: 13px/1.4 'Courier New', Courier, monospace; }
-/* Under Profit and Net, each one's own path from the score archive, ending at the headline; a change flashes once. */
-/* `contain: inline-size`: the line takes no width of its own, so each column keeps the width of its number. The column
-   gap goes too: a wrapping flex cell is as wide as its items laid in one line, gaps included, so the 8 px gap before the
-   line would widen the Profit column by 8 px and move Net and Running (measured at 1440; the spark hidden, nothing shows it). */
-.number dd .spark { position: relative; flex: 0 0 100%; max-width: 120px; height: 24px; margin-top: 8px; color: var(--muted); contain: inline-size; }
-.number dd .spark.positive { color: var(--positive); } .number dd .spark.negative { color: var(--negative); }
-.number dd:has(> .spark) { column-gap: 0; }
-.spark-svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.spark-line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.spark-zero { stroke: var(--line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
-.spark-dot { position: absolute; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--background); }
-.spark-dot.spark-stale { background: var(--background); box-shadow: 0 0 0 1px var(--muted); }
-.spark .balance-readout { top: calc(100% + 4px); left: 0; z-index: 1; }
+@keyframes blink { to { opacity: 0; } }
+@keyframes arrive { from { background: rgba(212, 171, 114, .10); } to { background: transparent; } }
 @keyframes wash-up { from { background: rgba(191, 208, 159, .18); } to { background: transparent; } }
 @keyframes wash-down { from { background: rgba(227, 162, 146, .18); } to { background: transparent; } }
 .wash-up { animation: wash-up 1.6s ease-out; } .wash-down { animation: wash-down 1.6s ease-out; }
+.tag { display: inline-block; padding: 0 5px; border: 1px solid var(--line); font: 9px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--muted); white-space: nowrap; cursor: help; }
+.tag-real { color: var(--accent); border-color: #6b5836; }
+.tag-practice, .tag-shadow { border-style: dashed; }
+.tag-band { color: var(--tone-thought); }
+.tag-retired { opacity: .7; }
+.tag-incubator, .tag-tuition { color: var(--accent); border-style: dotted; }
 
-/* 2 — live: who is thinking now, then the feed. */
-.now { margin-top: 14px; padding: 22px 24px; border: 1px solid var(--line); border-left: 2px solid var(--tone-thought); background: var(--surface); display: grid; gap: 8px; min-width: 0; }
-.now-real { border-left-color: var(--accent); }
-.now-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.now-pulse { background: var(--positive); }
-.now-name { font: 500 16px/1.2 Arial, Helvetica, sans-serif; letter-spacing: -.3px; color: var(--ink); }
-button.now-name { padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
-button.now-name:hover { color: var(--accent); }
-.now-queue { background: none; cursor: pointer; }
-.now-queue:hover { color: var(--accent); border-color: var(--accent); }
-.now-when { margin-left: auto; color: var(--positive); }
-.now-idle .now-when { color: var(--muted); }
-.now-idle .now-pulse { background: var(--muted); animation: none; }
-.now-thought {
-  margin: 0; font-size: clamp(16px, 1.7vw, 19px); line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; min-height: 4.8em;
-}
-.now-thought::after { content: '▍'; color: var(--accent); margin-left: 2px; animation: think-blink 1s steps(2) infinite; }
-.now-idle .now-thought::after { content: none; }
-.now-research { margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--muted); min-width: 0; }
-.now-research:empty { display: none; }
-.thought-more { justify-self: start; padding: 4px 0; border: 0; color: var(--muted); background: none; cursor: pointer; font: 11px/1.6 'Courier New', Courier, monospace; }
-.thought-more:hover { color: var(--ink); }
-.now-thought.thought-open { display: block; overflow: visible; }
-.now-empty { margin: 14px 0 0; }
-.feed { list-style: none; margin: 10px 0 0; padding: 0; }
-.feed-line {
-  display: grid; grid-template-columns: 40px 96px minmax(0, 150px) minmax(0, 1fr); gap: 12px; align-items: baseline;
-  padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5;
-}
-.feed-line:last-child { border-bottom: 0; }
-.feed-line > time { font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
-.feed-kind { font: 10px/1.5 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
-.feed-kind::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
-.kind-thinking { color: var(--tone-thought); }
-.kind-researching { color: var(--tone-tool); }
-.kind-trading { color: var(--accent); }
-.kind-testing { color: var(--tone-lab); }
-.kind-learning { color: var(--tone-evolution); }
-.kind-monitoring { color: var(--muted); }
-.feed-who { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.feed-name { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
-.feed-who .tag-shadow { padding: 0; border: 0; color: #7f8777; }
-.feed-who .tag-real { padding: 0; border: 0; }
-.feed-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; }
-button.feed-text { cursor: pointer; }
-button.feed-text:hover .feed-words { color: var(--accent); }
-.feed-words { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.feed-open .feed-words { white-space: normal; overflow-wrap: anywhere; }
-.line-researching .feed-words { color: var(--muted); }
-.feed-pnl { flex: none; font: 12px/1.5 'Courier New', Courier, monospace; font-weight: 400; }
-.feed-count { flex: none; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font: 10px/1.5 'Courier New', Courier, monospace; color: var(--muted); }
-.feed-why { color: var(--muted); }
-.line-new { animation: line-in 1.6s ease-out; }
-.feed .empty-state { padding: 10px 0; margin: 0; }
+/* 1. Profit and Running. */
+.navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 var(--mono); }
+.navigation a { color: var(--muted); text-decoration: none; }
+.navigation a:hover { color: var(--ink); }
+.masthead { padding: 48px 0 0; }
+.lede { margin: 12px 0 0; font-size: clamp(16px, 1.9vw, 20px); line-height: 1.5; color: var(--muted); }
+.numbers { display: flex; flex-wrap: wrap; gap: 18px 80px; margin: 36px 0 0; }
+.number { min-width: 0; }
+.number[title] dt { cursor: help; }
+.number dt { font: 11px/1.6 var(--mono); color: var(--muted); letter-spacing: .4px; text-transform: uppercase; }
+.number dd { margin: 4px 0 0; display: flex; align-items: baseline; gap: 8px; }
+.number-value { font-size: clamp(32px, 4.6vw, 48px); letter-spacing: -1.4px; line-height: 1.1; white-space: nowrap; }
+.number-tick { font: 15px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* Only the balance line and its current reading. */
-.account { border-top: 0; padding-top: 12px; }
+/* 2. The balance over the whole record. */
+.account { padding-top: 36px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 26px; font: 11px/1.6 var(--mono); }
+.chart-label { color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.chart-balance { color: var(--ink); font-size: 13px; cursor: help; }
 .balance { margin: 0; }
-.balance-plot { position: relative; height: 180px; margin: 0 5px; }
+.balance-plot { position: relative; height: 230px; touch-action: pan-y; }
 .balance-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.balance-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .balance-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.balance-area { fill: var(--ink); opacity: .08; }
-.balance-positive .balance-line { stroke: var(--positive); }
-.balance-positive .balance-area { fill: var(--positive); }
-.balance-negative .balance-line { stroke: var(--negative); }
-.balance-negative .balance-area { fill: var(--negative); }
-.balance-base, .balance-cross { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.balance-cross { stroke: var(--muted); }
-.balance-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--background); }
-.balance-positive .balance-dot { background: var(--positive); }
-.balance-negative .balance-dot { background: var(--negative); }
-.balance-start { stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
-.balance-mark { position: absolute; bottom: -3.5px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--background); pointer-events: none; }
-.balance-mark-open { background: var(--background); box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 3px var(--background); }
-.balance-readout { position: absolute; top: -26px; padding: 1px 7px; border: 1px solid var(--line); background: var(--surface); font: 11px/1.6 'Courier New', Courier, monospace; white-space: nowrap; pointer-events: none; }
+.balance-area { fill: var(--ink); opacity: .07; }
+.balance-cross { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.balance-y { position: absolute; left: 0; transform: translateY(-100%); padding-bottom: 3px; font: 10px/1.4 var(--mono); color: var(--faint); pointer-events: none; }
+.balance-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--background); pointer-events: none; }
+.balance-mark { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--background); pointer-events: none; }
+.balance-mark-open { background: var(--background); box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 3.5px var(--background); }
+.balance-deposit-left { transform: translate(calc(-100% - 8px), 6px) !important; }
+.balance-deposit { position: absolute; transform: translate(8px, 6px); font: 10px/1.4 var(--mono); color: var(--faint); white-space: nowrap; pointer-events: none; }
+.balance-readout { position: absolute; top: -28px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; padding: 1px 7px; border: 1px solid var(--line); background: var(--surface); font: 11px/1.6 var(--mono); white-space: nowrap; pointer-events: none; z-index: 1; }
+.balance-x { position: relative; height: 22px; font: 10px/1 var(--mono); color: var(--faint); }
+.balance-x span { position: absolute; top: 9px; transform: translateX(-50%); white-space: nowrap; }
+.balance-x span:last-child:not(:first-child) { transform: translateX(-100%); }
 
- .balance-caption { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 8px; margin: 12px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.balance-current { color: var(--ink); }
+/* 3. The agents, live. */
+.live-status { display: inline-flex; align-items: center; gap: 7px; font: 11px/1.6 var(--mono); color: var(--muted); text-transform: none; letter-spacing: .3px; }
+.live-status .pulse { width: 8px; height: 8px; background: var(--muted); animation: none; }
+.live-live .pulse { background: var(--positive); animation: pulse 2.4s ease-in-out infinite; }
+.live-live .status-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.live-stopped { color: var(--negative); }
+.live-stopped .pulse { background: var(--negative); }
+.stream-window {
+  height: 540px; overflow-y: auto; overscroll-behavior: contain; padding: 0 22px; background: var(--surface); border: 1px solid var(--line);
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+}
+.stream { list-style: none; margin: 0; padding: 0 0 64px; }
+.stream-empty { padding: 18px 0; margin: 0; }
+.entry { padding: 16px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.entry-name { padding: 0; border: 0; background: none; color: var(--ink); font: 500 14px/1.4 var(--sans); letter-spacing: -.1px; text-align: left; }
+button.entry-name { cursor: pointer; }
+button.entry-name:hover { color: var(--accent); }
+.entry-when { margin-left: auto; font: 11px/1.6 var(--mono); color: var(--faint); white-space: nowrap; cursor: help; }
+.entry-text { margin: 7px 0 0; font-size: clamp(15px, 1.6vw, 17px); line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.stream > .entry-note:first-child .entry-words::after { content: '▍'; color: var(--accent); margin-left: 2px; animation: blink 1s steps(2) infinite; }
+.entry-trade { padding-left: 14px; border-left: 2px solid var(--accent); margin-left: -16px; }
+.entry-trade .entry-words { color: var(--accent); }
+.entry-why { color: var(--ink); }
+.entry-pnl { font: 13px/1.5 var(--mono); font-weight: 400; }
+.entry-news { display: flex; align-items: baseline; gap: 12px; padding: 11px 0; }
+.entry-news .entry-text { flex: 1 1 auto; margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.entry-news .entry-name { font-size: 13px; }
+.entry-new { animation: arrive 2.4s ease-out; }
 
-/* Every real position since the reset, open then closed, and the lines that add up to Profit. */
-.positions-caption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 8px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.positions-scroll { margin-top: 14px; max-width: 100%; overflow-x: auto; }
-.positions-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; }
-.positions-table th, .positions-table td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: baseline; font-weight: 400; color: var(--ink); }
-.positions-table .pos-qty, .positions-table .pos-expiry, .positions-table .pos-opened, .positions-table .pos-closed, .positions-table .pos-detail {
-  font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap;
-}
-.positions-table .pos-detail { white-space: normal; }
-.positions-table .pos-pnl, .positions-table .pos-share { text-align: right; white-space: nowrap; font: 12px/1.5 'Courier New', Courier, monospace; }
-.positions-table .pos-share { padding-right: 0; color: var(--muted); }
-.positions-table .pos-still-open { color: var(--accent); }
-.positions-table .pos-calibration .pos-who, .positions-table .pos-house .pos-who, .positions-table .pos-sum .pos-who { color: var(--muted); }
-.positions-table .pos-unreconciled .pos-who { color: var(--negative); }
-.positions-table .pos-total > * { border-top: 1px solid var(--muted); border-bottom: 0; }
-.positions-table .pos-total .pos-who { color: var(--ink); }
-.positions-table .pos-total .pos-pnl { font-size: 13px; }
-.positions-table .pos-pnl.positive { color: var(--positive); }
-.positions-table .pos-pnl.negative { color: var(--negative); }
-/* Column heads and the Open/Closed labels: quiet capitals, whatever column they head. */
-.positions-table thead th[scope], .positions-table .pos-group th[scope] {
-  color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
-}
-.positions-table thead th[scope] { padding-top: 0; }
-.positions-table thead th[title] { cursor: help; }
-.positions-table .pos-group th[scope] { padding: 16px 0 6px; }
-.positions-table .pos-body:first-of-type .pos-group th[scope] { padding-top: 6px; }
-.positions-table .pos-empty td { padding: 12px 0; margin: 0; color: var(--muted); }
-/* An agent's row: its own reason under the position, and a tap unfolds the family's thesis across the table. Gold is real money. */
-.pos-why { display: block; margin: 3px 0 0; padding: 0; border: 0; background: none; color: var(--muted);
-  font: 12px/1.5 Arial, Helvetica, sans-serif; text-align: left; overflow-wrap: anywhere; }
-button.pos-why { cursor: pointer; }
-/* The caret is not read aloud (an empty alternative): `aria-expanded` already says whether the thesis is unfolded. */
-button.pos-why::after { content: ' ▸' / ''; font-size: 10px; }
-button.pos-why[aria-expanded="true"]::after { content: ' ▾' / ''; }
-button.pos-why:hover { color: var(--accent); }
-.positions-table .why-open > * { border-bottom: 0; }
-.positions-table .pos-why-row > td { padding: 0 0 12px; }
-.pos-why-card { padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-left: 2px solid var(--accent); }
-.pos-thesis { margin: 0; font: 14px/1.7 Arial, Helvetica, sans-serif; color: var(--ink); overflow-wrap: anywhere; }
-.pos-why-meta { margin: 6px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); }
-.positions-table .pos-still-open .pulse { width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; }
-/* The practice league: shadow trades, so every figure is quiet; never real money. */
-.practice-table .pr-what, .practice-table .pr-tier, .practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins {
-  font: 11px/1.5 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap;
-}
-.practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins, .practice-table .pr-pnl, .practice-table .pr-ror { text-align: right; }
-.practice-table .pr-pnl, .practice-table .pr-ror { white-space: nowrap; font: 12px/1.5 'Courier New', Courier, monospace; color: var(--muted); }
-.practice-table .pr-ror { padding-right: 0; }
-.practice-table .pr-pnl.positive, .practice-table .pr-ror.positive { color: var(--positive); opacity: .8; }
-.practice-table .pr-pnl.negative, .practice-table .pr-ror.negative { color: var(--negative); opacity: .8; }
-.practice-table .pr-retired .pr-who { color: var(--muted); }
-.practice-table .pr-total > * { border-top: 1px solid var(--muted); border-bottom: 0; }
-.practice-table .pr-total .pr-who { color: var(--muted); }
+/* 4. Every real position, adding up to Profit. */
+.ledger-group { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0 8px; border-bottom: 1px solid var(--line); }
+.ledger-list + .ledger-group { margin-top: 28px; }
+.ledger-group h3 { font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.ledger-sum { font: 12px/1.6 var(--mono); white-space: nowrap; color: var(--ink); }
+.ledger-sum.positive { color: var(--positive); } .ledger-sum.negative { color: var(--negative); }
+.ledger-list { list-style: none; margin: 0; padding: 0; }
+.pos { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 28px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.pos-main { min-width: 0; }
+.pos p { margin: 0; }
+.pos-what { font-size: 16px; line-height: 1.4; color: var(--ink); }
+.pos-why { margin-top: 8px !important; font-size: 16px; line-height: 1.5; color: var(--accent); overflow-wrap: anywhere; }
+.pos-close-why { color: var(--muted); font-size: 14px; }
+.pos-thesis { margin-top: 6px !important; max-width: 660px; font-size: 14px; line-height: 1.65; color: var(--muted); overflow-wrap: anywhere; }
+.pos-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 12px !important; font: 11px/1.6 var(--mono); color: var(--faint); }
+.pos-who { padding: 0; border: 0; background: none; color: var(--ink); font: 13px/1.4 var(--sans); }
+button.pos-who { cursor: pointer; }
+button.pos-who:hover { color: var(--accent); }
+.pos-result { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
+.pos-pnl { font: 16px/1.4 var(--mono); white-space: nowrap; }
+.pos-status { display: inline-flex; align-items: center; gap: 6px; font: 11px/1.6 var(--mono); color: var(--faint); white-space: nowrap; }
+.pos-open .pos-status { color: var(--accent); }
+.pos-status .pulse { width: 6px; height: 6px; }
+.pos-house { display: block; padding: 0; }
+.pos-fold summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 28px; align-items: baseline; padding: 16px 0; cursor: pointer; list-style: none; }
+.pos-fold summary::-webkit-details-marker { display: none; }
+.pos-fold summary .pos-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.pos-fold summary .pos-what { font-size: 14px; color: var(--muted); }
+.pos-fold summary .pos-what::after { content: ' ▸' / ''; font-size: 10px; }
+.pos-fold[open] summary .pos-what::after { content: ' ▾' / ''; }
+.pos-fold summary:hover .pos-what { color: var(--ink); }
+.pos-fold summary .pos-meta { margin: 0 !important; }
+.pos-fold summary .pos-pnl { font-size: 13px; }
+.fold-list { list-style: none; margin: 0; padding: 0 0 14px; }
+.fold-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 12px; padding: 4px 0; font: 11px/1.6 var(--mono); color: var(--faint); }
+.fold-what { color: var(--muted); }
+.fold-pnl { text-align: right; white-space: nowrap; }
+.pos-earlier, .pos-marks { grid-template-columns: minmax(0, 1fr) auto; padding: 14px 0; font-size: 14px; color: var(--muted); }
+.pos-marks { cursor: help; }
+.pos-earlier .pos-pnl, .pos-marks .pos-pnl { font-size: 13px; }
+.ledger-line, .ledger-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ledger-line { padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--muted); cursor: help; }
+.ledger-total { padding: 14px 0 0; font-size: 15px; color: var(--ink); }
+.ledger-total .ledger-sum { font-size: 16px; }
 
-/* The game's six rungs, one button per agent. Vacant rungs keep their place as one short line. */
-.agent-board { margin-top: 18px; position: relative; }
-.agent-board-key { display: flex; align-items: center; gap: 7px; position: absolute; right: 0; top: -39px; color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; }
-#agents { position: relative; }
-#agents .agent-board-key { top: 30px; }
-.agents-funnel { margin: 8px 0 0; font: 11px/1.6 'Courier New', Courier, monospace; color: var(--muted); overflow-wrap: anywhere; cursor: help; }
-.agent-board-key::before { content: ''; width: 11px; height: 11px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-right-color: var(--accent); border-radius: 50%; }
-.agent-stage { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: center; min-height: 84px; padding: 15px 0; border-top: 1px solid var(--line); }
-.agent-stage:last-of-type { border-bottom: 1px solid var(--line); }
-.stage-heading { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px; align-items: baseline; gap: 10px; padding-right: 28px; }
-.stage-level { color: var(--muted); font: 11px/1.5 'Courier New', Courier, monospace; }
-.stage-label { font-size: 13px; line-height: 1.5; }
-.stage-count { color: var(--muted); text-align: right; font: 11px/1.5 'Courier New', Courier, monospace; }
-.agent-stage.stage-real .stage-level { color: var(--accent); }
-.agent-stage.stage-vacant { min-height: 44px; padding: 0; }
-.agent-dots { display: flex; flex-wrap: wrap; gap: 0; align-items: center; min-width: 0; }
-.agent-dot { position: relative; flex: 0 0 44px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
-.agent-progress-ring { position: absolute; inset: 4px; width: 36px; height: 36px; overflow: visible; fill: none; stroke-width: 1.7; pointer-events: none; transform: rotate(-90deg); }
+/* 5. The swarm on the game's six rungs. */
+.ladder-head, .rung { display: grid; grid-template-columns: 160px minmax(0, 1fr) 120px; gap: 0 16px; align-items: center; }
+.ladder-head { padding: 0 0 8px; font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.ladder-head span:last-child { text-align: right; }
+.rung { min-height: 62px; padding: 9px 0; border-top: 1px solid var(--line); }
+.rung:last-of-type { border-bottom: 1px solid var(--line); }
+.rung-name { display: flex; align-items: baseline; gap: 12px; cursor: help; }
+.rung-level { width: 14px; font: 11px/1.5 var(--mono); color: var(--faint); }
+.rung-label { font-size: 14px; line-height: 1.5; color: var(--ink); }
+.rung-real .rung-level { color: var(--accent); }
+.rung-vacant { min-height: 46px; }
+.rung-vacant .rung-label { color: var(--muted); }
+.rung-reached { display: grid; justify-items: end; gap: 5px; cursor: help; }
+.reached-count { font: 12px/1.4 var(--mono); color: var(--ink); }
+.rung-vacant .reached-count { color: var(--faint); }
+.reached-bar { display: flex; justify-content: flex-end; width: 100%; height: 2px; background: var(--line); }
+.reached-bar > span { display: block; height: 2px; background: var(--muted); }
+.rung-real .reached-bar > span { background: var(--accent); }
+.ladder-foot { margin: 12px 0 0; font: 11px/1.6 var(--mono); color: var(--faint); }
+.agent-dots { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+.agent-dot { position: relative; flex: 0 0 40px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
+.agent-progress-ring { position: absolute; inset: 4px; width: 32px; height: 32px; overflow: visible; fill: none; stroke-width: 1.7; pointer-events: none; transform: rotate(-90deg); }
 .agent-progress-track { stroke: var(--line); }
 .agent-progress-fill { stroke: var(--accent); stroke-linecap: round; }
+.agent-dot-core { display: block; width: 11px; height: 11px; border: 1.5px solid currentColor; border-radius: 50%; transition: transform .16s ease; pointer-events: none; }
 .agent-activity { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 1.5px solid var(--tone-thought); border-radius: 50%; pointer-events: none; animation: agent-activity .85s ease-out both; }
 .activity-trade { border-color: var(--accent); }
 @keyframes agent-activity { from { transform: scale(.65); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
-.agent-dot-core { display: block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; transition: transform .16s ease, box-shadow .16s ease; pointer-events: none; }
-.dot-candidate { color: var(--tone-thought); }
-.dot-candidate .agent-dot-core { background: var(--tone-thought); }
-.dot-probe, .dot-sized { color: var(--accent); }
-.dot-probe .agent-dot-core, .dot-sized .agent-dot-core { width: 15px; height: 15px; background: var(--accent); }
-.dot-sized .agent-dot-core { width: 19px; height: 19px; }
-.dot-retired .agent-dot-core { width: 9px; height: 9px; border-style: dotted; }
-/* Dashed is shadow (the practice tag's look); dotted gold is small real money (the incubator's). */
+/* Dotted gold is small real money; filled is a level earned; dashed is shadow. */
+.level-validation { color: var(--tone-thought); }
 .level-tuition, .level-incubator { color: var(--accent); }
-.level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; background: none; }
+.level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; }
 .level-practice .agent-dot-core { border-style: dashed; }
-/* A retired agent still holding money keeps its level's look at the retired size: filled gold on Probe and Sized, filled
-   pale on Candidate (the dotted core above is Tuition's and the Incubator's own look). */
-.level-probe, .level-sized { color: var(--accent); }
-.level-probe .agent-dot-core, .level-sized .agent-dot-core { border-style: solid; background: var(--accent); }
 .level-candidate { color: var(--tone-thought); }
-.level-candidate .agent-dot-core { border-style: solid; background: var(--tone-thought); }
-/* The card's speaker, while it is deciding: its core breathes in the card's own green. */
+.level-candidate .agent-dot-core { background: var(--tone-thought); }
+.level-probe, .level-sized { color: var(--accent); }
+.level-probe .agent-dot-core { width: 14px; height: 14px; background: var(--accent); }
+.level-sized .agent-dot-core { width: 18px; height: 18px; background: var(--accent); }
+.dot-retired .agent-dot-core { width: 9px; height: 9px; }
+/* The stream's speaker, while it is deciding: its core breathes in the live green. */
 .dot-speaking { color: var(--positive); }
 .dot-speaking .agent-dot-core { animation: pulse 2.4s ease-in-out infinite; }
-.agent-dot:hover .agent-dot-core, .agent-dot[aria-expanded="true"] .agent-dot-core { transform: scale(1.16); }
+.agent-dot:hover .agent-dot-core, .agent-dot[aria-expanded="true"] .agent-dot-core { transform: scale(1.2); }
 .agent-dot[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface); }
-.stage-empty { margin-left: 15px; color: var(--line); font: 12px 'Courier New', Courier, monospace; }
-.agents-retired { margin-top: 12px; }
-.agents-retired summary { width: fit-content; color: var(--muted); cursor: pointer; font: 11px/1.8 'Courier New', Courier, monospace; }
-.agents-retired .agent-dots { margin-top: 8px; }
-.agent-detail { grid-column: 1 / -1; width: 100%; margin-top: 16px; }
+.agent-detail { margin-top: 16px; }
 .agent-detail-card { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); }
 .agent-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .agent-detail-head h3 { color: var(--ink); font-size: 18px; letter-spacing: -.3px; }
-.agent-close { margin: -8px -8px -8px auto; border: 0; width: 40px; height: 40px; color: var(--muted); background: none; font: 24px/1 Arial, sans-serif; cursor: pointer; }
+.agent-close { margin: -8px -8px -8px auto; border: 0; width: 40px; height: 40px; color: var(--muted); background: none; font: 24px/1 var(--sans); cursor: pointer; }
 .agent-close:hover { color: var(--ink); }
-.agent-strategy { margin: 10px 0 0; font: 14px/1.7 Arial, Helvetica, sans-serif; overflow-wrap: anywhere; }
-.strategy-tag { display: inline-block; margin-right: 7px; padding: 0 5px; border: 1px solid var(--line); color: var(--tone-tool); font: 10px/1.7 'Courier New', Courier, monospace; white-space: nowrap; }
-.agent-record { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 12px 0 0; color: var(--muted); font: 11px/1.7 'Courier New', Courier, monospace; }
-.agent-progress { margin-top: 14px; }
+.agent-strategy { margin: 10px 0 0; font: 14px/1.7 var(--sans); color: var(--ink); overflow-wrap: anywhere; }
+.strategy-tag { display: inline-block; margin-right: 8px; padding: 0 5px; border: 1px solid var(--line); color: var(--muted); font: 10px/1.7 var(--mono); white-space: nowrap; }
+.agent-record { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 12px 0 0; color: var(--muted); font: 11px/1.7 var(--mono); }
 .agent-progress:empty { display: none; }
-.progress-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding-top: 12px; border-top: 1px solid var(--line); font: 11px/1.6 'Courier New', Courier, monospace; }
+.progress-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font: 11px/1.6 var(--mono); }
 .progress-count { color: var(--accent); }
-.progress-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; row-gap: 7px; list-style: none; padding: 12px 0 0; margin: 0; }
-.progress-check { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 1px 6px; align-items: baseline; color: var(--muted); font: 10px/1.6 'Courier New', Courier, monospace; }
+.progress-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; row-gap: 4px; list-style: none; padding: 10px 0 0; margin: 0; }
+.progress-check { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; color: var(--muted); font: 10px/1.6 var(--mono); }
+.check-met { color: var(--ink); }
 .check-met .check-mark { color: var(--accent); }
-.check-label { overflow-wrap: anywhere; }
 .check-count { white-space: nowrap; }
-.check-meter { grid-column: 2 / -1; display: block; height: 2px; background: var(--line); }
-.check-meter > span { display: block; height: 2px; background: var(--accent); opacity: .7; }
-.progress-blocker, .progress-ready, .progress-unavailable { margin: 10px 0 0; color: var(--muted); font: 11px/1.6 'Courier New', Courier, monospace; }
-.progress-ready { color: var(--accent); }
-.agent-positions { list-style: none; padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
-.agent-positions li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font: 11px/1.7 'Courier New', Courier, monospace; color: var(--muted); }
-.agent-positions .agent-position-why { flex-basis: 100%; font: 12px/1.5 Arial, Helvetica, sans-serif; }
+.progress-blocker { margin: 10px 0 0; color: var(--muted); font: 11px/1.6 var(--mono); }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse, .line-new, .now-thought::after, .wash-up, .wash-down { animation: none; }
-  .dot-speaking .agent-dot-core { animation: none; }
+  .pulse, .entry-new, .wash-up, .wash-down, .dot-speaking .agent-dot-core, .stream > .entry-note:first-child .entry-words::after { animation: none; }
   .agent-dot-core { transition: none; }
-  .agent-activity { display: none; animation: none; }
+  .agent-activity { display: none; }
 }
 
 @media (max-width: 720px) {
   .page { width: calc(100% - 32px); }
-  .masthead { padding: 30px 0 26px; }
+  .masthead { padding-top: 30px; }
   h1 { letter-spacing: -1.2px; }
-  .block { padding: 26px 0; }
-  .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin-top: 24px; }
-  .number-value { font-size: 26px; }
-  .number dd .spark { max-width: none; height: 20px; }
-  .now { padding: 12px 14px; }
-  .now-when { margin-left: 0; }
-  .feed-line { grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 0; }
-  .feed-text { grid-column: 1 / -1; grid-row: 2; }
-  .feed-words { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .feed-open .feed-words { display: block; }
-  .account { padding-top: 8px; }
-  .balance-plot { height: 140px; }
-  .agent-stage { grid-template-columns: 1fr; gap: 8px; padding: 14px 0; }
-  .stage-heading { grid-template-columns: 18px minmax(0, 1fr) 24px; padding-right: 0; }
-  #agents .agent-board-key { top: 22px; }
-  .agent-stage.stage-vacant { padding: 10px 0; min-height: 44px; }
-  .stage-vacant .stage-empty { display: none; }
+  .block { padding-top: 32px; }
+  .numbers { gap: 16px 40px; margin-top: 26px; }
+  .number-value { font-size: 30px; letter-spacing: -1px; }
+  .number-tick { font-size: 13px; }
+  .balance-plot { height: 170px; }
+  .balance-x span:nth-child(even) { display: none; }
+  .stream-window { height: 480px; padding: 0 14px; }
+  .entry-trade { margin-left: -12px; padding-left: 10px; }
+  /* A position is one column: its result and status on a line above it, then the position. */
+  .pos { display: flex; flex-direction: column; gap: 6px; }
+  .pos-result { order: -1; flex-direction: row-reverse; justify-content: space-between; align-items: baseline; }
+  .pos-earlier, .pos-marks { flex-direction: row; justify-content: space-between; align-items: baseline; }
+  .pos-why { font-size: 15px; }
+  .pos-fold summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .fold-row { grid-template-columns: 96px minmax(0, 1fr) auto; gap: 8px; }
+  .ladder-head { display: none; }
+  .rung { grid-template-columns: minmax(0, 1fr) 96px; gap: 6px 12px; }
+  .rung-name { grid-column: 1; grid-row: 1; }
+  .rung-reached { grid-column: 2; grid-row: 1; }
+  .agent-dots { grid-column: 1 / -1; grid-row: 2; }
+  .rung-vacant .agent-dots { display: none; }
   .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
+  .agent-progress-ring { inset: 6px; }
   .agent-detail-card { padding: 14px; }
-  .agent-positions li + li { margin-top: 10px; }
-  /* Each position stacks: who and P&L, what and share, then its contracts and dates. */
-  /* Each position stacks in three lines: who and P&L, what and share, then contracts and dates. The row's own
-     ::before and ::after are zero-height flex items that break the lines. */
-  .positions-scroll { overflow-x: visible; }
-  .positions-table, .positions-table tbody, .positions-table tfoot { display: block; width: 100%; }
-  .positions-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .positions-table tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
-  .positions-table tr::before, .positions-table tr::after { content: ''; flex: 0 0 100%; height: 0; }
-  .positions-table tr::before { order: 3; }
-  .positions-table tr::after { order: 6; }
-  .positions-table th, .positions-table td { display: block; padding: 0; border: 0; min-width: 0; }
-  .positions-table .pos-who { order: 1; flex: 1 1 0; overflow-wrap: anywhere; }
-  .positions-table .pos-pnl { order: 2; margin-left: auto; }
-  .positions-table .pos-what { order: 4; flex: 1 1 0; margin-top: 2px; overflow-wrap: anywhere; }
-  .positions-table .pos-share { order: 5; margin-left: auto; margin-top: 2px; }
-  .positions-table .pos-qty, .positions-table .pos-expiry, .positions-table .pos-opened, .positions-table .pos-closed { order: 7; margin-top: 3px; }
-  .positions-table .pos-expiry::before { content: 'exp '; }
-  .positions-table .pos-opened::before { content: 'opened '; }
-  .positions-table .pos-closed::before { content: 'closed '; }
-  .positions-table .pos-still-open::before { content: none; }
-  .positions-table .pos-group { padding: 14px 0 4px; }
-  .positions-table .pos-group th[scope], .positions-table .pos-body:first-of-type .pos-group th[scope] { padding: 0; }
-  .positions-table .pos-total { border-top: 1px solid var(--muted); border-bottom: 0; }
-  .positions-table .pos-total > * { border: 0; }
-  .positions-table .pos-empty td { padding: 0; }
-  .positions-table .pos-why-row { display: block; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
-  .positions-table .pos-why-row > td { display: block; padding: 0; }
-  /* A practice row stacks too: agent and P&L, structure and return on risk, then its version and counts. */
-  .practice-table .pr-who { order: 1; flex: 1 1 0; overflow-wrap: anywhere; }
-  .practice-table .pr-pnl { order: 2; margin-left: auto; }
-  .practice-table .pr-what { order: 4; flex: 1 1 0; margin-top: 2px; }
-  .practice-table .pr-ror { order: 5; margin-left: auto; margin-top: 2px; }
-  .practice-table .pr-tier, .practice-table .pr-sessions, .practice-table .pr-trades, .practice-table .pr-wins { order: 7; margin-top: 3px; text-align: left; }
-  .practice-table .pr-sessions::before { content: 'sessions '; }
-  .practice-table .pr-trades::before { content: 'trades '; }
-  .practice-table .pr-wins::before { content: 'won '; }
-  .practice-table .pr-total .pr-what { display: none; }
 }
 @media (max-width: 480px) {
-  .progress-checks { grid-template-columns: 1fr; gap: 5px; }
+  .progress-checks { grid-template-columns: 1fr; }
 }

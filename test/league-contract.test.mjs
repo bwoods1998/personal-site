@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
-import { PERFORMANCE_START_AT, CHECKPOINT_READ, mastheadNumbers, tradingProfit, totalProfit, swarmRows, structureRows, feedLines, positionsLedger, practiceTable, costsLine, startCapital,
+import { PERFORMANCE_START_AT, CHECKPOINT_READ, headline, profitNow, totalProfit, swarmRows, streamEntries, positionsLedger, startCapital,
   agentStages } from '../capital/capital.js';
 import { WINDOW_READ } from '../lib/capital.mjs';
 import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
@@ -86,8 +86,8 @@ test('the House and the site read a number in words alike, sentence for sentence
   for (const text of LEAKS) assert.ok(house[corpus.indexOf(text)].join() !== 'false,true', `the House refuses: ${text}`);
   for (const text of PLAIN) assert.deepEqual(house[corpus.indexOf(text)], [false, true], `the House passes: ${text}`);
 });
-// The page's own sections, and the two it draws only when there is something to show.
-const PAGE_IDS = [...FLOOR_IDS, 'floor-costs', 'practice-league', 'floor-league'];
+// The page's own sections.
+const PAGE_IDS = FLOOR_IDS;
 // Every name a quote, a greek, a surface or a fitted parameter goes by. None is a key anywhere.
 const FORBIDDEN_KEYS = /^(?:bid|ask|mid|mark|last|spread|iv|implied_vol|vol|delta|gamma|theta|vega|rho|greeks?|surface|strike|strikes|price|prices|entry_price|exit_price|mark_price|underlying_price|params|parameters|quote|quotes|nbbo|program|code|legs_detail)$/i;
 function keysOf(value, found = []) {
@@ -145,30 +145,24 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     assert.equal(validCheckpoint(board, { publicRead: true }), true);
     const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;
     assert.equal(events.length, batch.events.length);
-    const [profit, net, running] = mastheadNumbers(board, Date.parse(board.published_at));
-    assert.equal(net.label, 'Net');
-    assert.match(costsLine(board, Date.parse(board.published_at)), /^Costs /);
-    if (checkpoint.practice) assert.equal(practiceTable(board).rows.length, checkpoint.practice.rows.length);
-    assert.equal(profit.value === '—', tradingProfit(board, Date.parse(board.published_at)) === null);
-    assert.ok(running.value);
+    const top = headline(board, Date.parse(board.published_at));
+    assert.equal(top.profit.value === '—', profitNow(board, Date.parse(board.published_at)) === null);
+    assert.ok(top.running.main);
     assert.equal(swarmRows(board).length, board.agents.length);
-    assert.equal(structureRows(board).length, board.structures.length);
     // The positions ledger, once the publisher sends one: every row drawn, and its lines add up to the headline.
     if (checkpoint.positions) {
       const ledger = positionsLedger(board, Date.parse(board.published_at));
-      assert.equal(ledger.open.length + ledger.closed.length, checkpoint.positions.rows.length);
-      assert.equal(ledger.total.pnl, profit.value);
+      assert.equal(ledger.open.length + ledger.closed.length + (ledger.calibration?.count ?? 0), checkpoint.positions.rows.length);
+      assert.equal(ledger.total.pnl, top.profit.value);
     }
     const names = new Map(board.agents.map(agent => [agent.id, agent.name]));
-    assert.ok(feedLines(events, names).length >= 3);
+    assert.ok(streamEntries(events, names).length >= 3);
     const root = stubPage('floor', PAGE_IDS);
     await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
       const feed = await startCapital(root);
       feed.stop();
-      assert.equal(root.querySelector('#practice-league').hidden, !checkpoint.practice, 'the practice league shows only when published');
-      if (checkpoint.practice) assert.equal(root.querySelector('#floor-league').find('tbody')[0].find('tr').length, checkpoint.practice.rows.length);
       for (const id of FLOOR_IDS.filter(name => name !== 'floor-status')) assert.equal(root.querySelector(`#${id}`).getAttribute('aria-busy'), 'false', id);
-      assert.equal(root.querySelector('#floor-agents').withClass('agent-dot').length, board.agents.length);
+      assert.equal(root.querySelector('#floor-agents').withClass('agent-dot').length, swarmRows(board).filter(row => row.level !== 'retired').length);
       // With the House's levels, every agent the House places on a rung stands on it.
       if (checkpoint.levels) {
         const placed = new Map(agentStages(board).flatMap(stage => stage.agents.map(row => [row.id, stage.levels])));
@@ -176,7 +170,7 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
       }
       assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
       assert.match(words(root.querySelector('#floor-numbers')), /^Profit /);
-      if (checkpoint.positions) assert.equal(root.querySelector('#floor-positions').find('table').length, 1);
+      if (checkpoint.positions) assert.equal(root.querySelector('#floor-positions').withClass('ledger-total').length, 1);
     });
   });
 }
