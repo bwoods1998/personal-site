@@ -10,7 +10,7 @@ import {
   MAX_PRACTICE_ROWS, byteLength,
 } from '../capital/schema.js';
 import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
-import { CHECKPOINT_READ, netNumber } from '../capital/capital.js';
+import { CHECKPOINT_READ } from '../capital/capital.js';
 import { floor, post, get } from './harness.mjs';
 import { LEAKS, PLAIN } from './number-words.mjs';
 import {
@@ -281,22 +281,21 @@ test('the score archive: one point per five minutes, the latest wins, nulls kept
   assert.deepEqual((await read()).points, []);
 });
 
-test('a score point is Profit, the bill and Net by the page’s own rule, measured against its checkpoint only', () => {
+test('a score point is Profit, the bill and Net (the archive the Oct 1 page drew; no page reads it now), against its checkpoint only', () => {
   const body = ledgerCheckpoint({ compute: BILL });
   assert.deepEqual(scorePoint(body), { at: PUBLISHED_AT, profit_usd: '220.40', costs_usd: '328.79', net_usd: '-120.89' });
-  assert.equal(scorePoint(body).net_usd, netNumber(body, at), 'parity with the headline’s Net');
-  for (const [label, value] of [
-    ['an unreconciled gain', ledgerCheckpoint({ compute: BILL, trading: { as_of: PUBLISHED_AT, pnl_usd: '221.40' }, positions: ledger({ unreconciled_usd: '1.00' }) })],
-    ['an unreconciled loss', ledgerCheckpoint({ compute: BILL, trading: { as_of: PUBLISHED_AT, pnl_usd: '219.40' }, positions: ledger({ unreconciled_usd: '-1.00' }) })],
-    ['a bill in fractions of a cent', ledgerCheckpoint({ compute: { ...BILL, sail_usd: '212.405', claude_usd: '41.2049' } })],
-  ]) assert.equal(scorePoint(value).net_usd, netNumber(value, at), label);
+  for (const [label, value, net] of [
+    ['an unreconciled gain', ledgerCheckpoint({ compute: BILL, trading: { as_of: PUBLISHED_AT, pnl_usd: '221.40' }, positions: ledger({ unreconciled_usd: '1.00' }) }), '-120.89'],
+    ['an unreconciled loss', ledgerCheckpoint({ compute: BILL, trading: { as_of: PUBLISHED_AT, pnl_usd: '219.40' }, positions: ledger({ unreconciled_usd: '-1.00' }) }), '-121.89'],
+    ['a bill in fractions of a cent', ledgerCheckpoint({ compute: { ...BILL, sail_usd: '212.405', claude_usd: '41.2049' } }), '-120.90'],
+  ]) assert.equal(scorePoint(value).net_usd, net, label);
   assert.equal(scorePoint(ledgerCheckpoint()).costs_usd, null, 'an older bill is not itemized');
   assert.equal(scorePoint(ledgerCheckpoint()).net_usd, null);
   assert.equal(scorePoint(ledgerCheckpoint({ compute: { ...BILL, openai_usd: null } })).costs_usd, null);
   assert.equal(scorePoint(ledgerCheckpoint({ compute: { ...BILL, as_of: '2026-09-28T14:40:00.000Z' } })).costs_usd, null, 'a stale bill');
   assert.equal(scorePoint(ledgerCheckpoint({ compute: BILL, trading: { as_of: '2026-09-28T14:40:00.000Z', pnl_usd: '220.40' }, positions: ledger({ as_of: '2026-09-28T14:40:00.000Z' }) })).profit_usd, null, 'a stale Profit');
   assert.equal(scorePoint(swarmCheckpoint({ compute: BILL })).net_usd, null, 'no ledger: no Net');
-  assert.equal(scorePoint(windowCheckpoint({ compute: BILL })).net_usd, netNumber(windowCheckpoint({ compute: BILL }), at), 'an open loss counts');
+  assert.equal(scorePoint(windowCheckpoint({ compute: BILL })).net_usd, '-127.89', 'an open loss counts');
 });
 
 // ---------------------------------------------------------------------------- the number-word rule

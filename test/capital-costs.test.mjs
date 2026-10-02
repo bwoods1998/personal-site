@@ -6,10 +6,7 @@ import {
   COMPUTE_PARTS, LEGACY_COMPUTE_PARTS, MAX_PRACTICE_ROWS, PRACTICE_ROW_FIELDS, legacyCompute, scaledDecimal, scaledAmount,
   validCheckpoint, validCompute, validPractice, validPosition, validStructure,
 } from '../capital/schema.js';
-import {
-  CHECKPOINT_READ, INCUBATOR_TITLE, NET_TITLE, PRACTICE_CAPTION, costsLine, inputCosts, mastheadNumbers, netNumber, positionsLedger,
-  practiceTable, structureRows, startCapital,
-} from '../capital/capital.js';
+import { CHECKPOINT_READ, INCUBATOR_TITLE, positionsLedger, openMoney, startCapital } from '../capital/capital.js';
 import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 import { swarmCheckpoint, ledgerCheckpoint, ledger, position, structure, POSITIONS, STRUCTURES, PUBLISHED_AT } from './swarm-fixture.mjs';
 
@@ -26,7 +23,7 @@ const ROWS = [practiceRow('condor-vrp-3'), practiceRow('orb-4', { structure: 'de
   return_on_risk: '-0.09' }), practiceRow('gone-2', { structure: 'long_straddle', status: 'retired', trades: 2, wins: 0, pnl_usd: '-7.00', return_on_risk: null })];
 const practice = (overrides = {}) => ({ as_of: PUBLISHED_AT, sessions: 2, capital_usd: '10000.00',
   totals: { families: 3, trades: 15, wins: 6, pnl_usd: '17.30' }, rows: ROWS, ...overrides });
-const PAGE_IDS = [...FLOOR_IDS, 'floor-costs', 'practice-league', 'floor-league'];
+const PAGE_IDS = FLOOR_IDS;
 
 // ---------------------------------------------------------------------------- the schema
 test('compute names Claude as its own part, and an older House\'s five parts still validate', () => {
@@ -139,60 +136,15 @@ test('the Worker gives the page every block, and every older read the shapes it 
 });
 
 // ---------------------------------------------------------------------------- the numbers
-test('Net is realized P&L less every input cost: open gains out, open losses in, deposits never', () => {
-  // Profit 220.40 holds real:7 open at +12.50 (out) and real:6 open at −8.00 (in): realized 207.90, less 328.79.
-  assert.deepEqual(inputCosts(itemized(), at), { parts: COMPUTE_PARTS.map(part => ({ part, label: { sail_usd: 'Sail', claude_usd: 'Claude',
-    openai_usd: 'OpenAI', thetadata_usd: 'ThetaData', market_data_usd: 'market data', other_usd: 'other' }[part], usd: BILL[part] })),
-  total: '328.79', itemized: true, asOf: BILL.as_of });
-  assert.equal(netNumber(itemized(), at), '-120.89');
-  const [profit, net, clock] = mastheadNumbers(itemized(), at);
-  assert.deepEqual([profit.value, net.label, net.value, net.tone, net.title, clock.label], ['+$220.40', 'Net', '−$120.89', 'negative', NET_TITLE, 'Running']);
-  assert.equal(costsLine(itemized(), at), 'Costs since the reset $328.79: Sail $212.40 · Claude $41.20 · OpenAI $64.10 · ThetaData $5.43 · market data $5.66 · other $0.00.');
-  // With no open position, Net is Profit less the bill.
-  const flat = itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: '215.90' }, positions: ledger({ rows: POSITIONS.slice(2) }) });
-  assert.equal(validCheckpoint(flat), true);
-  assert.equal(netNumber(flat, at), '-112.89');
-  // An unreconciled difference counts only when it is a loss.
-  const gain = itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: '221.40' }, positions: ledger({ unreconciled_usd: '1.00' }) });
-  const loss = itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: '219.40' }, positions: ledger({ unreconciled_usd: '-1.00' }) });
-  assert.equal(validCheckpoint(gain) && validCheckpoint(loss), true);
-  assert.deepEqual([netNumber(gain, at), netNumber(loss, at)], ['-120.89', '-121.89']);
-  // Deposits and the balance never enter it.
-  assert.equal(netNumber(itemized({ performance: { ...itemized().performance, net_flows: '0' }, account: { ...itemized().account, equity: '99999.00' } }), at), '-120.89');
-  // A dash unless every part is known, itemized and fresh, and Profit with its ledger.
-  for (const [label, body, when = at] of [
-    ['an unmetered part', itemized({ compute: { ...BILL, claude_usd: null } })],
-    ['an older House\'s five parts', ledgerCheckpoint()],
-    ['no bill', itemized({ compute: null })],
-    ['a stale bill', itemized({ compute: { ...BILL, as_of: '2026-09-28T14:40:00.000Z' } })],
-    ['a stale Profit', itemized(), at + 11 * 60000],
-    ['no ledger', swarmCheckpoint({ compute: BILL })],
-    ['an unknown Profit', itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: null } })],
-  ]) assert.equal(netNumber(body, when), null, label);
-  assert.equal(costsLine(itemized({ compute: { ...BILL, claude_usd: null } }), at),
-    'Costs since the reset: Sail $212.40 · Claude not yet metered · OpenAI $64.10 · ThetaData $5.43 · market data $5.66 · other $0.00.');
-  assert.equal(costsLine(ledgerCheckpoint(), at), 'Costs are not itemized yet.');
-  assert.equal(costsLine(itemized({ compute: null }), at), 'Costs are not published yet.');
-});
-
-test('the practice league reads as the House sends it, and the incubator\'s rows and structures carry their label', () => {
-  const league = practiceTable(itemized({ practice: practice() }));
-  assert.deepEqual(league.rows.map(row => [row.who, row.what, row.tier, row.trades, row.wins, row.pnl, row.ror, row.retired]), [
-    ['Condor Vrp 3', 'iron condor', 'validated', '9', '5', '+$42.50', '+12%', false],
-    ['Orb 4', 'debit vertical', 'Train', '4', '1', '−$18.20', '−9%', false],
-    ['Gone 2', 'long straddle', 'validated', '2', '0', '−$7.00', '—', true],
-  ]);
-  assert.deepEqual([league.total.label, league.total.trades, league.total.pnl, league.hidden], ['3 families', '15', '+$17.30', 0]);
-  assert.equal(practiceTable(itemized()), null, 'no block: no section');
+test('the incubator\'s rows and structures carry their label', () => {
   const incubator = position('real:8', { source: 'incubator', agent: 'orb-4', underlying: 'SPY', structure: 'debit_vertical', right: 'put', legs: 2,
     status: 'closed', open_quantity: 0, opened_at: '2026-09-28T13:00:00.000Z', closed_at: '2026-09-28T13:30:00.000Z', pnl_usd: '-4.00' });
   const body = itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: '216.40' }, positions: ledger({ rows: [...POSITIONS, incubator] }),
     structures: [...STRUCTURES, structure('st-orb-4-inc', { agent: 'orb-4', route: 'incubator' })] });
   const line = positionsLedger(body, at).closed.find(row => row.id === 'real:8');
-  assert.deepEqual([line.who, line.route, line.agent, line.pnl], ['Orb 4', 'Incubator', 'orb-4', '−$4.00']);
-  assert.equal(positionsLedger(body, at).closed.find(row => row.id === 'real:5').route, '', 'an agent\'s own row has none');
-  assert.deepEqual(structureRows(body).filter(row => row.incubator).map(row => row.id), ['st-orb-4-inc']);
-  assert.equal(netNumber(body, at), '-124.89', 'the incubator is real money: in Profit and in Net');
+  assert.deepEqual([line.who, line.routeText, line.agent, line.pnl], ['Orb 4', 'Incubator', 'orb-4', '−$4.00']);
+  assert.equal(positionsLedger(body, at).closed.find(row => row.id === 'real:5').route, null, 'an agent\'s own row has none');
+  assert.equal(openMoney(body).get('orb-4').incubator, true, 'a routed structure is the incubator\'s money');
 });
 
 // ---------------------------------------------------------------------------- the page
@@ -208,33 +160,16 @@ async function mount(checkpoint, work) {
   });
 }
 
-test('mounted, the masthead shows Profit, Net and Running over one line of costs, and the practice league below the agents', async () => {
+test('mounted, the page reads the full checkpoint, and an incubator position wears its label', async () => {
   const incubator = position('real:8', { source: 'incubator', agent: 'orb-4', underlying: 'SPY', structure: 'debit_vertical', right: 'put', legs: 2,
     status: 'closed', open_quantity: 0, opened_at: '2026-09-28T13:00:00.000Z', closed_at: '2026-09-28T13:30:00.000Z', pnl_usd: '-4.00' });
   const body = itemized({ trading: { as_of: PUBLISHED_AT, pnl_usd: '216.40' }, positions: ledger({ rows: [...POSITIONS, incubator] }), practice: practice() });
   await mount(body, async (root, asked) => {
     assert.ok(asked.includes(`/api/capital/checkpoint${CHECKPOINT_READ}`));
-    assert.match(words(root.querySelector('#floor-numbers')), /^Profit \+\$216\.40 Net −\$124\.89 Running /);
-    assert.equal(words(root.querySelector('#floor-costs')), 'Costs since the reset $328.79: Sail $212.40 · Claude $41.20 · OpenAI $64.10 · ThetaData $5.43 · market data $5.66 · other $0.00.');
-    const section = root.querySelector('#practice-league');
-    assert.equal(section.hidden, false);
-    const box = root.querySelector('#floor-league');
-    assert.equal(box.getAttribute('aria-busy'), 'false');
-    assert.match(words(box.withClass('practice-caption')[0]), new RegExp(`^${PRACTICE_CAPTION.replace(/[.]/g, '\\.')} · as of `));
-    const [table] = box.find('table');
-    assert.deepEqual(table.find('thead')[0].find('th').map(words), ['Agent', 'Structure', 'Version', 'Sessions', 'Trades', 'Won', 'P&L', 'On risk']);
-    assert.deepEqual(table.find('tbody')[0].find('tr').map(words), ['Meriwether iron condor validated 3 9 5 +$42.50 +12%',
-      'Scholes debit vertical Train 3 4 1 −$18.20 −9%', 'Meriwether 2 retired long straddle validated 3 2 0 −$7.00 —']);
-    assert.equal(words(table.find('tfoot')[0]), '3 families 15 6 +$17.30');
-    const positions = root.querySelector('#floor-positions');
-    const row = positions.find('tr').find(node => node.dataset.position === 'real:8');
-    assert.equal(words(row.find('th')[0]), 'Scholes Incubator');
+    assert.match(words(root.querySelector('#floor-numbers')), /^Profit \+\$212\.72 Running /, 'no Net, no costs: Profit and Running only');
+    assert.doesNotMatch(words(root), /Practice|Costs since/, 'the practice league is not on the page');
+    const row = root.querySelector('#floor-positions').withClass('pos').find(node => node.dataset.position === 'real:8');
+    assert.match(words(row), /Scholes INCUBATOR|Scholes Incubator/);
     assert.equal(row.withClass('tag-incubator')[0].getAttribute('title'), INCUBATOR_TITLE);
-  });
-  // A House that publishes no practice block, and no itemized bill: the section stays hidden and Net a dash.
-  await mount(ledgerCheckpoint(), async root => {
-    assert.equal(root.querySelector('#practice-league').hidden, true);
-    assert.match(words(root.querySelector('#floor-numbers')), /^Profit \+\$220\.40 Net — Running /);
-    assert.equal(words(root.querySelector('#floor-costs')), 'Costs are not itemized yet.');
   });
 });

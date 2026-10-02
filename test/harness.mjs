@@ -50,18 +50,25 @@ export class StubElement {
     }
   }
   replaceChildren(...nodes) { this._text = ''; for (const node of this.children) node.parentNode = null; this.children = []; this.append(...nodes); }
+  prepend(...nodes) { const rest = this.children; this.children = []; this.append(...nodes); for (const node of rest) this.children.push(node); }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; }
+  get firstElementChild() { return this.children[0] || null; }
+  get lastElementChild() { return this.children.at(-1) || null; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   addEventListener(name, handler) { this.listeners.set(name, [...(this.listeners.get(name) || []), handler]); }
   click() { for (const handler of this.listeners.get('click') || []) handler(); }
   descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
-  querySelector(selector) { return this.descendants().find(node => node.id === selector.slice(1)) || null; }
+  querySelector(selector) {
+    if (selector.startsWith('#')) return this.descendants().find(node => node.id === selector.slice(1)) || null;
+    return this.descendants().find(node => node.tag === selector) || null;
+  }
   querySelectorAll() { return []; }
   find(tag) { return this.descendants().filter(node => node.tag === tag); }
   withClass(name) { return this.descendants().filter(node => String(node.className).split(' ').includes(name)); }
 }
 export const words = node => node.textContent.replace(/\s+/g, ' ').trim();
-export const FLOOR_IDS = ['floor-numbers', 'floor-status', 'floor-now', 'floor-feed', 'floor-account', 'floor-positions', 'floor-agents'];
+export const FLOOR_IDS = ['floor-numbers', 'floor-account', 'floor-status', 'floor-stream', 'floor-positions', 'floor-agents'];
 export function stubPage(kind, ids) {
   const root = new StubElement('main');
   root.dataset.capital = kind;

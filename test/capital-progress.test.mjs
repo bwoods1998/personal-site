@@ -109,7 +109,7 @@ test('dot positions remain stable within a band as attempts, returns and prerequ
   assert.deepEqual(ids([b, a]), ['alpha', 'beta']);
 });
 
-test('published progress reaches the dot and click details without changing the thought-first page', async () => {
+test('published progress reaches the dot and its click details', async () => {
   const { capital } = floor();
   const row = agent('one', { progress: progress('candidate', { validation_run: 1, validation_trades: 36, validation_days: 22 }) });
   assert.equal((await post(capital, '/api/capital/checkpoint', swarmCheckpoint({ agents: [row], structures: [] }))).status, 200);
@@ -118,7 +118,7 @@ test('published progress reaches the dot and click details without changing the 
     const feed = await startCapital(root);
     const board = root.querySelector('#floor-agents');
     const dot = board.withClass('agent-dot')[0];
-    assert.match(dot.getAttribute('aria-label'), /^Meriwether · Train · iron condor · 1 \/ 11 checks · Candidate/);
+    assert.match(dot.getAttribute('aria-label'), /^Meriwether · Train · iron condor · 1 \/ 11 checks toward Candidate$/);
     assert.equal(dot.find('circle').length, 2);
     assert.doesNotMatch(words(board), /Validation trades/);
     dot.click();
@@ -160,11 +160,11 @@ test('a failed refresh expires the visible rings and selected checklist while pr
     failing = true; clock += 16 * 60000;
     refresh();
     await new Promise(resolve => setImmediate(resolve));
-    assert.match(words(root.querySelector('#floor-status')), /stopped/);
+    assert.match(words(root.querySelector('#floor-status')), /paused/);
     const selected = board.withClass('agent-dot')[0];
     assert.equal(selected.getAttribute('aria-expanded'), 'true');
     assert.equal(selected.find('circle').length, 1);
-    assert.match(words(board.querySelector('#agent-detail')), /Progress unavailable/);
+    assert.match(words(board.querySelector('#agent-detail')), /^Meriwether Train ×/);
     assert.doesNotMatch(words(board.querySelector('#agent-detail')), /1 \/ 11 checks/);
     feed.stop();
   });
