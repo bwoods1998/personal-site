@@ -375,7 +375,7 @@ test('the page is five things: Profit and Running, the balance, the agents live,
   assert.deepEqual(anchors, [['/', 'Blake Woods'], ['https://github.com/bwoods1998/long-term-capital-management', 'GitHub ↗']]);
   assert.equal((html.match(/<a[\s>]/gi) || []).length, 2);
   assert.deepEqual([...html.matchAll(/<section id="([a-z-]+)"/g)].map(match => match[1]), SECTION_IDS);
-  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/?[a-z]/g)].map(match => match[1].trim()), ['Live', 'Positions', 'Swarm']);
+  assert.deepEqual([...html.matchAll(/<h2 [^>]*>([^<]+)<\/?[a-z]/g)].map(match => match[1].trim()), ['Live', 'Positions', 'Agents']);
   assert.deepEqual([...html.matchAll(/<dt>([^<]+)<\/dt>/g)].map(match => match[1]), ['Profit', 'Running']);
   const order = FLOOR_IDS.map(id => html.indexOf(`id="${id}"`));
   assert.ok(order.every((index, n) => index > 0 && (n === 0 || index > order[n - 1])), 'numbers, balance, status, stream, positions, agents');
