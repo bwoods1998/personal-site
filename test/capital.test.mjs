@@ -566,7 +566,7 @@ test('mounted on a published record, the page draws every section from it', asyn
     assert.deepEqual(positions.withClass('ledger-group').map(textOf), ['Open −$3.18', 'Closed +$215.90']);
     assert.match(textOf(positions.withClass('ledger-total')[0]), /^Profit \+\$212\.72$/, 'the total is the headline');
     const board = root.querySelector('#floor-agents');
-    assert.deepEqual(board.withClass('rung-name').map(textOf), ['6 Sized', '5 Probe', '4 Candidate', '3 Tuition', '2 Validation', '1 Train']);
+    assert.deepEqual(board.withClass('rung-name').map(textOf), ['Sized', 'Probe', 'Practice', 'Validation', 'Train']);
     assert.equal(board.withClass('agent-dot').length, 11, 'every agent but the retired one has a dot');
     assert.equal(board.querySelector('#agent-detail').hidden, true);
     const scrolls = [];
@@ -599,7 +599,10 @@ test('after the reset, before the House publishes, every section says so and the
     feed.stop();
     assert.equal(textOf(root.querySelector('#floor-status')), 'connecting');
     assert.equal(textOf(root.querySelector('#floor-account')), 'No balance recorded yet.');
-    assert.equal(textOf(root.querySelector('#floor-agents')), 'Waiting for the agents.');
+    // The board without a record is the game's five rungs and its one divider: no dot, no number, no sentence.
+    assert.equal(textOf(root.querySelector('#floor-agents')), 'Sized Probe Real money Practice Validation Train');
+    assert.equal(root.querySelector('#floor-agents').getAttribute('aria-busy'), 'false');
+    assert.deepEqual(root.querySelector('#floor-agents').withClass('agent-dot'), []);
     assert.equal(textOf(root.querySelector('#floor-stream')), 'Connecting…');
   });
   // The House's first checkpoint: a clock and nothing else yet.
@@ -609,7 +612,7 @@ test('after the reset, before the House publishes, every section says so and the
     const feed = await startCapital(first);
     feed.stop();
     assert.match(textOf(first.querySelector('#floor-numbers')), /^Profit — Running /);
-    assert.deepEqual(first.querySelector('#floor-agents').withClass('rung-name').map(textOf), ['6 Sized', '5 Probe', '4 Candidate', '3 Tuition', '2 Validation', '1 Train']);
+    assert.deepEqual(first.querySelector('#floor-agents').withClass('rung-name').map(textOf), ['Sized', 'Probe', 'Practice', 'Validation', 'Train']);
     assert.equal(textOf(first.querySelector('#floor-stream')), 'Quiet for now.');
     assert.equal(textOf(first.querySelector('#floor-positions')), 'No positions yet.');
   });

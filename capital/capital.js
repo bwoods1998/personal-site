@@ -25,7 +25,8 @@ const MAX_SOCKET_MESSAGE = 64 * 1024;
 const HISTORY_LIMIT = 2048;
 const MARK = 'account.mark';
 // The checkpoint read this page validates (the Worker's `WINDOW_READ`): progress, the positions ledger, the House's
-// `levels` and `rationale`. The practice league rides the same read; this page does not draw it.
+// `levels` and `rationale`. The practice league rides the same read; this page draws none of its figures (the board reads
+// only which agents practise: `practisingAgents`).
 export const CHECKPOINT_READ = '?progress=1&positions=1&practice=1&window=1';
 
 // ---- the reset (Sept 26, 2026, the options swarm)
@@ -278,22 +279,24 @@ export function recordWords(agent) {
   return { main: tried, tone: '', rest: '' };
 }
 // `level`: where the agent stands in the game (the House's `levels`, or for an older House what the band and the open
-// money can say for certain: `levelOf`).
+// money can say for certain: `levelOf`). `rung`: the rung of the board its dot stands on (`rungOf`), null when retired.
 export function swarmRows(checkpoint) {
   const agents = (Array.isArray(checkpoint?.agents) ? checkpoint.agents : []).filter(agent => agent && typeof agent === 'object');
   const pnl = agent => Number(agent.record?.real?.pnl_usd ?? agent.record?.forward?.pnl_usd ?? 0);
   const held = openMoney(checkpoint);
   const published = publishedLevels(checkpoint);
   const rows = moneyLevels(checkpoint);
+  const practised = practisingAgents(checkpoint);
   return agents.map((agent, index) => ({ agent, index }))
     .sort((left, right) => rankOf(left.agent.band) - rankOf(right.agent.band) || pnl(right.agent) - pnl(left.agent)
       || (right.agent.record?.trials ?? 0) - (left.agent.record?.trials ?? 0) || left.index - right.index)
     .map(({ agent }) => {
       const level = show(levelOf(agent, checkpoint, held, published, rows));
+      const practising = level === 'validation' && practised.has(agent.id);
       return {
         id: show(agent.id), name: agentName(agent), family: show(agent.family), band: show(agent.band), level, levelText: LEVEL_WORDS[level] || '',
         real: REAL_BANDS.includes(agent.band), structure: STRUCTURE_WORDS[agent.structure] || '', record: recordWords(agent),
-        progress: agentProgress(agent, checkpoint),
+        progress: agentProgress(agent, checkpoint), practising, rung: rungOf(level, practising),
       };
     });
 }
@@ -646,34 +649,75 @@ export function tradeReasons(checkpoint) {
   }
   return reasons;
 }
-// The six rungs, top to bottom, and how many families ever reached each one (the House's funnel since the reset). The side
-// path (the Incubator, then Practice) stands on Train; a retired agent that still holds money stands on its money's rung.
+// The five rungs, top to bottom: one straight path (Train, Validation, Practice, Probe, Sized), and only on the top two
+// (`real`) does an agent trade real money on its record. `levels` is every published level that can stand on a rung, in
+// the order its dots are drawn; `reached` is the House's funnel key for how many families ever reached it since the
+// reset. The older rungs are no longer places of their own: Candidate, Tuition and the Incubator stand on Practice and
+// keep their own tag and look (so a Tuition or Incubator dot there is still a small real-money test). A retired agent
+// that still holds money stands on its money's rung.
 export const AGENT_STAGES = [
-  { level: 6, key: 'sized', label: 'Sized', levels: ['sized'], real: true, reached: 'sized' },
-  { level: 5, key: 'probe', label: 'Probe', levels: ['probe'], real: true, reached: 'probe' },
-  { level: 4, key: 'candidate', label: 'Candidate', levels: ['candidate'], reached: 'candidate' },
-  { level: 3, key: 'tuition', label: 'Tuition', levels: ['tuition'], real: true, reached: 'tuition' },
+  { level: 5, key: 'sized', label: 'Sized', levels: ['sized'], real: true, reached: 'sized' },
+  { level: 4, key: 'probe', label: 'Probe', levels: ['probe'], real: true, reached: 'probe' },
+  { level: 3, key: 'practice', label: 'Practice', levels: ['candidate', 'validation', 'practice', 'tuition', 'incubator'], reached: 'practice' },
   { level: 2, key: 'validation', label: 'Validation', levels: ['validation'], reached: 'validation' },
-  { level: 1, key: 'train', label: 'Train', levels: ['incubator', 'practice', 'train'], reached: 'born' },
+  { level: 1, key: 'train', label: 'Train', levels: ['train'], reached: 'born' },
 ];
-// The rung number a level stands on; null for a retired agent's level.
-export const rungOf = level => AGENT_STAGES.find(stage => stage.levels.includes(level))?.level ?? null;
+const HOME_RUNG = { sized: 5, probe: 4, candidate: 3, tuition: 3, incubator: 3, practice: 3, validation: 2, train: 1 };
+// The rung number a level stands on; null for a retired agent's level and for any other word (an inherited key such as
+// `constructor` is no level). The House publishes a validated agent that practises as `validation` (its `level_of` asks
+// "validated" before "practising"): `practising` moves it up to Practice.
+export const rungOf = (level, practising = false) => (level === 'validation' && practising ? HOME_RUNG.practice
+  : Object.hasOwn(HOME_RUNG, level) ? HOME_RUNG[level] : null);
+// The agents that practise, from the practice read the checkpoint already carries: a living agent's row with at least one
+// session. The row says it practised inside the read's window (the last 20 sessions), not that it practises this minute;
+// the House does not publish that for a validated agent.
+export function practisingAgents(checkpoint) {
+  const rows = Array.isArray(checkpoint?.practice?.rows) ? checkpoint.practice.rows : [];
+  return new Set(rows.filter(row => row && row.status === 'alive' && Number.isSafeInteger(row.sessions) && row.sessions >= 1 && agentId(row.agent))
+    .map(row => row.agent));
+}
+// The staircase is the shape. Train, the base, is the whole width; each step above it is drawn between its own `floor`
+// and its `cap` by the share of families that ever reached it (a log scale: one family still shows against thousands
+// born), and always at least a `notch` narrower than the step under it. Every number is a share of the board's width,
+// for the four steps above the base, top to bottom. A step nobody has reached stands at its floor. The phone layout
+// (`narrow`: the stylesheet's 720 px and under, where a step's dots run under its name) keeps the three lower steps
+// wide, so seven dots fit one row of Practice on a 390 px screen, and narrows hard only at the real-money line: three
+// dots still fit the top step, and the line's label fits beside Probe at every width down to 320 px.
+export const STAIRS = {
+  wide: { floor: [0.3, 0.36, 0.42, 0.48], cap: [1, 1, 1, 1], notch: 0.06 },
+  narrow: { floor: [0.46, 0.56, 0.88, 0.93], cap: [0.59, 0.64, 0.9, 0.95], notch: 0.05 },
+};
+// A step the House published no count for is drawn where a swarm's usual shares would put it, so a board with no data
+// at all is the same staircase.
+export const REST_SHARES = [0.09, 0.25, 0.45, 0.7];
+// The drawn width of each step, top to bottom, from each step's share (0 to 1, or null when it was not counted). The
+// widths only narrow going up, whatever the counts say: a step counted above the one under it is held a notch inside it.
+export function stairWidths(shares, { floor, cap, notch }) {
+  const widths = shares.map(() => 1);
+  for (let index = shares.length - 2; index >= 0; index -= 1) {
+    const share = Number.isFinite(shares[index]) ? Math.min(1, Math.max(0, shares[index])) : REST_SHARES[index];
+    const wanted = floor[index] + (cap[index] - floor[index]) * share;
+    widths[index] = Number(Math.max(floor[index], Math.min(wanted, widths[index + 1] - notch)).toFixed(4));
+  }
+  return widths;
+}
 const countOf = value => (Number.isSafeInteger(value) && value >= 0 ? value : null);
 export function agentStages(checkpoint) {
   const rows = swarmRows(checkpoint);
   const funnel = checkpoint?.levels?.funnel && typeof checkpoint.levels.funnel === 'object' ? checkpoint.levels.funnel : null;
-  const reached = stage => (funnel ? countOf(funnel[stage.reached]) : null);
-  const most = Math.max(1, ...AGENT_STAGES.map(stage => reached(stage) ?? 0));
-  return AGENT_STAGES.map(stage => {
-    const count = reached(stage);
-    return { ...stage, agents: rows.filter(row => stage.levels.includes(row.level))
-      .sort((left, right) => stage.levels.indexOf(left.level) - stage.levels.indexOf(right.level) || rankOf(left.band) - rankOf(right.band)
-        || left.id.localeCompare(right.id)),
-    // The bar beside the count is on a log scale, so a rung one agent reached still shows against thousands born.
-    ever: count, share: count ? Math.log10(count + 1) / Math.log10(most + 1) : 0 };
-  });
+  // `ever` is null when the House could not count the step (or sent no funnel): then it shows no number.
+  const counts = AGENT_STAGES.map(stage => (funnel ? countOf(funnel[stage.reached]) : null));
+  const most = Math.max(1, ...counts.map(count => count ?? 0));
+  const shareOf = count => (count ? Math.log10(count + 1) / Math.log10(most + 1) : 0);
+  const shares = counts.map(count => (count === null ? null : shareOf(count)));
+  const wide = stairWidths(shares, STAIRS.wide);
+  const narrow = stairWidths(shares, STAIRS.narrow);
+  return AGENT_STAGES.map((stage, index) => ({ ...stage, agents: rows.filter(row => row.rung === stage.level)
+    .sort((left, right) => stage.levels.indexOf(left.level) - stage.levels.indexOf(right.level) || rankOf(left.band) - rankOf(right.band)
+      || left.id.localeCompare(right.id)),
+  ever: counts[index], share: shareOf(counts[index]), width: { wide: wide[index], narrow: narrow[index] } }));
 }
-// "2,317 retired · 104,494 backtests": what the swarm has thrown away and tried since the reset.
+// "2,317 retired · 104,494 backtests": what the swarm has thrown away and tried since the reset (the hover on Train's count).
 export function swarmLine(checkpoint) {
   const parts = [];
   const retired = countOf(checkpoint?.levels?.funnel?.retired);
@@ -1235,8 +1279,10 @@ function positionsPanel(checkpoint, state) {
   return nodes;
 }
 
-// 5. The swarm on the game's six rungs: each agent a dot on the rung it stands on, a ring filling as it meets the next
-// rung's checks, and beside each rung how many ever reached it.
+// 5. The swarm on the game's five steps, drawn as a staircase: wide Train at the bottom, narrow Sized at the top, each
+// step as wide as the share of families that ever reached it, with one gold line under the two steps where agents trade
+// real money on their record. Each agent is a dot on the step it stands on, a ring filling as it meets the checks of
+// the House's next gate.
 function progressRing(progress) {
   const ring = svgElement('svg', { viewBox: '0 0 36 36', class: 'agent-progress-ring', 'aria-hidden': 'true' });
   ring.append(svgElement('circle', { cx: 18, cy: 18, r: 14, class: 'agent-progress-track' }));
@@ -1286,9 +1332,39 @@ function agentDetail(row, checkpoint, state) {
   card.append(record, progressDetail(row.progress));
   return card;
 }
+// The one line across the board. What it means is for a hover, never on the page. Tuition and the Incubator stand under
+// it, on Practice, and each is still a real-money test of one small position: the hover says so, as their dotted gold
+// dots do. (A test, not "holds a position": a level says what the agent is on, not that a position is open this minute.)
+export const MONEY_LINE = 'Above this line agents trade real money, earned on their record. A dotted gold dot below it is a small real-money test.';
+// What each step means, on hover. Practice has the board's own words: the level's shared hover says "never real money",
+// which is true of an agent that practises and not of every dot that stands on this step.
+export const STEP_TITLES = { ...LEVEL_TITLES, practice: 'Shadow trades on live quotes. A dotted gold dot is a small real-money test.' };
+// The line's label: an up-caret (drawn, not a character) and its two words.
+function moneyMark() {
+  const mark = element('span', null, 'ladder-real-mark');
+  // The group of steps above the line is already named "Real money" for a screen reader.
+  mark.setAttribute('aria-hidden', 'true');
+  mark.setAttribute('title', MONEY_LINE);
+  const caret = svgElement('svg', { viewBox: '0 0 10 6', class: 'ladder-real-caret', 'aria-hidden': 'true' });
+  caret.append(svgElement('path', { d: 'M1 5 5 1l4 4' }));
+  mark.append(caret, element('span', 'Real money'));
+  return mark;
+}
+// A step's width as the stylesheet reads it: `--step` on a wide screen, `--step-narrow` in the phone layout.
+function stepWidth(node, width) {
+  const percent = share => `${(share * 100).toFixed(2)}%`;
+  try { node.style.setProperty('--step', percent(width.wide)); node.style.setProperty('--step-narrow', percent(width.narrow)); } catch { /* no layout here */ }
+}
+// How many ever reached a rung, for a hover and a screen reader; Train's also says what the swarm threw away and tried.
+function reachedTitle(stage, checkpoint) {
+  const reached = `${stage.ever.toLocaleString('en-US')} ${stage.ever === 1 ? 'family has' : 'families have'} ever reached ${stage.label}`;
+  const line = stage.reached === 'born' ? swarmLine(checkpoint) : '';
+  return line ? `${reached} · ${line}` : reached;
+}
 function agentsPanel(checkpoint, state) {
   const board = element('div', null, 'ladder');
-  const rows = swarmRows(checkpoint).filter(row => row.level !== 'retired');
+  // Every agent that stands on a rung: the retired are off the board.
+  const rows = swarmRows(checkpoint).filter(row => row.rung !== null);
   const details = element('div', null, 'agent-detail');
   details.id = 'agent-detail';
   details.setAttribute('aria-live', 'polite');
@@ -1308,26 +1384,35 @@ function agentsPanel(checkpoint, state) {
     details.hidden = !row;
     if (focusId) buttons.get(focusId)?.focus?.({ preventScroll: true });
   };
-  const head = element('div', null, 'ladder-head');
-  head.setAttribute('aria-hidden', 'true');
-  head.append(element('span', 'Level'), element('span', 'Agents now'), element('span', 'Ever reached'));
-  board.append(head);
-  for (const stage of agentStages(checkpoint)) {
-    const agents = stage.agents.filter(row => row.level !== 'retired');
-    const rung = element('section', null, `rung rung-${stage.level}${stage.real ? ' rung-real' : ''}${agents.length ? '' : ' rung-vacant'}`);
-    const heading = element('h3', null, 'rung-name');
+  // The steps where agents trade real money on their record are one group; the gold line under it is the board's only
+  // divider, and its label stands on that line beside the lowest of them.
+  const money = element('div', null, 'ladder-real');
+  money.setAttribute('role', 'group');
+  money.setAttribute('aria-label', 'Real money');
+  const floor = element('div', null, 'ladder-floor');
+  board.append(money);
+  const stages = agentStages(checkpoint);
+  const lowestReal = stages.filter(stage => stage.real).at(-1);
+  for (const stage of stages) {
+    // A step nobody stands on and nobody is known to have reached is hollow: a dashed outline around its name. With no
+    // data at all that is every step, so the board keeps its shape.
+    const hollow = !stage.agents.length && !(stage.ever > 0);
+    const rung = element('section', null, `rung rung-${stage.level}${stage.real ? ' rung-real' : ''}${stage.agents.length ? '' : ' rung-vacant'}${hollow ? ' rung-hollow' : ''}`);
+    stepWidth(rung, stage.width);
+    const heading = element('h3', stage.label, 'rung-name');
     heading.id = `rung-${stage.level}`;
-    heading.setAttribute('title', LEVEL_TITLES[stage.key]);
-    heading.append(element('span', String(stage.level), 'rung-level'), element('span', stage.label, 'rung-label'));
+    heading.setAttribute('title', STEP_TITLES[stage.key]);
     rung.setAttribute('aria-labelledby', heading.id);
     const group = element('div', null, 'agent-dots');
-    for (const row of agents) {
-      const button = element('button', null, `agent-dot dot-${row.band} level-${row.level}`);
+    for (const row of stage.agents) {
+      const button = element('button', null, `agent-dot dot-${row.band} level-${row.level}${row.practising ? ' dot-practising' : ''}`);
       button.type = 'button';
       button.dataset.agent = row.id;
       button.dataset.level = row.level;
+      button.dataset.rung = String(stage.level);
       const progress = row.progress ? ` · ${row.progress.count} toward ${row.progress.label}` : '';
-      const label = `${row.name} · ${row.levelText}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
+      // "practised", not "practising": the read proves a session inside its window, not one this minute.
+      const label = `${row.name} · ${row.levelText}${row.practising ? ', practised' : ''}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
       button.setAttribute('aria-label', label);
       button.setAttribute('title', label);
       button.setAttribute('aria-controls', details.id);
@@ -1341,20 +1426,22 @@ function agentsPanel(checkpoint, state) {
       buttons.set(row.id, button);
       group.append(button);
     }
-    const reached = element('div', null, 'rung-reached');
-    reached.setAttribute('title', `${stage.ever === null ? 'Unknown' : stage.ever.toLocaleString('en-US')} ${stage.ever === 1 ? 'family has' : 'families have'} ever reached ${stage.label}`);
-    const bar = element('span', null, 'reached-bar');
-    const fill = element('span');
-    place(fill, { width: `${(stage.share * 100).toFixed(1)}%` });
-    bar.append(fill);
-    reached.append(element('span', stage.ever === null ? '—' : stage.ever.toLocaleString('en-US'), 'reached-count'), bar);
-    rung.append(heading, group, reached);
-    board.append(rung);
+    rung.append(heading, group);
+    // The count the House published, as a small number at the step's end; a step it did not count shows none.
+    if (stage.ever !== null) {
+      const reached = element('span', stage.ever.toLocaleString('en-US'), 'reached-count');
+      const title = reachedTitle(stage, checkpoint);
+      reached.setAttribute('role', 'img');
+      reached.setAttribute('aria-label', title);
+      reached.setAttribute('title', title);
+      rung.append(reached);
+    }
+    (stage === lowestReal ? floor : stage.real ? money : board).append(rung);
   }
-  const line = swarmLine(checkpoint);
-  const foot = line ? element('p', line, 'ladder-foot') : null;
+  floor.append(moneyMark());
+  money.append(floor);
   state.selectAgent(state.selectedAgent);
-  return [board, ...(foot ? [foot] : []), details];
+  return [board, details];
 }
 // A live publication produces one short ripple on its agent's dot. Historical batches, hidden tabs, stale events and
 // reduced-motion readers never get simulated activity.
@@ -1388,14 +1475,15 @@ export function settleAgents(state) {
   for (const [id, node] of state.dotNodes || []) {
     const box = node.getBoundingClientRect?.();
     if (!box || !box.width || !box.height) continue;
-    const level = node.dataset.level;
+    // The rung the board drew the dot on: a level alone cannot say it (a validated agent may stand on Practice).
+    const rung = node.dataset.rung;
     const fill = node.querySelector?.('.agent-progress-fill');
     const dash = fill?.getAttribute('stroke-dasharray');
-    positions.set(id, { x: box.left + window.scrollX, y: box.top + window.scrollY, level, dash });
+    positions.set(id, { x: box.left + window.scrollX, y: box.top + window.scrollY, rung, dash });
     const old = previous.get(id);
     if (!animate || !old || box.bottom < 0 || box.top > window.innerHeight) continue;
     const current = positions.get(id);
-    if (rungOf(old.level) !== rungOf(level)) {
+    if (old.rung !== rung) {
       node.animate?.([{ transform: `translate(${old.x - current.x}px, ${old.y - current.y}px)` }, { transform: 'translate(0, 0)' }],
         { duration: 700, easing: 'cubic-bezier(.2,.7,.2,1)' });
     } else if (dash && old.dash !== dash) {
@@ -1461,7 +1549,7 @@ async function startPage(root) {
         ready(box.numbers);
         drawn(box.account, [element('p', 'No balance recorded yet.', 'empty-state')]);
         drawn(box.positions, [element('p', 'No positions yet.', 'empty-state')]);
-        drawn(box.agents, [element('p', 'Waiting for the agents.', 'empty-state')]);
+        drawn(box.agents, agentsPanel(null, state));
       }
     } finally {
       state.asked = true;

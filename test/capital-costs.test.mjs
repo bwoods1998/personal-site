@@ -167,7 +167,10 @@ test('mounted, the page reads the full checkpoint, and an incubator position wea
   await mount(body, async (root, asked) => {
     assert.ok(asked.includes(`/api/capital/checkpoint${CHECKPOINT_READ}`));
     assert.match(words(root.querySelector('#floor-numbers')), /^Profit \+\$212\.72 Running /, 'no Net, no costs: Profit and Running only');
-    assert.doesNotMatch(words(root), /Practice|Costs since/, 'the practice league is not on the page');
+    // The practice league is not on the page: none of its figures, and its name only as the board's Practice rung.
+    assert.doesNotMatch(words(root), /Costs since|42\.50|18\.20|17\.30|10,000/, 'the practice league is not on the page');
+    assert.deepEqual(words(root).match(/Practice/gi), ['Practice'], 'one rung of the board, nothing else');
+    assert.equal(words(root.querySelector('#floor-agents').withClass('rung-3')[0].withClass('rung-name')[0]), 'Practice');
     const row = root.querySelector('#floor-positions').withClass('pos').find(node => node.dataset.position === 'real:8');
     assert.match(words(row), /Scholes INCUBATOR|Scholes Incubator/);
     assert.equal(row.withClass('tag-incubator')[0].getAttribute('title'), INCUBATOR_TITLE);
