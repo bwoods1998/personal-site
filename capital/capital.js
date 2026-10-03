@@ -673,24 +673,45 @@ export function practisingAgents(checkpoint) {
   return new Set(rows.filter(row => row && row.status === 'alive' && Number.isSafeInteger(row.sessions) && row.sessions >= 1 && agentId(row.agent))
     .map(row => row.agent));
 }
-// The funnel is the shape: each rung is a band as wide as the share of families that ever reached it. The share is on a
-// log scale (one family still shows against thousands born), above a floor that holds a rung's name and a dot or two.
-export const BAND_FLOOR = 0.3;
+// The staircase is the shape. Train, the base, is the whole width; each step above it is drawn between its own `floor`
+// and its `cap` by the share of families that ever reached it (a log scale: one family still shows against thousands
+// born), and always at least a `notch` narrower than the step under it. Every number is a share of the board's width,
+// for the four steps above the base, top to bottom. A step nobody has reached stands at its floor. A phone (`narrow`)
+// keeps the three lower steps wide, so seven dots fit one row of Practice on a 390 px screen, and narrows hard only at
+// the real-money line: three dots still fit the top step, and the line's label fits beside Probe down to 320 px.
+export const STAIRS = {
+  wide: { floor: [0.3, 0.36, 0.42, 0.48], cap: [1, 1, 1, 1], notch: 0.06 },
+  narrow: { floor: [0.46, 0.56, 0.88, 0.93], cap: [0.59, 0.64, 0.9, 0.95], notch: 0.05 },
+};
+// A step the House published no count for is drawn where a swarm's usual shares would put it, so a board with no data
+// at all is the same staircase.
+export const REST_SHARES = [0.09, 0.25, 0.45, 0.7];
+// The drawn width of each step, top to bottom, from each step's share (0 to 1, or null when it was not counted). The
+// widths only narrow going up, whatever the counts say: a step counted above the one under it is held a notch inside it.
+export function stairWidths(shares, { floor, cap, notch }) {
+  const widths = shares.map(() => 1);
+  for (let index = shares.length - 2; index >= 0; index -= 1) {
+    const share = Number.isFinite(shares[index]) ? Math.min(1, Math.max(0, shares[index])) : REST_SHARES[index];
+    const wanted = floor[index] + (cap[index] - floor[index]) * share;
+    widths[index] = Number(Math.max(floor[index], Math.min(wanted, widths[index + 1] - notch)).toFixed(4));
+  }
+  return widths;
+}
 const countOf = value => (Number.isSafeInteger(value) && value >= 0 ? value : null);
 export function agentStages(checkpoint) {
   const rows = swarmRows(checkpoint);
   const funnel = checkpoint?.levels?.funnel && typeof checkpoint.levels.funnel === 'object' ? checkpoint.levels.funnel : null;
-  const reached = stage => (funnel ? countOf(funnel[stage.reached]) : null);
-  const most = Math.max(1, ...AGENT_STAGES.map(stage => reached(stage) ?? 0));
-  return AGENT_STAGES.map(stage => {
-    const count = reached(stage);
-    const share = count ? Math.log10(count + 1) / Math.log10(most + 1) : 0;
-    return { ...stage, agents: rows.filter(row => row.rung === stage.level)
-      .sort((left, right) => stage.levels.indexOf(left.level) - stage.levels.indexOf(right.level) || rankOf(left.band) - rankOf(right.band)
-        || left.id.localeCompare(right.id)),
-    // `ever` is null when the House could not count the rung (or sent no funnel): then it has no band, and no number.
-    ever: count, share, band: count === null ? null : BAND_FLOOR + (1 - BAND_FLOOR) * share };
-  });
+  // `ever` is null when the House could not count the step (or sent no funnel): then it shows no number.
+  const counts = AGENT_STAGES.map(stage => (funnel ? countOf(funnel[stage.reached]) : null));
+  const most = Math.max(1, ...counts.map(count => count ?? 0));
+  const shareOf = count => (count ? Math.log10(count + 1) / Math.log10(most + 1) : 0);
+  const shares = counts.map(count => (count === null ? null : shareOf(count)));
+  const wide = stairWidths(shares, STAIRS.wide);
+  const narrow = stairWidths(shares, STAIRS.narrow);
+  return AGENT_STAGES.map((stage, index) => ({ ...stage, agents: rows.filter(row => row.rung === stage.level)
+    .sort((left, right) => stage.levels.indexOf(left.level) - stage.levels.indexOf(right.level) || rankOf(left.band) - rankOf(right.band)
+      || left.id.localeCompare(right.id)),
+  ever: counts[index], share: shareOf(counts[index]), width: { wide: wide[index], narrow: narrow[index] } }));
 }
 // "2,317 retired · 104,494 backtests": what the swarm has thrown away and tried since the reset (the hover on Train's count).
 export function swarmLine(checkpoint) {
@@ -1254,9 +1275,9 @@ function positionsPanel(checkpoint, state) {
   return nodes;
 }
 
-// 5. The swarm on the game's five rungs, drawn as a funnel: each rung is a band as wide as the share of families that
-// ever reached it, wide Train at the bottom and narrow Sized at the top, with one gold line under the two rungs that trade
-// real money. Each agent is a dot on the rung it stands on, a ring filling as it meets the next rung's checks.
+// 5. The swarm on the game's five steps, drawn as a staircase: wide Train at the bottom, narrow Sized at the top, each
+// step as wide as the share of families that ever reached it, with one gold line under the two steps that trade real
+// money. Each agent is a dot on the step it stands on, a ring filling as it meets the next step's checks.
 function progressRing(progress) {
   const ring = svgElement('svg', { viewBox: '0 0 36 36', class: 'agent-progress-ring', 'aria-hidden': 'true' });
   ring.append(svgElement('circle', { cx: 18, cy: 18, r: 14, class: 'agent-progress-track' }));
@@ -1306,6 +1327,24 @@ function agentDetail(row, checkpoint, state) {
   card.append(record, progressDetail(row.progress));
   return card;
 }
+// The one line across the board. What it means is for a hover, never on the page.
+export const MONEY_LINE = 'Only the steps above this line trade real money';
+// The line's label: an up-caret (drawn, not a character) and its two words.
+function moneyMark() {
+  const mark = element('span', null, 'ladder-real-mark');
+  // The group of steps above the line is already named "Real money" for a screen reader.
+  mark.setAttribute('aria-hidden', 'true');
+  mark.setAttribute('title', MONEY_LINE);
+  const caret = svgElement('svg', { viewBox: '0 0 10 6', class: 'ladder-real-caret', 'aria-hidden': 'true' });
+  caret.append(svgElement('path', { d: 'M1 5 5 1l4 4' }));
+  mark.append(caret, element('span', 'Real money'));
+  return mark;
+}
+// A step's width as the stylesheet reads it: `--step` on a wide screen, `--step-narrow` on a phone.
+function stepWidth(node, width) {
+  const percent = share => `${(share * 100).toFixed(2)}%`;
+  try { node.style.setProperty('--step', percent(width.wide)); node.style.setProperty('--step-narrow', percent(width.narrow)); } catch { /* no layout here */ }
+}
 // How many ever reached a rung, for a hover and a screen reader; Train's also says what the swarm threw away and tried.
 function reachedTitle(stage, checkpoint) {
   const reached = `${stage.ever.toLocaleString('en-US')} ${stage.ever === 1 ? 'family has' : 'families have'} ever reached ${stage.label}`;
@@ -1335,22 +1374,21 @@ function agentsPanel(checkpoint, state) {
     details.hidden = !row;
     if (focusId) buttons.get(focusId)?.focus?.({ preventScroll: true });
   };
-  // The rungs that trade real money are one group; the gold line under it is the board's only divider, and its words
-  // stand on that line beside the lowest of them.
+  // The steps that trade real money are one group; the gold line under it is the board's only divider, and its label
+  // stands on that line beside the lowest of them.
   const money = element('div', null, 'ladder-real');
   money.setAttribute('role', 'group');
   money.setAttribute('aria-label', 'Real money');
   const floor = element('div', null, 'ladder-floor');
-  const mark = element('span', 'Real money', 'ladder-real-mark');
-  mark.setAttribute('aria-hidden', 'true');
   board.append(money);
   const stages = agentStages(checkpoint);
   const lowestReal = stages.filter(stage => stage.real).at(-1);
   for (const stage of stages) {
-    // A rung nobody has reached yet is a hollow band; one the House could not count has no band at all.
-    const reach = stage.ever === null ? ' rung-uncounted' : stage.ever === 0 ? ' rung-unreached' : '';
-    const rung = element('section', null, `rung rung-${stage.level}${stage.real ? ' rung-real' : ''}${stage.agents.length ? '' : ' rung-vacant'}${reach}`);
-    if (stage.band !== null) place(rung, { width: `${(stage.band * 100).toFixed(1)}%` });
+    // A step nobody stands on and nobody is known to have reached is hollow: a dashed outline around its name. With no
+    // data at all that is every step, so the board keeps its shape.
+    const hollow = !stage.agents.length && !(stage.ever > 0);
+    const rung = element('section', null, `rung rung-${stage.level}${stage.real ? ' rung-real' : ''}${stage.agents.length ? '' : ' rung-vacant'}${hollow ? ' rung-hollow' : ''}`);
+    stepWidth(rung, stage.width);
     const heading = element('h3', stage.label, 'rung-name');
     heading.id = `rung-${stage.level}`;
     heading.setAttribute('title', LEVEL_TITLES[stage.key]);
@@ -1378,7 +1416,7 @@ function agentsPanel(checkpoint, state) {
       group.append(button);
     }
     rung.append(heading, group);
-    // The count the House published, as a small number at the band's end; a rung it could not count shows none.
+    // The count the House published, as a small number at the step's end; a step it did not count shows none.
     if (stage.ever !== null) {
       const reached = element('span', stage.ever.toLocaleString('en-US'), 'reached-count');
       const title = reachedTitle(stage, checkpoint);
@@ -1389,7 +1427,7 @@ function agentsPanel(checkpoint, state) {
     }
     (stage === lowestReal ? floor : stage.real ? money : board).append(rung);
   }
-  floor.append(mark);
+  floor.append(moneyMark());
   money.append(floor);
   state.selectAgent(state.selectedAgent);
   return [board, details];

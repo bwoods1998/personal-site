@@ -168,32 +168,38 @@ button.pos-who:hover { color: var(--accent); }
 .ledger-total { padding: 14px 0 0; font-size: 15px; color: var(--ink); }
 .ledger-total .ledger-sum { font-size: 16px; }
 
-/* 5. The swarm on the game's five rungs, as a funnel: each rung is a band as wide as the share of families that ever
-   reached it (the page sets the width), stacked from Train up to Sized. Gold is real money: the two rungs above the line. */
+/* 5. The swarm on the game's five steps, as a staircase: wide Train at the bottom, narrow Sized at the top. The page
+   sets each step's width (`--step`, and `--step-narrow` for a phone) and the stylesheet holds a least width under it
+   (`--least`), so three dots always fit a step. Hairlines and no fill: gold is the one line, and the outlines, numerals
+   and dots of real money. */
 .ladder, .ladder-real { display: flex; flex-direction: column; align-items: flex-start; }
-.ladder-real { position: relative; z-index: 1; width: 100%; border-bottom: 1px solid #6b5836; }
-.ladder-floor { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 14px; width: 100%; margin-top: -1px; }
-.ladder-floor .rung { flex: none; margin-bottom: -1px; }
-.ladder-floor .rung-uncounted { border-bottom-color: transparent; }
-.ladder-real + .rung { margin-top: -1px; }
-.ladder-real-mark { margin-left: auto; padding: 6px 0 5px; font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--accent); white-space: nowrap; }
-.rung { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; width: 100%; min-width: 232px; max-width: 100%; min-height: 54px; padding: 6px 14px; border: 1px solid var(--line); background: var(--surface); }
+/* The threshold: the brightest mark of the board. It is the bottom edge of Probe and the top edge of Practice. */
+.ladder-real { width: 100%; border-bottom: 2px solid var(--accent); }
+.ladder-floor { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 16px; width: 100%; margin-top: -1px; }
+.ladder-real + .rung { border-top: 0; }
+/* Its label sits on the line, just right of the two steps above it. */
+.ladder-real-mark { display: inline-flex; align-items: center; gap: 7px; padding-bottom: 5px; font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--accent); white-space: nowrap; cursor: help; }
+.ladder-real-caret { flex: none; width: 9px; height: 6px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.rung { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; width: var(--step, 100%); min-width: var(--least, 0px); max-width: 100%; min-height: 54px; padding: 6px 14px; border: 1px solid var(--line); }
 .rung + .rung { margin-top: -1px; }
+.rung-5 { --least: 282px; } .rung-4 { --least: 306px; } .rung-3 { --least: 330px; } .rung-2 { --least: 354px; }
 .rung-name { font-size: 14px; line-height: 1.5; color: var(--ink); white-space: nowrap; cursor: help; }
 .rung-vacant .rung-name { color: var(--muted); }
 .reached-count { grid-column: 3; font: 12px/1.4 var(--mono); color: var(--ink); white-space: nowrap; cursor: help; }
-.rung-real { border-color: #6b5836; background: rgba(212, 171, 114, .07); }
+.rung-real { border-color: #6b5836; }
 .rung-real .reached-count { color: var(--accent); }
-/* Nobody has reached it yet: a hollow band. The House could not count it: no band, only its line. */
-.rung-unreached { border-style: dashed; background: none; }
-.rung-unreached .reached-count { color: var(--faint); }
-.rung-uncounted { border-left-color: transparent; border-right-color: transparent; background: none; }
+/* Nobody stands on it and nobody is known to have reached it: a dashed outline. Its bottom edge is the step under it. */
+.rung-hollow { border-style: dashed; }
+.rung-hollow:not(:last-child) { border-bottom-color: transparent; }
+.rung-hollow .reached-count { color: var(--faint); }
+/* Probe stands on the line: its bottom edge is the line itself (and still closes it if the label ever wraps under it). */
+.ladder-floor .rung { flex: none; margin-bottom: -1px; border-bottom-color: var(--accent); }
 .agent-dots { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
 .agent-dot { position: relative; flex: 0 0 40px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
 .agent-progress-ring { position: absolute; inset: 4px; width: 32px; height: 32px; overflow: visible; fill: none; stroke-width: 1.7; pointer-events: none; transform: rotate(-90deg); }
 .agent-progress-track { stroke: var(--line); }
 .agent-progress-fill { stroke: var(--accent); stroke-linecap: round; }
-.agent-dot-core { display: block; width: 11px; height: 11px; border: 1.5px solid currentColor; border-radius: 50%; transition: transform .16s ease; pointer-events: none; }
+.agent-dot-core { position: relative; display: block; width: 11px; height: 11px; border: 1.5px solid currentColor; border-radius: 50%; transition: transform .16s ease; pointer-events: none; }
 .agent-activity { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 1.5px solid var(--tone-thought); border-radius: 50%; pointer-events: none; animation: agent-activity .85s ease-out both; }
 .activity-trade { border-color: var(--accent); }
 @keyframes agent-activity { from { transform: scale(.65); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
@@ -212,7 +218,9 @@ button.pos-who:hover { color: var(--accent); }
 .dot-speaking { color: var(--positive); }
 .dot-speaking .agent-dot-core { animation: pulse 2.4s ease-in-out infinite; }
 .agent-dot:hover .agent-dot-core, .agent-dot[aria-expanded="true"] .agent-dot-core { transform: scale(1.2); }
-.agent-dot[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface); }
+/* The open dot's halo hugs its ring, clear of the step's outline and of its name; so does the keyboard's focus ring. */
+.agent-dot[aria-expanded="true"]::before { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; width: 36px; height: 36px; margin: -18px 0 0 -18px; border: 1px solid var(--accent); border-radius: 50%; background: var(--surface); pointer-events: none; }
+.agent-dot:focus-visible { outline-offset: -2px; }
 .agent-detail { margin-top: 16px; }
 .agent-detail-card { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); }
 .agent-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
@@ -257,11 +265,12 @@ button.pos-who:hover { color: var(--accent); }
   .pos-why { font-size: 15px; }
   .pos-fold summary { grid-template-columns: minmax(0, 1fr) auto; }
   .fold-row { grid-template-columns: 96px minmax(0, 1fr) auto; gap: 8px; }
-  /* A rung is its name and its count on one line, its dots below. */
-  .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; min-width: 124px; min-height: 0; padding: 9px 10px; }
+  /* A step is its name and its count on one line, its dots below, their rings in line with the name. */
+  .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; min-height: 0; padding: 9px 10px; }
+  .rung-5 { --least: 144px; } .rung-4 { --least: 164px; } .rung-3 { --least: 184px; } .rung-2 { --least: 204px; }
   .rung-name { grid-column: 1; grid-row: 1; }
   .reached-count { grid-column: 2; grid-row: 1; }
-  .agent-dots { grid-column: 1 / -1; grid-row: 2; margin: 0 -6px -5px; }
+  .agent-dots { grid-column: 1 / -1; grid-row: 2; margin: 0 -8px -5px; }
   .rung-vacant .agent-dots { display: none; }
   .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
   .agent-progress-ring { inset: 6px; }
@@ -269,4 +278,7 @@ button.pos-who:hover { color: var(--accent); }
 }
 @media (max-width: 480px) {
   .progress-checks { grid-template-columns: 1fr; }
+  /* A phone's staircase: the lower steps stay wide for their dots; the label keeps to the line's right end. */
+  .rung { width: var(--step-narrow, 100%); }
+  .ladder-real-mark { margin-left: auto; }
 }
