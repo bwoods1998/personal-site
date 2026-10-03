@@ -168,25 +168,26 @@ button.pos-who:hover { color: var(--accent); }
 .ledger-total { padding: 14px 0 0; font-size: 15px; color: var(--ink); }
 .ledger-total .ledger-sum { font-size: 16px; }
 
-/* 5. The swarm on the game's six rungs. */
-.ladder-head, .rung { display: grid; grid-template-columns: 160px minmax(0, 1fr) 120px; gap: 0 16px; align-items: center; }
-.ladder-head { padding: 0 0 8px; font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
-.ladder-head span:last-child { text-align: right; }
-.rung { min-height: 62px; padding: 9px 0; border-top: 1px solid var(--line); }
-.rung:last-of-type { border-bottom: 1px solid var(--line); }
-.rung-name { display: flex; align-items: baseline; gap: 12px; cursor: help; }
-.rung-level { width: 14px; font: 11px/1.5 var(--mono); color: var(--faint); }
-.rung-label { font-size: 14px; line-height: 1.5; color: var(--ink); }
-.rung-real .rung-level { color: var(--accent); }
-.rung-vacant { min-height: 46px; }
-.rung-vacant .rung-label { color: var(--muted); }
-.rung-reached { display: grid; justify-items: end; gap: 5px; cursor: help; }
-.reached-count { font: 12px/1.4 var(--mono); color: var(--ink); }
-.rung-vacant .reached-count { color: var(--faint); }
-.reached-bar { display: flex; justify-content: flex-end; width: 100%; height: 2px; background: var(--line); }
-.reached-bar > span { display: block; height: 2px; background: var(--muted); }
-.rung-real .reached-bar > span { background: var(--accent); }
-.ladder-foot { margin: 12px 0 0; font: 11px/1.6 var(--mono); color: var(--faint); }
+/* 5. The swarm on the game's five rungs, as a funnel: each rung is a band as wide as the share of families that ever
+   reached it (the page sets the width), stacked from Train up to Sized. Gold is real money: the two rungs above the line. */
+.ladder, .ladder-real { display: flex; flex-direction: column; align-items: flex-start; }
+.ladder-real { position: relative; z-index: 1; width: 100%; border-bottom: 1px solid #6b5836; }
+.ladder-floor { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 14px; width: 100%; margin-top: -1px; }
+.ladder-floor .rung { flex: none; margin-bottom: -1px; }
+.ladder-floor .rung-uncounted { border-bottom-color: transparent; }
+.ladder-real + .rung { margin-top: -1px; }
+.ladder-real-mark { margin-left: auto; padding: 6px 0 5px; font: 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .6px; color: var(--accent); white-space: nowrap; }
+.rung { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; width: 100%; min-width: 232px; max-width: 100%; min-height: 54px; padding: 6px 14px; border: 1px solid var(--line); background: var(--surface); }
+.rung + .rung { margin-top: -1px; }
+.rung-name { font-size: 14px; line-height: 1.5; color: var(--ink); white-space: nowrap; cursor: help; }
+.rung-vacant .rung-name { color: var(--muted); }
+.reached-count { grid-column: 3; font: 12px/1.4 var(--mono); color: var(--ink); white-space: nowrap; cursor: help; }
+.rung-real { border-color: #6b5836; background: rgba(212, 171, 114, .07); }
+.rung-real .reached-count { color: var(--accent); }
+/* Nobody has reached it yet: a hollow band. The House could not count it: no band, only its line. */
+.rung-unreached { border-style: dashed; background: none; }
+.rung-unreached .reached-count { color: var(--faint); }
+.rung-uncounted { border-left-color: transparent; border-right-color: transparent; background: none; }
 .agent-dots { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
 .agent-dot { position: relative; flex: 0 0 40px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; color: var(--muted); }
 .agent-progress-ring { position: absolute; inset: 4px; width: 32px; height: 32px; overflow: visible; fill: none; stroke-width: 1.7; pointer-events: none; transform: rotate(-90deg); }
@@ -196,11 +197,11 @@ button.pos-who:hover { color: var(--accent); }
 .agent-activity { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 1.5px solid var(--tone-thought); border-radius: 50%; pointer-events: none; animation: agent-activity .85s ease-out both; }
 .activity-trade { border-color: var(--accent); }
 @keyframes agent-activity { from { transform: scale(.65); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
-/* Dotted gold is small real money; filled is a level earned; dashed is shadow. */
+/* Dotted gold is small real money; filled is a level earned; dashed is shadow (a validated agent that practises too). */
 .level-validation { color: var(--tone-thought); }
 .level-tuition, .level-incubator { color: var(--accent); }
 .level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; }
-.level-practice .agent-dot-core { border-style: dashed; }
+.level-practice .agent-dot-core, .dot-practising .agent-dot-core { border-style: dashed; }
 .level-candidate { color: var(--tone-thought); }
 .level-candidate .agent-dot-core { background: var(--tone-thought); }
 .level-probe, .level-sized { color: var(--accent); }
@@ -256,11 +257,11 @@ button.pos-who:hover { color: var(--accent); }
   .pos-why { font-size: 15px; }
   .pos-fold summary { grid-template-columns: minmax(0, 1fr) auto; }
   .fold-row { grid-template-columns: 96px minmax(0, 1fr) auto; gap: 8px; }
-  .ladder-head { display: none; }
-  .rung { grid-template-columns: minmax(0, 1fr) 96px; gap: 6px 12px; }
+  /* A rung is its name and its count on one line, its dots below. */
+  .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; min-width: 124px; min-height: 0; padding: 9px 10px; }
   .rung-name { grid-column: 1; grid-row: 1; }
-  .rung-reached { grid-column: 2; grid-row: 1; }
-  .agent-dots { grid-column: 1 / -1; grid-row: 2; }
+  .reached-count { grid-column: 2; grid-row: 1; }
+  .agent-dots { grid-column: 1 / -1; grid-row: 2; margin: 0 -6px -5px; }
   .rung-vacant .agent-dots { display: none; }
   .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
   .agent-progress-ring { inset: 6px; }

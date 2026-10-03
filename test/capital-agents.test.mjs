@@ -84,10 +84,11 @@ test('a rejected event batch rolls back its tentative name allocation', async ()
 test('every published agent gets a dot at the actual stage; training totals never imply a promotion', () => {
   const many = Array.from({ length: 100 }, (_, n) => agent(`family-${n}`));
   const stages = agentStages(swarmCheckpoint({ agents: many }));
-  assert.deepEqual(stages.map(stage => stage.agents.length), [0, 0, 0, 0, 0, 100]);
-  // An older House sends no levels: each rung comes from the band (a Gym agent with no money trains).
+  assert.deepEqual(stages.map(stage => stage.agents.length), [0, 0, 0, 0, 100]);
+  // An older House sends no levels: each rung comes from the band (a Gym agent with no money trains; a Candidate, a band
+  // that is no longer a rung of its own, stands on Practice).
   assert.deepEqual(agentStages(swarmCheckpoint()).map(stage => stage.agents.map(row => row.band)),
-    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate'], [], [], ['gym', 'gym', 'gym', 'gym', 'gym']]);
+    [['sized'], ['probe', 'probe'], ['candidate', 'candidate', 'candidate'], [], ['gym', 'gym', 'gym', 'gym', 'gym']]);
 });
 
 test('a live thought lands at the top of the stream; a birth joins the births above it; nothing shows twice', async () => {
