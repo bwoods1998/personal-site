@@ -649,11 +649,12 @@ export function tradeReasons(checkpoint) {
   }
   return reasons;
 }
-// The five rungs, top to bottom: one straight path (Train, Validation, Practice, Probe, Sized), and only the top two
-// trade real money. `levels` is every published level that can stand on a rung, in the order its dots are drawn;
-// `reached` is the House's funnel key for how many families ever reached it since the reset. The older rungs are no
-// longer places of their own: Candidate, Tuition and the Incubator stand on Practice and keep their own tag and look. A
-// retired agent that still holds money stands on its money's rung.
+// The five rungs, top to bottom: one straight path (Train, Validation, Practice, Probe, Sized), and only on the top two
+// (`real`) does an agent trade real money on its record. `levels` is every published level that can stand on a rung, in
+// the order its dots are drawn; `reached` is the House's funnel key for how many families ever reached it since the
+// reset. The older rungs are no longer places of their own: Candidate, Tuition and the Incubator stand on Practice and
+// keep their own tag and look (so a Tuition or Incubator dot there is still a small real-money test). A retired agent
+// that still holds money stands on its money's rung.
 export const AGENT_STAGES = [
   { level: 5, key: 'sized', label: 'Sized', levels: ['sized'], real: true, reached: 'sized' },
   { level: 4, key: 'probe', label: 'Probe', levels: ['probe'], real: true, reached: 'probe' },
@@ -662,9 +663,11 @@ export const AGENT_STAGES = [
   { level: 1, key: 'train', label: 'Train', levels: ['train'], reached: 'born' },
 ];
 const HOME_RUNG = { sized: 5, probe: 4, candidate: 3, tuition: 3, incubator: 3, practice: 3, validation: 2, train: 1 };
-// The rung number a level stands on; null for a retired agent's level. The House publishes a validated agent that
-// practises as `validation` (its `level_of` asks "validated" before "practising"): `practising` moves it up to Practice.
-export const rungOf = (level, practising = false) => (level === 'validation' && practising ? HOME_RUNG.practice : HOME_RUNG[level] ?? null);
+// The rung number a level stands on; null for a retired agent's level and for any other word (an inherited key such as
+// `constructor` is no level). The House publishes a validated agent that practises as `validation` (its `level_of` asks
+// "validated" before "practising"): `practising` moves it up to Practice.
+export const rungOf = (level, practising = false) => (level === 'validation' && practising ? HOME_RUNG.practice
+  : Object.hasOwn(HOME_RUNG, level) ? HOME_RUNG[level] : null);
 // The agents that practise, from the practice read the checkpoint already carries: a living agent's row with at least one
 // session. The row says it practised inside the read's window (the last 20 sessions), not that it practises this minute;
 // the House does not publish that for a validated agent.
@@ -676,9 +679,10 @@ export function practisingAgents(checkpoint) {
 // The staircase is the shape. Train, the base, is the whole width; each step above it is drawn between its own `floor`
 // and its `cap` by the share of families that ever reached it (a log scale: one family still shows against thousands
 // born), and always at least a `notch` narrower than the step under it. Every number is a share of the board's width,
-// for the four steps above the base, top to bottom. A step nobody has reached stands at its floor. A phone (`narrow`)
-// keeps the three lower steps wide, so seven dots fit one row of Practice on a 390 px screen, and narrows hard only at
-// the real-money line: three dots still fit the top step, and the line's label fits beside Probe down to 320 px.
+// for the four steps above the base, top to bottom. A step nobody has reached stands at its floor. The phone layout
+// (`narrow`: the stylesheet's 720 px and under, where a step's dots run under its name) keeps the three lower steps
+// wide, so seven dots fit one row of Practice on a 390 px screen, and narrows hard only at the real-money line: three
+// dots still fit the top step, and the line's label fits beside Probe at every width down to 320 px.
 export const STAIRS = {
   wide: { floor: [0.3, 0.36, 0.42, 0.48], cap: [1, 1, 1, 1], notch: 0.06 },
   narrow: { floor: [0.46, 0.56, 0.88, 0.93], cap: [0.59, 0.64, 0.9, 0.95], notch: 0.05 },
@@ -1276,8 +1280,9 @@ function positionsPanel(checkpoint, state) {
 }
 
 // 5. The swarm on the game's five steps, drawn as a staircase: wide Train at the bottom, narrow Sized at the top, each
-// step as wide as the share of families that ever reached it, with one gold line under the two steps that trade real
-// money. Each agent is a dot on the step it stands on, a ring filling as it meets the next step's checks.
+// step as wide as the share of families that ever reached it, with one gold line under the two steps where agents trade
+// real money on their record. Each agent is a dot on the step it stands on, a ring filling as it meets the checks of
+// the House's next gate.
 function progressRing(progress) {
   const ring = svgElement('svg', { viewBox: '0 0 36 36', class: 'agent-progress-ring', 'aria-hidden': 'true' });
   ring.append(svgElement('circle', { cx: 18, cy: 18, r: 14, class: 'agent-progress-track' }));
@@ -1327,8 +1332,13 @@ function agentDetail(row, checkpoint, state) {
   card.append(record, progressDetail(row.progress));
   return card;
 }
-// The one line across the board. What it means is for a hover, never on the page.
-export const MONEY_LINE = 'Only the steps above this line trade real money';
+// The one line across the board. What it means is for a hover, never on the page. Tuition and the Incubator stand under
+// it, on Practice, and each is still a real-money test of one small position: the hover says so, as their dotted gold
+// dots do. (A test, not "holds a position": a level says what the agent is on, not that a position is open this minute.)
+export const MONEY_LINE = 'Above this line agents trade real money, earned on their record. A dotted gold dot below it is a small real-money test.';
+// What each step means, on hover. Practice has the board's own words: the level's shared hover says "never real money",
+// which is true of an agent that practises and not of every dot that stands on this step.
+export const STEP_TITLES = { ...LEVEL_TITLES, practice: 'Shadow trades on live quotes. A dotted gold dot is a small real-money test.' };
 // The line's label: an up-caret (drawn, not a character) and its two words.
 function moneyMark() {
   const mark = element('span', null, 'ladder-real-mark');
@@ -1340,7 +1350,7 @@ function moneyMark() {
   mark.append(caret, element('span', 'Real money'));
   return mark;
 }
-// A step's width as the stylesheet reads it: `--step` on a wide screen, `--step-narrow` on a phone.
+// A step's width as the stylesheet reads it: `--step` on a wide screen, `--step-narrow` in the phone layout.
 function stepWidth(node, width) {
   const percent = share => `${(share * 100).toFixed(2)}%`;
   try { node.style.setProperty('--step', percent(width.wide)); node.style.setProperty('--step-narrow', percent(width.narrow)); } catch { /* no layout here */ }
@@ -1374,8 +1384,8 @@ function agentsPanel(checkpoint, state) {
     details.hidden = !row;
     if (focusId) buttons.get(focusId)?.focus?.({ preventScroll: true });
   };
-  // The steps that trade real money are one group; the gold line under it is the board's only divider, and its label
-  // stands on that line beside the lowest of them.
+  // The steps where agents trade real money on their record are one group; the gold line under it is the board's only
+  // divider, and its label stands on that line beside the lowest of them.
   const money = element('div', null, 'ladder-real');
   money.setAttribute('role', 'group');
   money.setAttribute('aria-label', 'Real money');
@@ -1391,7 +1401,7 @@ function agentsPanel(checkpoint, state) {
     stepWidth(rung, stage.width);
     const heading = element('h3', stage.label, 'rung-name');
     heading.id = `rung-${stage.level}`;
-    heading.setAttribute('title', LEVEL_TITLES[stage.key]);
+    heading.setAttribute('title', STEP_TITLES[stage.key]);
     rung.setAttribute('aria-labelledby', heading.id);
     const group = element('div', null, 'agent-dots');
     for (const row of stage.agents) {
@@ -1401,7 +1411,8 @@ function agentsPanel(checkpoint, state) {
       button.dataset.level = row.level;
       button.dataset.rung = String(stage.level);
       const progress = row.progress ? ` · ${row.progress.count} toward ${row.progress.label}` : '';
-      const label = `${row.name} · ${row.levelText}${row.practising ? ', practising' : ''}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
+      // "practised", not "practising": the read proves a session inside its window, not one this minute.
+      const label = `${row.name} · ${row.levelText}${row.practising ? ', practised' : ''}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
       button.setAttribute('aria-label', label);
       button.setAttribute('title', label);
       button.setAttribute('aria-controls', details.id);

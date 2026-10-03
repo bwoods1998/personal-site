@@ -1,14 +1,14 @@
 // The agents' reasons and the game's levels (Oct 1, 2026, kept in the five-section page of Oct 2): each position's reason
 // and the thesis behind it, the agents' openings on the balance chart, and the five steps drawn as a staircase (Oct 3):
-// wide Train at the bottom, narrow Sized at the top, one gold line under the two that trade real money. Pure helpers
-// first, then the page mounted on a published record.
+// wide Train at the bottom, narrow Sized at the top, one gold line under the two where agents trade real money on their
+// record. Pure helpers first, then the page mounted on a published record.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   plainTag, tickerCase, streamEntry, positionsLedger, tradeReasons, agentStages, rungOf, swarmRows, swarmLine, levelOf, chartMarks, accountSeries,
   settleAgents, startCapital, practisingAgents, stairWidths, LEVEL_WORDS, LEVEL_TITLES, ROUTE_TAGS, INCUBATOR_TITLE, PROGRESS_TARGETS, AGENT_STAGES,
-  STAIRS, REST_SHARES, MONEY_LINE,
+  STAIRS, REST_SHARES, MONEY_LINE, STEP_TITLES,
 } from '../capital/capital.js';
 import { LEVELS, LEVELS_BY_BAND, validCheckpoint } from '../capital/schema.js';
 import { floor, post, withBrowser, stubPage, FLOOR_IDS, words } from './harness.mjs';
@@ -83,7 +83,7 @@ const ids = checkpoint => agentStages(checkpoint).map(stage => stage.agents.map(
 
 test('the five rungs follow the House\'s levels, an older House\'s band, and a retired agent\'s open money; each says how many ever reached it', () => {
   assert.deepEqual(AGENT_STAGES.map(stage => `${stage.level} ${stage.label}`), ['5 Sized', '4 Probe', '3 Practice', '2 Validation', '1 Train']);
-  assert.deepEqual(AGENT_STAGES.filter(stage => stage.real).map(stage => stage.key), ['sized', 'probe'], 'only the top two rungs trade real money');
+  assert.deepEqual(AGENT_STAGES.filter(stage => stage.real).map(stage => stage.key), ['sized', 'probe'], 'only on the top two rungs does an agent trade real money on its record');
   assert.deepEqual(ids(windowed()), [['condor-vrp-3:sized'], ['orb-4:probe', 'putspread-dip-2:probe'],
     ['butterfly-pin:candidate', 'ironfly-quiet:candidate', 'trend-vertical:candidate', 'skew-revert:practice', 'googl-lags:tuition'], ['gap-drift:validation'],
     ['calendar-term:train', 'eod-drift:train', 'strangle-cheap:train']], 'the older rungs stand on Practice, the furthest along first');
@@ -149,6 +149,14 @@ test('every level the House can publish lands on one of the five rungs; Tuition,
   assert.deepEqual(agentStages(odd).map(stage => stage.agents.length), [0, 0, 0, 0, 0]);
   assert.equal(rungOf('mystery'), null);
   assert.equal(rungOf(undefined), null);
+  // Nor is a key every object inherits a level: each is null, and a row carrying one is drawn nowhere.
+  for (const word of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'prototype', '', null, 0, 5, {}, []]) {
+    assert.equal(rungOf(word), null, String(word));
+    assert.equal(rungOf(word, true), null, String(word));
+  }
+  const inherited = swarmCheckpoint({ agents: [agent('odd')], structures: [], levels: { as_of: PUBLISHED_AT, agents: [{ id: 'odd', level: 'constructor' }], funnel: funnel() } });
+  assert.deepEqual(swarmRows(inherited).map(row => row.rung), [null]);
+  assert.deepEqual(agentStages(inherited).map(stage => stage.agents.length), [0, 0, 0, 0, 0]);
 });
 
 test('a validated agent that practises stands on Practice: the practice read tells it from one that only passed', () => {
@@ -272,23 +280,80 @@ test('the staircase never bulges: a step counted above the one under it is drawn
   }
 });
 
-test('a phone gives the agents room: seven dots in a row of Practice and eight in Train at 390 px, three on the top step at 320 px, and the label beside Probe', async () => {
-  const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
-  const phone = css.slice(css.indexOf('@media (max-width: 720px)'));
-  const small = css.slice(css.indexOf('@media (max-width: 480px)'));
+// The stylesheet as rules, so a test pins what a rule declares and never how the file is laid out: comments dropped,
+// white space collapsed, each selector of a list on its own, each declaration under its property. `top` is the rules
+// outside any @media block; `media('(max-width: 720px)')` the rules inside that block (empty when there is none).
+function readSheet(css) {
+  const squeeze = text => text.trim().replace(/\s+/g, ' ');
+  const top = new Map();
+  const blocks = new Map();
+  const read = (text, rules) => {
+    let index = 0;
+    for (let open = text.indexOf('{', index); open !== -1; open = text.indexOf('{', index)) {
+      const prelude = squeeze(text.slice(index, open));
+      let close = open + 1;
+      for (let depth = 1; depth && close < text.length; close += 1) depth += text[close] === '{' ? 1 : text[close] === '}' ? -1 : 0;
+      const body = text.slice(open + 1, close - 1);
+      index = close;
+      if (prelude.startsWith('@media')) {
+        const query = squeeze(prelude.slice('@media'.length));
+        if (!blocks.has(query)) blocks.set(query, new Map());
+        read(body, blocks.get(query));
+      } else if (!prelude.startsWith('@')) {
+        const declarations = Object.fromEntries(body.split(';').map(squeeze).filter(Boolean)
+          .map(part => [squeeze(part.slice(0, part.indexOf(':'))), squeeze(part.slice(part.indexOf(':') + 1))]));
+        for (const selector of prelude.split(',').map(squeeze).filter(Boolean)) rules.set(selector, { ...rules.get(selector), ...declarations });
+      }
+    }
+  };
+  read(css.replace(/\/\*[\s\S]*?\*\//g, ' '), top);
+  const everywhere = [[null, top], ...blocks].flatMap(([query, rules]) => [...rules].map(([selector, declarations]) => ({ query, selector, declarations })));
+  return { top, media: query => blocks.get(query) || new Map(), queries: [...blocks.keys()], everywhere };
+}
+const ruleOf = (rules, selector) => rules.get(selector) || {};
+const px = value => { const match = /^(-?\d*\.?\d+)px$/.exec(String(value)); assert.ok(match, `a length in px: ${value}`); return Number(match[1]); };
+const PHONE = '(max-width: 720px)';
+const sheetOf = async () => readSheet(await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8'));
+
+test('the stylesheet reader pins declarations, not layout: a reformatted sheet reads the same', () => {
+  const tidy = readSheet('.a, .b { color: red; width: 1px; }\n@media (max-width: 720px) {\n  .a { width: 2px; }\n}\n@keyframes k { from { opacity: 0; } to { opacity: 1; } }\n.c { gap: 0 16px; }');
+  const loose = readSheet('/* a note { } */\n.a,\n.b {\n  width: 1px;\n  color:red\n}\n.c\n{ gap:  0   16px }\n@keyframes k { from { opacity: 0 } to { opacity: 1 } }\n@media  (max-width: 720px)  { .a{width:2px} }');
+  for (const sheet of [tidy, loose]) {
+    assert.deepEqual([...sheet.top], [['.a', { color: 'red', width: '1px' }], ['.b', { color: 'red', width: '1px' }], ['.c', { gap: '0 16px' }]]);
+    assert.deepEqual([...sheet.media(PHONE)], [['.a', { width: '2px' }]]);
+    assert.deepEqual(sheet.queries, [PHONE]);
+    assert.equal(sheet.everywhere.length, 4);
+  }
+  assert.deepEqual([...tidy.media('(max-width: 1px)')], []);
+});
+
+test('the phone layout gives the agents room: seven dots in a row of Practice and eight in Train at 390 px, three on the top step at 320 px, and the label beside Probe at every width', async () => {
+  const sheet = await sheetOf();
+  const phone = sheet.media(PHONE);
   // The numbers the arithmetic below stands on, read from the stylesheet itself.
-  assert.match(phone, /\.agent-dot \{ width: 44px; height: 44px; flex-basis: 44px; \}/, 'a dot is a 44 px target on a phone');
-  assert.match(phone, /\.rung \{[^}]*padding: 9px 10px; \}/);
-  assert.match(phone, /\.agent-dots \{[^}]*margin: 0 -8px -5px; \}/);
-  assert.match(css, /\.rung \{[^}]*width: var\(--step, 100%\); min-width: var\(--least, 0px\); max-width: 100%;[^}]*border: 1px solid var\(--line\); \}/);
-  assert.match(small, /\.rung \{ width: var\(--step-narrow, 100%\); \}/, 'under 480 px the phone\'s staircase');
-  const least = Object.fromEntries([...phone.matchAll(/\.rung-(\d)(?:, \.rung-\d)* \{ --least: (\d+)px; \}/g)].map(match => [match[1], Number(match[2])]));
+  const dot = ruleOf(phone, '.agent-dot');
+  assert.deepEqual([dot.width, dot.height, dot['flex-basis']], ['44px', '44px', '44px'], 'a dot is a 44 px target on a phone');
+  const DOT = px(dot.width);
+  const [, pad] = ruleOf(phone, '.rung').padding.split(' ').map(px);
+  const overhang = -px(ruleOf(phone, '.agent-dots').margin.split(' ')[1]);
+  const outline = px(ruleOf(sheet.top, '.rung').border.split(' ')[0]);
+  assert.deepEqual([pad, overhang, outline], [10, 8, 1]);
+  const step = ruleOf(sheet.top, '.rung');
+  assert.deepEqual([step.width, step['min-width'], step['max-width']], ['var(--step, 100%)', 'var(--least, 0px)', '100%']);
+  // The phone's staircase belongs to the phone's layout: the one block that puts a step's dots under its name also
+  // gives it its narrow width, so the two can never part at some width in between (they did, from 481 to 720 px).
+  assert.equal(ruleOf(phone, '.rung').width, 'var(--step-narrow, 100%)');
+  assert.ok(ruleOf(phone, '.rung')['grid-template-columns'], 'the same rule lays the step out');
+  assert.deepEqual(sheet.everywhere.filter(rule => rule.selector === '.rung' && rule.declarations.width).map(rule => rule.query), [null, PHONE]);
+  const least = Object.fromEntries([5, 4, 3, 2].map(level => [level, px(ruleOf(phone, `.rung-${level}`)['--least'])]));
   assert.deepEqual(least, { 5: 144, 4: 164, 3: 184, 2: 204 }, 'each step\'s least width on a phone, widening down the stairs');
   // A row of dots is the step less its two borders and paddings, plus the dots' overhang into the padding.
-  const DOT = 44;
-  const row = step => step - 2 - 2 * 10 + 2 * 8;
-  const board = screen => screen - 32;
-  const fits = step => Math.floor(row(step) / DOT);
+  const row = width => width - 2 * outline - 2 * pad + 2 * overhang;
+  const gutter = text => px(/calc\(100% - (\d+px)\)/.exec(text)[1]);
+  const phoneGutter = gutter(ruleOf(phone, '.page').width);
+  const board = screen => screen - phoneGutter;
+  assert.equal(phoneGutter, 32);
+  const fits = width => Math.floor(row(width) / DOT);
   const { floor, cap, notch } = STAIRS.narrow;
   assert.equal(fits(board(390)), 8, 'Train, the whole width');
   assert.ok(fits(floor[2] * board(390)) >= 7, 'Practice at its narrowest');
@@ -299,51 +364,84 @@ test('a phone gives the agents room: seven dots in a row of Practice and eight i
   // It still reads as a staircase: every notch is at least 14 px on a 390 px screen, and the big one is the money line.
   assert.ok(notch * board(390) >= 14);
   assert.ok(floor[2] - cap[1] >= 4 * notch, 'the phone narrows hard only at the real-money line');
-  // The label (a caret and ten letters of 10 px type) has room beside Probe at its widest, so it never wraps under it.
-  const LABEL = 9 + 7 + 10 * 6.6 + 16;
-  assert.ok(board(320) - cap[1] * board(320) >= LABEL && board(390) - cap[1] * board(390) >= LABEL);
-  assert.match(small, /\.ladder-real-mark \{ margin-left: auto; \}/, 'on a phone it keeps to the line\'s right end');
-  // A wide screen: three 40 px dots beside the name fit the narrowest step.
-  const wideLeast = Object.fromEntries([...css.slice(0, css.indexOf('@media')).matchAll(/\.rung-(\d) \{ --least: (\d+)px; \}/g)].map(match => [match[1], Number(match[2])]));
+  // The label is a caret, a gap and ten letters of mono type, and it needs the row's gap between itself and Probe.
+  const mark = ruleOf(sheet.top, '.ladder-real-mark');
+  const letter = px(/^(\d+px)\//.exec(mark.font)[1]) * 0.6 + px(mark['letter-spacing'].replace(/^\./, '0.'));
+  const LABEL = px(ruleOf(sheet.top, '.ladder-real-caret').width) + px(mark.gap) + 'Real money'.length * letter + px(ruleOf(sheet.top, '.ladder-floor').gap.split(' ').at(-1));
+  assert.ok(LABEL > 90 && LABEL < 110, `about 98 px (${LABEL})`);
+  // Beside Probe at its widest, at every width the phone layout is used, so it never wraps under Probe and Probe never
+  // leaves the line: Probe is as wide as the step's cap or its least width, whichever is more.
+  const probe = (screen, layout) => Math.max(least[4], layout * board(screen));
+  for (let screen = 320; screen <= 720; screen += 1) assert.ok(board(screen) - probe(screen, cap[1]) >= LABEL, `${screen} px`);
+  assert.equal(ruleOf(phone, '.ladder-real-mark')['margin-left'], 'auto', 'in the phone layout it keeps to the line\'s right end');
+  // A wide screen: Probe is at most three notches inside the base, and the board is never narrower than at 721 px.
+  const wideLeast = Object.fromEntries([5, 4, 3, 2].map(level => [level, px(ruleOf(sheet.top, `.rung-${level}`)['--least'])]));
   assert.deepEqual(wideLeast, { 5: 282, 4: 306, 3: 330, 2: 354 });
+  const widest = stairWidths([1, 1, 1, 1, 1], STAIRS.wide);
+  assert.deepEqual(widest, [0.76, 0.82, 0.88, 0.94, 1]);
+  const wideBoard = 721 - gutter(ruleOf(sheet.top, '.page').width);
+  assert.ok(wideBoard - Math.max(wideLeast[4], widest[1] * wideBoard) >= LABEL, 'the label has room beside the widest Probe');
+  // Three 40 px dots beside the name fit the narrowest step.
   assert.ok(wideLeast[5] - 2 - 2 * 14 - 92 - 2 * 12 - 16 >= 3 * 40, 'less its outline, padding, name, gaps and a two-figure count');
 });
 
-test('the stylesheet draws hairlines, not boxes: no fill on a step, gold only for the line and for real money, the halo clear of the outline', async () => {
-  const css = await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8');
-  const rules = css.split('\n').filter(line => /^\s*\.(rung|ladder)/.test(line));
-  assert.ok(rules.length >= 12);
-  assert.doesNotMatch(rules.join('\n'), /background/, 'no step and no part of the board is filled');
-  assert.doesNotMatch(rules.join('\n'), /animation|transition/, 'the board itself never moves: only its dots do');
+test('the stylesheet draws hairlines, not boxes: no fill on a step, gold only for the line and for real money, the halo and the keyboard\'s ring clear of the outline', async () => {
+  const sheet = await sheetOf();
+  const { top } = sheet;
+  const phone = sheet.media(PHONE);
+  const boardRules = sheet.everywhere.filter(rule => /^\.(rung|ladder)/.test(rule.selector));
+  assert.ok(boardRules.length >= 12);
+  for (const rule of boardRules) {
+    for (const property of Object.keys(rule.declarations)) {
+      assert.doesNotMatch(property, /^background/, `${rule.selector}: no step and no part of the board is filled`);
+      assert.doesNotMatch(property, /^(animation|transition)/, `${rule.selector}: the board itself never moves, only its dots do`);
+    }
+  }
   // The threshold is the one full-strength gold line, twice a hairline; the real-money steps wear the softer gold.
-  assert.match(css, /\.ladder-real \{ width: 100%; border-bottom: 2px solid var\(--accent\); \}/);
-  assert.match(css, /\.rung-real \{ border-color: #6b5836; \}/);
-  assert.match(css, /\.rung-real \.reached-count \{ color: var\(--accent\); \}/);
-  assert.match(css, /\.rung-hollow \{ border-style: dashed; \}/);
+  assert.deepEqual([ruleOf(top, '.ladder-real').width, ruleOf(top, '.ladder-real')['border-bottom']], ['100%', '2px solid var(--accent)']);
+  assert.equal(ruleOf(top, '.rung-real')['border-color'], '#6b5836');
+  assert.equal(ruleOf(top, '.rung-real .reached-count').color, 'var(--accent)');
+  assert.equal(ruleOf(top, '.rung-hollow')['border-style'], 'dashed');
   // Its label rides the same row as Probe, bottom-aligned on the line and a gap to Probe's right: on a wide screen it is
-  // never pushed to the far edge (a phone does that, in its own block).
-  assert.match(css, /\.ladder-floor \{ display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 16px; width: 100%; margin-top: -1px; \}/);
-  const markRule = css.split('\n').find(line => line.startsWith('.ladder-real-mark {'));
-  assert.match(markRule, /color: var\(--accent\);.*cursor: help; \}$/);
-  assert.doesNotMatch(markRule, /margin|position|float/);
-  assert.deepEqual(css.match(/\.ladder-real-mark \{ margin-left: auto; \}/g), ['.ladder-real-mark { margin-left: auto; }'], 'once, for the phone');
-  assert.ok(css.indexOf('.ladder-real-mark { margin-left: auto; }') > css.indexOf('@media (max-width: 480px)'));
+  // never pushed to the far edge (the phone layout does that, in its own block and nowhere else).
+  const line = ruleOf(top, '.ladder-floor');
+  assert.deepEqual([line.display, line['align-items'], line.gap, line.width, line['margin-top']], ['flex', 'flex-end', '0 16px', '100%', '-1px']);
+  const mark = ruleOf(top, '.ladder-real-mark');
+  assert.deepEqual([mark.color, mark.cursor, mark['white-space']], ['var(--accent)', 'help', 'nowrap']);
+  assert.deepEqual(Object.keys(mark).filter(property => /^(margin|position|float)/.test(property)), []);
+  assert.deepEqual(sheet.everywhere.filter(rule => rule.selector === '.ladder-real-mark' && rule.query !== null).map(rule => [rule.query, rule.declarations]),
+    [[PHONE, { 'margin-left': 'auto' }]], 'once, for the phone layout');
   // Probe's bottom edge is the line itself, so its box is closed by full gold.
-  assert.match(css, /\.ladder-floor \.rung \{ flex: none; margin-bottom: -1px; border-bottom-color: var\(--accent\); \}/);
-  assert.match(css, /\.ladder-real \+ \.rung \{ border-top: 0; \}/);
+  const probe = ruleOf(top, '.ladder-floor .rung');
+  assert.deepEqual([probe.flex, probe['margin-bottom'], probe['border-bottom-color']], ['none', '-1px', 'var(--accent)']);
+  assert.equal(ruleOf(top, '.ladder-real + .rung')['border-top'], '0');
   // The caret is drawn, never typed.
-  assert.match(css, /\.ladder-real-caret \{[^}]*fill: none; stroke: currentColor;/);
-  assert.doesNotMatch(css, /\.ladder-real-mark::before|content: '[\^▲△↑⌃]'/);
+  assert.deepEqual([ruleOf(top, '.ladder-real-caret').fill, ruleOf(top, '.ladder-real-caret').stroke], ['none', 'currentColor']);
+  for (const rule of sheet.everywhere) {
+    assert.doesNotMatch(rule.selector, /^\.ladder-real-mark::?(before|after)/);
+    if (/ladder|rung/.test(rule.selector)) assert.equal(rule.declarations.content, undefined, `${rule.selector}: nothing typed by the stylesheet`);
+  }
   // The open dot's halo is a 36 px circle inside its 40 or 44 px button, so it cannot reach a step's outline or its name.
-  assert.match(css, /\.agent-dot\[aria-expanded="true"\]::before \{[^}]*width: 36px; height: 36px;[^}]*border: 1px solid var\(--accent\); border-radius: 50%;/);
-  assert.doesNotMatch(css, /\.agent-dot\[aria-expanded="true"\] \{[^}]*box-shadow/);
-  assert.match(css, /\.agent-dot:focus-visible \{ outline-offset: -2px; \}/, 'the keyboard\'s ring stays, inside the button');
-  assert.match(css, /button:focus-visible, summary:focus-visible \{ outline: 2px solid var\(--accent\);/);
+  const halo = ruleOf(top, '.agent-dot[aria-expanded="true"]::before');
+  assert.deepEqual([halo.width, halo.height, halo.border, halo['border-radius'], halo['box-sizing']], ['36px', '36px', '1px solid var(--accent)', '50%', 'border-box']);
+  assert.equal(ruleOf(top, '.agent-dot[aria-expanded="true"]')['box-shadow'], undefined);
+  // The keyboard's ring stays, inside the button: a 40 px circle at every width, hugging the halo from outside and, in
+  // the phone layout (where a dot's box starts 2 px from the step's outline), 4 px clear of that outline.
+  const focus = ruleOf(top, 'button:focus-visible');
+  assert.equal(focus.outline, '2px solid var(--accent)');
+  const stroke = px(focus.outline.split(' ')[0]);
+  const ring = (rules, size) => size + 2 * (px(ruleOf(rules, '.agent-dot:focus-visible')['outline-offset']) + stroke);
+  const wideDot = px(ruleOf(top, '.agent-dot').width);
+  const phoneDot = px(ruleOf(phone, '.agent-dot').width);
+  assert.deepEqual([wideDot, phoneDot, ring(top, wideDot), ring(phone, phoneDot)], [40, 44, 40, 40]);
+  assert.ok(ring(phone, phoneDot) - 2 * stroke >= px(halo.width), 'never inside the halo');
+  const inset = px(ruleOf(phone, '.rung').padding.split(' ')[1]) + px(ruleOf(phone, '.agent-dots').margin.split(' ')[1]);
+  assert.ok(inset + (phoneDot - ring(phone, phoneDot)) / 2 >= 4, 'clear of the step\'s outline on a phone');
   // Reduced motion still stills every moving part of a dot.
-  const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'), css.indexOf('@media (max-width: 720px)'));
-  assert.match(reduced, /\.dot-speaking \.agent-dot-core/);
-  assert.match(reduced, /\.agent-dot-core \{ transition: none; \}/);
-  assert.match(reduced, /\.agent-activity \{ display: none; \}/);
+  const reduced = sheet.media('(prefers-reduced-motion: reduce)');
+  assert.equal(ruleOf(reduced, '.dot-speaking .agent-dot-core').animation, 'none');
+  assert.equal(ruleOf(reduced, '.agent-dot-core').transition, 'none');
+  assert.equal(ruleOf(reduced, '.agent-activity').display, 'none');
 });
 
 test('a dot glides when its rung changes (train to validation), once, and never under reduced motion', () => {
@@ -459,7 +557,9 @@ function assertMoneyMark(board) {
   const marks = board.withClass('ladder-real-mark');
   assert.deepEqual(marks.map(words), ['Real money'], 'two words, once, and the caret is not a character');
   const [mark] = marks;
-  assert.equal(MONEY_LINE, 'Only the steps above this line trade real money');
+  // The hover is true of every dot the board can draw: a Tuition or Incubator dot stands under the line on real money.
+  assert.equal(MONEY_LINE, 'Above this line agents trade real money, earned on their record. A dotted gold dot below it is a small real-money test.');
+  assert.doesNotMatch(MONEY_LINE, /\b(only|never)\b/i);
   assert.equal(mark.getAttribute('title'), MONEY_LINE);
   assert.equal(mark.getAttribute('aria-hidden'), 'true', 'the group already says it');
   assert.deepEqual(mark.children.map(child => child.tag), ['svg', 'span']);
@@ -484,7 +584,10 @@ test('mounted: the board is five steps and one real-money line, each dot in its 
     assert.equal(words(ladder), 'Sized 1 Probe 3 Real money Practice 3 Validation 9 Train 49');
     assert.deepEqual(board.withClass('rung-name').map(words), ['Sized', 'Probe', 'Practice', 'Validation', 'Train']);
     assert.deepEqual(board.withClass('rung-name').map(name => name.getAttribute('title')),
-      ['sized', 'probe', 'practice', 'validation', 'train'].map(key => LEVEL_TITLES[key]), 'what each step means stays a hover');
+      ['sized', 'probe', 'practice', 'validation', 'train'].map(key => STEP_TITLES[key]), 'what each step means stays a hover');
+    // Practice has the board's own hover (legacy real-money dots stand on it); the level's shared one is untouched.
+    assert.deepEqual(STEP_TITLES, { ...LEVEL_TITLES, practice: 'Shadow trades on live quotes. A dotted gold dot is a small real-money test.' });
+    assert.equal(LEVEL_TITLES.practice, 'Shadow trades on live quotes, never real money');
     assert.deepEqual(board.withClass('reached-count').map(words), ['1', '3', '3', '9', '49']);
     const counts = board.withClass('reached-count');
     assert.equal(counts[2].getAttribute('title'), '3 families have ever reached Practice');
@@ -541,7 +644,7 @@ test('mounted: a validated agent that practises is drawn on Practice, dashed, un
     assert.equal(board.withClass('dot-practising').length, 1);
     assert.deepEqual([dot.dataset.agent, dot.dataset.level, dot.dataset.rung], ['gap-drift', 'validation', '3']);
     assert.ok(String(dot.className).split(' ').includes('level-validation'), 'validated, in the validated tone');
-    assert.match(dot.getAttribute('aria-label'), /^[A-Za-z]+( \d+)? · Validation, practising · long call$/);
+    assert.match(dot.getAttribute('aria-label'), /^[A-Za-z]+( \d+)? · Validation, practised · long call$/, 'the read proves a session, not this minute');
     assert.equal(dot.getAttribute('title'), dot.getAttribute('aria-label'));
     assertAccessible(board);
     dot.click();
@@ -582,6 +685,14 @@ test('mounted: every level the House can publish has its dot on a step; legacy T
     const real = board.withClass('ladder-real')[0].withClass('agent-dot').map(dot => dot.dataset.level);
     assert.deepEqual([...new Set(real)].sort(), ['probe', 'sized']);
     for (const level of ['tuition', 'candidate', 'incubator']) assert.ok(board.withClass('rung-3')[0].withClass(`level-${level}`).length >= 1, level);
+    // Two of them are on real money under the line: no hover on the board denies it, and each dot's own tag says what it is.
+    const practiceHover = board.withClass('rung-3')[0].withClass('rung-name')[0].getAttribute('title');
+    assert.equal(practiceHover, STEP_TITLES.practice);
+    for (const hover of [practiceHover, board.withClass('ladder-real-mark')[0].getAttribute('title')]) {
+      assert.doesNotMatch(hover, /never real money|\bonly\b/i);
+      assert.match(hover, /dotted gold dot (below it )?is a small real-money test/);
+    }
+    assert.match(LEVEL_TITLES.tuition, /^One real contract/);
     assertAccessible(board);
     assertMoneyMark(board);
   });

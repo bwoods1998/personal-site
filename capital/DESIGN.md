@@ -40,24 +40,27 @@ labels, gold for real money. Explanations live in hover titles, never on the pag
    difference" line carries the rest; with nothing open, what the ledger cannot place joins "Fees & other". Positions
    the House stopped listing are one "older positions" line.
 5. **Swarm.** The game's five steps as a staircase, top to bottom: Sized, Probe, Practice, Validation, Train. One
-   gold line runs under Probe, labelled with an up-caret and "Real money": only the two steps above it trade real
-   money (the sentence itself is the label's hover). Train, the base, is the whole width; each step above it is as wide
-   as the share of families that ever reached it since the reset (the House's funnel on a log scale, above a floor;
-   Train counts births) and always a notch narrower than the step under it, whatever the counts say. That count is a
-   small number at the step's end; a step the House did not count shows none. A step nobody stands on and nobody has
-   reached is a dashed outline, and with no data at all the board is the same staircase of dashed steps and their
-   names. Each agent is a dot on the step the House's `levels` puts it on (an older House's band otherwise): Candidate,
-   Tuition and the Incubator stand on Practice under their own tag, so does a validated agent that practises, a retired
-   agent still holding money stands on its money's step, and the rest of the retired leave the board. A gold ring
-   around a dot fills as the agent meets its next step's checks (the House's `progress`; never odds, time or
-   attempts). A dot opens the agent: its thesis, record, the next step's checklist and what blocks it; Escape or ×
-   closes it. A fresh event ripples its dot once; a promotion glides the dot to its new step.
+   gold line runs under Probe, labelled with an up-caret and "Real money": on the two steps above it agents trade real
+   money earned on their record. A Tuition or Incubator dot (dotted gold) stands under the line, on Practice, and is
+   still a small real-money test; the label's hover and Practice's hover say both, the page itself neither. Train, the
+   base, is the whole width; each step above it is as wide as the share of families that ever reached it since the
+   reset (the House's funnel on a log scale, above a floor; Train counts births) and always a notch narrower than the
+   step under it, whatever the counts say. That count is a small number at the step's end; a step the House did not
+   count shows none. A step nobody stands on and nobody has reached is a dashed outline, and with no data at all the
+   board is the same staircase of dashed steps and their names. Each agent is a dot on the step the House's `levels`
+   puts it on (an older House's band otherwise): Candidate, Tuition and the Incubator stand on Practice under their own
+   tag, so does a validated agent with a living row in the practice read (it practised inside that read's window; its
+   hover says "practised"), a retired agent still holding money stands on its money's step, and the rest of the retired
+   leave the board. A gold ring around a dot fills as the agent meets the checks of the House's next gate (its
+   `progress`: Candidate for an agent in the Gym, then Probe, then Sized; never odds, time or attempts). A dot opens the
+   agent: its thesis, record, that checklist and what blocks it; Escape or × closes it. A fresh event ripples its dot
+   once; a promotion glides the dot to its new step.
 
 Not on the page, though the House still publishes them: Net, the costs by service, the practice league, the score
 archive's lines. Reduced motion turns off typing, playback and every animation. All text uses text nodes; all assets
-are self-hosted. On a phone each step is its name and count, then its dots, and the staircase narrows hard only at
-the line, so a row holds seven or eight dots; each position is one column with its P&L top right; the page never
-scrolls sideways.
+are self-hosted. At 720 px and under each step is its name and count, then its dots, and the staircase narrows hard
+only at the line, so a phone's row holds seven or eight dots and the line's label always has room beside Probe; each
+position is one column with its P&L top right; the page never scrolls sideways.
 
 ## Names and identity
 

@@ -169,9 +169,9 @@ button.pos-who:hover { color: var(--accent); }
 .ledger-total .ledger-sum { font-size: 16px; }
 
 /* 5. The swarm on the game's five steps, as a staircase: wide Train at the bottom, narrow Sized at the top. The page
-   sets each step's width (`--step`, and `--step-narrow` for a phone) and the stylesheet holds a least width under it
-   (`--least`), so three dots always fit a step. Hairlines and no fill: gold is the one line, and the outlines, numerals
-   and dots of real money. */
+   sets each step's width (`--step`, and `--step-narrow` for the phone layout) and the stylesheet holds a least width
+   under it (`--least`), so three dots always fit a step. Hairlines and no fill: gold is the one line, and the outlines,
+   numerals and dots of real money. */
 .ladder, .ladder-real { display: flex; flex-direction: column; align-items: flex-start; }
 /* The threshold: the brightest mark of the board. It is the bottom edge of Probe and the top edge of Practice. */
 .ladder-real { width: 100%; border-bottom: 2px solid var(--accent); }
@@ -203,7 +203,7 @@ button.pos-who:hover { color: var(--accent); }
 .agent-activity { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 1.5px solid var(--tone-thought); border-radius: 50%; pointer-events: none; animation: agent-activity .85s ease-out both; }
 .activity-trade { border-color: var(--accent); }
 @keyframes agent-activity { from { transform: scale(.65); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
-/* Dotted gold is small real money; filled is a level earned; dashed is shadow (a validated agent that practises too). */
+/* Dotted gold is small real money; filled is a level earned; dashed is shadow (a validated agent that practised too). */
 .level-validation { color: var(--tone-thought); }
 .level-tuition, .level-incubator { color: var(--accent); }
 .level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; }
@@ -265,20 +265,22 @@ button.pos-who:hover { color: var(--accent); }
   .pos-why { font-size: 15px; }
   .pos-fold summary { grid-template-columns: minmax(0, 1fr) auto; }
   .fold-row { grid-template-columns: 96px minmax(0, 1fr) auto; gap: 8px; }
-  /* A step is its name and its count on one line, its dots below, their rings in line with the name. */
-  .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; min-height: 0; padding: 9px 10px; }
+  /* A step is its name and its count on one line, its dots below, their rings in line with the name. This layout has
+     its own staircase: the lower steps stay wide for their dots and it narrows hard only at the line, so Probe is never
+     so wide that the line's label has no room beside it. The label keeps to the line's right end. */
+  .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: var(--step-narrow, 100%); min-height: 0; padding: 9px 10px; }
+  .ladder-real-mark { margin-left: auto; }
   .rung-5 { --least: 144px; } .rung-4 { --least: 164px; } .rung-3 { --least: 184px; } .rung-2 { --least: 204px; }
   .rung-name { grid-column: 1; grid-row: 1; }
   .reached-count { grid-column: 2; grid-row: 1; }
   .agent-dots { grid-column: 1 / -1; grid-row: 2; margin: 0 -8px -5px; }
   .rung-vacant .agent-dots { display: none; }
   .agent-dot { width: 44px; height: 44px; flex-basis: 44px; }
+  /* The keyboard's ring is the same 40 px circle as on a wide screen, clear of the step's outline 2 px from the dot. */
+  .agent-dot:focus-visible { outline-offset: -4px; }
   .agent-progress-ring { inset: 6px; }
   .agent-detail-card { padding: 14px; }
 }
 @media (max-width: 480px) {
   .progress-checks { grid-template-columns: 1fr; }
-  /* A phone's staircase: the lower steps stay wide for their dots; the label keeps to the line's right end. */
-  .rung { width: var(--step-narrow, 100%); }
-  .ladder-real-mark { margin-left: auto; }
 }
