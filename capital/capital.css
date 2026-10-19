@@ -1,6 +1,6 @@
-/* Long-Term Capital Management: AI agents trading options. Dark editorial, Courier New for every number and label, one
-   column, five sections: Profit and Running, the balance, the agents live, the positions, the swarm. No webfont, no
-   external request. */
+/* Long-Term Capital Management: AI agents reading company news and trading stocks. Dark editorial, Courier New for every
+   number and label, one column, five sections: Profit and Running, the balance, the agents live, the positions, the
+   agents' steps. No webfont, no external request. */
 :root {
   color-scheme: dark;
   --background: #171916;
@@ -53,7 +53,7 @@ section { min-width: 0; }
 .tag-practice, .tag-shadow { border-style: dashed; }
 .tag-band { color: var(--tone-thought); }
 .tag-retired { opacity: .7; }
-.tag-incubator, .tag-tuition { color: var(--accent); border-style: dotted; }
+.tag-incubator, .tag-tuition, .tag-learning { color: var(--accent); border-style: dotted; }
 
 /* 1. Profit and Running. */
 .navigation { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 22px 0 0; font: 11px/1.8 var(--mono); }
@@ -168,6 +168,9 @@ button.pos-who:hover { color: var(--accent); }
 .ledger-total { padding: 14px 0 0; font-size: 15px; color: var(--ink); }
 .ledger-total .ledger-sum { font-size: 16px; }
 
+/* The goal's checkpoint beside the Agents heading: a count of events, its meaning on hover. */
+.lane-checkpoint { font: 11px/1.6 var(--mono); color: var(--muted); text-transform: none; letter-spacing: .3px; cursor: help; }
+
 /* 5. The swarm on the game's five steps, as a staircase: wide Train at the bottom, narrow Sized at the top. The page
    sets each step's width (`--step`, and `--step-narrow` for the phone layout) and the stylesheet holds a least width
    under it (`--least`), so three dots always fit a step. Hairlines and no fill: gold is the one line, and the outlines,
@@ -205,9 +208,9 @@ button.pos-who:hover { color: var(--accent); }
 @keyframes agent-activity { from { transform: scale(.65); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
 /* Dotted gold is small real money; filled is a level earned; dashed is shadow (a validated agent that practised too). */
 .level-validation { color: var(--tone-thought); }
-.level-tuition, .level-incubator { color: var(--accent); }
-.level-tuition .agent-dot-core, .level-incubator .agent-dot-core { border-style: dotted; }
-.level-practice .agent-dot-core, .dot-practising .agent-dot-core { border-style: dashed; }
+.level-tuition, .level-incubator, .level-learning { color: var(--accent); }
+.level-tuition .agent-dot-core, .level-incubator .agent-dot-core, .level-learning .agent-dot-core { border-style: dotted; }
+.level-practice .agent-dot-core, .dot-practising .agent-dot-core, .level-shadow .agent-dot-core { border-style: dashed; }
 .level-candidate { color: var(--tone-thought); }
 .level-candidate .agent-dot-core { background: var(--tone-thought); }
 .level-probe, .level-sized { color: var(--accent); }

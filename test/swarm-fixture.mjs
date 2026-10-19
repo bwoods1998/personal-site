@@ -172,3 +172,34 @@ export const windowCheckpoint = (overrides = {}) => swarmCheckpoint({
   trading: { as_of: PUBLISHED_AT, pnl_usd: '213.40' }, agents: WINDOW_AGENTS, positions: ledger({ rows: WINDOW_POSITIONS }),
   levels: levelsBlock(), rationale: rationaleBlock(), ...overrides,
 });
+
+// The event lane's view (Oct 19, 2026): the House's `lane_v1` beside the window. One program promoted to Probe, three at
+// Learning, one retired and two that never seat; its lots, an older lane's agent's among them, adding up to 4.45; and the
+// goal's checkpoint at 3 events. With the window's book the page's Profit (the account's, 212.72) is the lines to the cent.
+export const program = (id, overrides = {}) => ({ id, name: 'Earnings read', band: 'learning', real: 0, shadow: 0, look: { need: 60, to_go: 60 },
+  ...overrides });
+export const PROGRAMS = [
+  program('ern-read-o1', { band: 'probe', real: 4, shadow: 63, look: { need: 90, to_go: 27 } }),
+  program('8k-read-o1', { name: '8-K read', real: 2, shadow: 22, look: { need: 60, to_go: 38 } }),
+  program('news-read-o1', { name: 'Morning news read', real: 1, shadow: 9, look: { need: 60, to_go: 51 } }),
+  program('ins-buy-o1', { name: 'Insider buy', shadow: 1, look: { need: 60, to_go: 59 } }),
+  program('news-react-on', { name: 'News reaction overnight', band: 'retired', real: 3, shadow: 61, look: null }),
+  program('ctrl-ern-all-o1', { name: 'All earnings', band: 'shadow', shadow: 31, look: null }),
+  program('ern-read-o3', { name: 'Earnings read, longer hold', band: 'shadow', shadow: 6, look: null }),
+];
+export const lot = (id, overrides = {}) => ({ id, source: 'program', owner: 'ern-read-o1', symbol: 'F', route: 'learning', shares: '9',
+  open_shares: '0', status: 'closed', opened_at: '2026-09-28T13:30:00.000Z', closed_at: '2026-09-28T14:00:00.000Z', pnl_usd: '1.17', ...overrides });
+export const LOTS = [
+  lot('lot:24', { owner: 'ins-buy-o1', symbol: 'PFE', shares: '6', open_shares: '6', status: 'open', opened_at: '2026-09-28T14:31:00.000Z',
+    closed_at: null, pnl_usd: '0.00' }),
+  lot('lot:22', { owner: 'news-read-o1', symbol: 'KO', shares: '3', pnl_usd: '-0.84' }),
+  lot('lot:21'),
+  lot('lot:3', { source: 'agent', owner: 'orb-4', symbol: 'SPY', route: 'probe', shares: '2.513421', opened_at: '2026-09-27T13:32:00.000Z',
+    closed_at: '2026-09-27T19:55:00.000Z', pnl_usd: '4.12' }),
+];
+export const lots = (overrides = {}) => ({ as_of: PUBLISHED_AT, rows: LOTS, earlier: null, pnl_usd: '4.45', ...overrides });
+export const laneBlock = (overrides = {}) => ({
+  as_of: PUBLISHED_AT, programs: PROGRAMS, funnel: { since: RESET_AT, shadow: 18, learning: 9, probe: 1, sized: 0, retired: 1 },
+  checkpoint: { events: 3, next: 100 }, verdict_usd: '2.87', lots: lots(), ...overrides,
+});
+export const laneCheckpoint = (overrides = {}) => windowCheckpoint({ lane_v1: laneBlock(), ...overrides });

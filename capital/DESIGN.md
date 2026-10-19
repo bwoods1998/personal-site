@@ -1,6 +1,6 @@
 # Capital: watch the agents think
 
-The single `/capital/` page shows AI agents reading company news and trading stocks (since Oct 19, 2026; options before). The runtime owns the money, models,
+The single `/capital/` page shows AI agents reading company news and trading stocks (since Oct 19, 2026; options before; the board and the positions follow the event lane since the same day). The runtime owns the money, models,
 training and orders; visiting this page starts none of those things.
 
 ## The page
@@ -38,8 +38,19 @@ labels, gold for real money. Explanations live in hover titles, never on the pag
    realized; open positions together are worth Profit less everything closed and the account's other activity, so one
    open position shows exactly that, and with several open each row shows the House's own value and a "Valuation
    difference" line carries the rest; with nothing open, what the ledger cannot place joins "Fees & other". Positions
-   the House stopped listing are one "older positions" line.
-5. **Swarm.** The game's five steps as a staircase, top to bottom: Sized, Probe, Practice, Validation, Train. One
+   the House stopped listing are one "older positions" line. Since Oct 19, 2026 the equity book's lots are positions
+   like any other, in the same groups and order: "F shares", the program's plain name (or an older lane's agent) with
+   the band it was bought at (Learning, Probe, Sized), its shares and dates; a lot's dollars are its trades, its fees
+   and dividends sit in "Fees & other", and the lines still add up to Profit to the cent.
+5. **Agents.** With the House's event-lane view (Oct 19, 2026), the lane's four steps as the same staircase, top to
+   bottom: Sized, Probe, Learning, Shadow. The one gold "Real money" line runs under Learning, since a program trades real
+   money from its first event; a program that never seats (a record or a control) stands on Shadow. Each program is a
+   dot (Learning dotted gold, Shadow dashed, Probe and Sized filled gold) whose ring fills with its settled events toward
+   its next look; a dot opens its plain name, its step, what it has settled ("real 2 events · shadow 22 events") and its
+   next look; a retired program leaves the board. Each step's count is how many programs ever stood on it. Beside the
+   heading, the goal's checkpoint counts events, not closes ("0 / 100 events": settled real-money events at Probe size or
+   above, read every 100), its meaning on hover. Without the view (an older House) the board is the older one below.
+   The older board: the game's five steps as a staircase, top to bottom: Sized, Probe, Practice, Validation, Train. One
    gold line runs under Probe, labelled with an up-caret and "Real money": on the two steps above it agents trade real
    money earned on their record. A Tuition or Incubator dot (dotted gold) stands under the line, on Practice, and is
    still a small real-money test; the label's hover and Practice's hover say both, the page itself neither. Train, the
@@ -123,6 +134,17 @@ like `agent`), and a real structure may carry `route: "incubator"`. The page ask
 House's `levels` and `rationale` (Oct 1, 2026). Every older read gets the shapes it validates:
 no practice block, Claude folded back into `other_usd`, an incubator row as an agent's and a structure without
 its route, so pages already open keep working and either repository may deploy first.
+
+The event lane's view (Oct 19, 2026) is ONE VERSIONED KEY, `lane_v1` (`validLane`): `{as_of, programs, funnel,
+checkpoint, verdict_usd, lots}`. A program is exactly `{id, name, band, real, shadow, look}` (a plain name from the
+House's fixed table; a band of shadow, learning, probe, sized or retired; settled events with real money and in shadow;
+its next look `{need, to_go}` or null; a shadow program holds no real money and has no look). The funnel counts programs
+ever on each step, each chain narrowing. The checkpoint is `{events, next}`, `next` the next multiple of 100. A lot is
+exactly `{id, source, owner, symbol, route, shares, open_shares, status, opened_at, closed_at, pnl_usd}` (whose: an event
+program the view lists or an older lane's agent; never a price), and the lots and their `earlier` line add up to
+`lots.pnl_usd` exactly. Every block before it is unchanged; the Worker serves it only to `?...&window=1&lane=1` (the
+page's read), every older read byte for byte what it was, and a later shape is a new key (`lane_v2`). `verdict_usd` is
+inside `compute.claude_usd` too. With the view, the House's own total that stands in for Profit holds the lots too.
 
 The `trading` block is optional for schema-2 compatibility. Its signed dollar string can be null when the complete
 real book cannot be priced (the market is closed): the headline then reads the account, as above.

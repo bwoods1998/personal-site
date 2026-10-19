@@ -110,7 +110,7 @@ test('the five rungs follow the House\'s levels, an older House\'s band, and a r
   assert.equal(swarmLine(swarmCheckpoint({ gym: null })), '');
   assert.deepEqual(Object.values(PROGRESS_TARGETS).slice(0, 3), ['Candidate', 'Probe', 'Sized'], 'the dot detail reads "Next · Candidate"');
   assert.equal(LEVEL_TITLES.incubator, INCUBATOR_TITLE);
-  assert.deepEqual(Object.keys(ROUTE_TAGS), ['tuition', 'incubator', 'probe', 'sized']);
+  assert.deepEqual(Object.keys(ROUTE_TAGS), ['tuition', 'incubator', 'learning', 'probe', 'sized'], 'Learning: the event lane\'s first real-money step');
   assert.equal(LEVEL_WORDS.validation, 'Validation');
 });
 
