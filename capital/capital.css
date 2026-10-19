@@ -171,7 +171,8 @@ button.pos-who:hover { color: var(--accent); }
 /* The goal's checkpoint beside the Agents heading: a count of events, its meaning on hover. */
 .lane-checkpoint { font: 11px/1.6 var(--mono); color: var(--muted); text-transform: none; letter-spacing: .3px; cursor: help; }
 
-/* 5. The swarm on the game's five steps, as a staircase: wide Train at the bottom, narrow Sized at the top. The page
+/* 5. The agents' steps as a staircase: the event lane's four (Shadow at the bottom, Sized at the top; the board's class
+   `ladder-lane`) or, without the lane's view, the swarm's five (wide Train at the bottom, narrow Sized at the top). The page
    sets each step's width (`--step`, and `--step-narrow` for the phone layout) and the stylesheet holds a least width
    under it (`--least`), so three dots always fit a step. Hairlines and no fill: gold is the one line, and the outlines,
    numerals and dots of real money. */
