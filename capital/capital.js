@@ -1397,7 +1397,7 @@ function positionsPanel(checkpoint, state) {
   if (!nodes.length) nodes.push(element('p', 'No real positions yet.', 'empty-state'));
   state.lastPnl = new Map([...ledger.open, ...ledger.closed].map(line => [line.id, line.usd]));
   const other = element('div', null, 'ledger-line');
-  other.setAttribute('title', 'Fees no position carries, and interest.');
+  other.setAttribute('title', 'Fees no position carries, dividends and interest.');
   other.append(element('span', 'Fees & other'), element('span', ledger.other.pnl, `ledger-sum ${ledger.other.tone}`.trim()));
   const total = element('div', null, 'ledger-total');
   total.append(element('span', 'Profit'), element('span', ledger.total.pnl, `ledger-sum ${ledger.total.tone}`.trim()));
