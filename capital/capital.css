@@ -274,6 +274,9 @@ button.pos-who:hover { color: var(--accent); }
   .rung { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: var(--step-narrow, 100%); min-height: 0; padding: 9px 10px; }
   .ladder-real-mark { margin-left: auto; }
   .rung-5 { --least: 144px; } .rung-4 { --least: 164px; } .rung-3 { --least: 184px; } .rung-2 { --least: 204px; }
+  /* The event lane's board (Sized, Probe, Learning on the line): three dots on its top step, and the line's label beside
+     Learning at every phone width. */
+  .ladder-lane .rung-4 { --least: 144px; } .ladder-lane .rung-3 { --least: 154px; } .ladder-lane .rung-2 { --least: 164px; }
   .rung-name { grid-column: 1; grid-row: 1; }
   .reached-count { grid-column: 2; grid-row: 1; }
   .agent-dots { grid-column: 1 / -1; grid-row: 2; margin: 0 -8px -5px; }

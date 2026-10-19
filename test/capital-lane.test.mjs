@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LANE_KEY, LANE_BANDS, MAX_LOTS, MAX_PROGRAMS, OPTIONAL_CHECKPOINT_FIELDS, validCheckpoint, validLane } from '../capital/schema.js';
 import {
-  CHECKPOINT_READ, LANE_MONEY_LINE, LANE_STAGES, AGENT_STAGES, CHECKPOINT_TITLE, chartMarks, laneCheckpoint as checkpointCopy, laneOf, laneRows,
+  CHECKPOINT_READ, LANE_MONEY_LINE, LANE_STAGES, LANE_STAIRS, AGENT_STAGES, CHECKPOINT_TITLE, chartMarks, laneCheckpoint as checkpointCopy, laneOf, laneRows,
   laneStages, positionsLedger, profitNow, sharesText, startCapital, tradingProfit, accountSeries,
 } from '../capital/capital.js';
 import { CURRENT_READ, LANE_READ, POSITIONS_READ, WINDOW_READ } from '../lib/capital.mjs';
@@ -237,4 +237,25 @@ test('mounted without the lane: the page is what it was', async () => {
     assert.equal(root.querySelector('#floor-checkpoint').hidden, true, 'no checkpoint copy');
     assert.equal(root.querySelector('#floor-positions').withClass('pos').some(row => String(row.dataset.position).startsWith('lot:')), false);
   });
+});
+
+// ---------------------------------------------------------------------------- the phone
+test('the lane\'s board on a phone: three dots on its top step at 320 px, five a row on Learning at 390, the label beside Learning at every width', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = (await readFile(new URL('../capital/capital.css', import.meta.url), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const phone = css.slice(css.indexOf('@media (max-width: 720px)'));
+  const least = level => Number(new RegExp(`\\.ladder-lane \\.rung-${level} \\{ --least: (\\d+)px; \\}`).exec(phone)[1]);
+  assert.deepEqual([least(4), least(3), least(2)], [144, 154, 164], 'widening down the stairs');
+  // As the older board's test reads them: 44 px dots, 10 px padding, an 8 px overhang, a 1 px outline, a 32 px gutter, and the
+  // label (caret, gap, ten letters of 10 px mono at .6 px spacing, the row's 16 px gap) about 98 px.
+  const row = width => width - 2 - 20 + 16;
+  const fits = width => Math.floor(row(width) / 44);
+  const board = screen => screen - 32;
+  const LABEL = 9 + 7 + 10 * (10 * 0.6 + 0.6) + 16;
+  const { floor, cap } = LANE_STAIRS.narrow;
+  const at = (screen, index, layout) => Math.max([least(4), least(3), least(2)][index], layout[index] * board(screen));
+  assert.ok(fits(at(320, 0, floor)) >= 3 && fits(at(320, 1, floor)) >= 3, 'three programs never wrap on the top steps, down to 320 px');
+  assert.ok(fits(floor[2] * board(390)) >= 5, 'Learning at its narrowest holds five a row at 390 px');
+  for (let screen = 320; screen <= 720; screen += 1) assert.ok(board(screen) - at(screen, 2, cap) >= LABEL, `${screen} px`);
+  assert.ok(floor[2] >= cap[1] + 0.04 && 1 - cap[2] >= 0.3, 'it narrows hard only at the line');
 });

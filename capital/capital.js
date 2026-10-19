@@ -788,10 +788,11 @@ export const LANE_STAGES = [
   { level: 1, key: 'shadow', label: 'Shadow', levels: ['shadow'], reached: 'shadow' },
 ];
 const LANE_RUNG = { sized: 4, probe: 3, learning: 2, shadow: 1 };
-// Three steps above the base. The phone layout keeps Learning wide for its dots and the line's label beside it.
+// Three steps above the base. The phone layout keeps Learning wide enough for five dots a row at 390 px and narrow enough
+// that the line's label stays beside it at every phone width down to 320 px; it narrows hard only at the line.
 export const LANE_STAIRS = {
   wide: { floor: [0.3, 0.38, 0.46], cap: [1, 1, 1], notch: 0.06 },
-  narrow: { floor: [0.46, 0.53, 0.64], cap: [0.56, 0.62, 0.7], notch: 0.05 },
+  narrow: { floor: [0.42, 0.5, 0.635], cap: [0.52, 0.58, 0.65], notch: 0.05 },
 };
 export const LANE_REST_SHARES = [0.09, 0.25, 0.45];
 // What each step means, on hover; and the line's.
@@ -1497,10 +1498,10 @@ function reachedTitle(stage, checkpoint, lane = false) {
   return line ? `${reached} · ${line}` : reached;
 }
 function agentsPanel(checkpoint, state) {
-  const board = element('div', null, 'ladder');
-  // Every agent that stands on a rung: the retired are off the board.
   // The event lane's programs on its four steps when the House sends its view; the older swarm's board otherwise.
   const lane = Boolean(laneOf(checkpoint));
+  const board = element('div', null, lane ? 'ladder ladder-lane' : 'ladder');
+  // Every agent that stands on a rung: the retired are off the board.
   const rows = (lane ? laneRows(checkpoint) : swarmRows(checkpoint)).filter(row => row.rung !== null);
   const details = element('div', null, 'agent-detail');
   details.id = 'agent-detail';
