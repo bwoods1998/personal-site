@@ -8,7 +8,7 @@ Update: `npm run deploy` from this directory.
 
 ## Long Term Capital Management publication
 
-Public page: https://blakewoods.us/capital/ (AI agents trading options; schema 2 since September 26, 2026). `/capital/desk/*` and `/capital/committee/*` redirect to it.
+Public page: https://blakewoods.us/capital/ (AI agents reading company news and trading stocks since Oct 19, 2026; options before; schema 2 since September 26, 2026). `/capital/desk/*` and `/capital/committee/*` redirect to it.
 
 The record lives in its own SQLite Durable Object: binding `CAPITAL`, class `Capital`, migration tag `v3`, singleton object `capital-v1` (test tapes: `capital-tape-test`, `capital-tape-canary`). Keep all four intact on every later deployment or the tape, the checkpoint and the roster are orphaned. The existing `EXCHANGE` (`v1`) and retired `PORTFOLIO_STATE` (`v2`) objects are untouched by this project.
 

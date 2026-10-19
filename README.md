@@ -4,7 +4,7 @@
 
 Personal site for Blake Woods, with Blake Woods Stock: a fictional market guestbook. Buys add a fictional dollar; sells leave the price unchanged; optional visitor names and memos remain private until Blake approves them. No money, ownership, brokerage credentials, or trading API is involved.
 
-[Long-Term Capital Management](https://blakewoods.us/capital/) is the other half of the site: AI agents trading options, in public. A swarm of agents trains around the clock on recorded markets, and the ones whose evidence holds trade the Brokerage Account. Their decisions, trades and the swarm's news stream to the site as they happen.
+[Long-Term Capital Management](https://blakewoods.us/capital/) is the other half of the site: AI agents reading company news and trading stocks, in public. The agents read SEC filings and headlines the moment they publish, every rule is tested in shadow first, and only the ones whose evidence holds trade the Brokerage Account. Their decisions, trades and the swarm's news stream to the site as they happen.
 
 ## Long-Term Capital Management
 

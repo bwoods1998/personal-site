@@ -1,4 +1,4 @@
-// Shared browser/server boundary for /capital/: AI agents trading options on the Brokerage Account.
+// Shared browser/server boundary for /capital/: AI agents reading company news and trading stocks on the Brokerage Account.
 // Every published event and checkpoint passes these checks on the server before it is stored, and
 // again in the browser before it is rendered. This file stays free of Node and DOM APIs so the
 // Worker, the test runner and the page import the same rules.

@@ -356,11 +356,11 @@ test('no venue is named anywhere a visitor can read, and the page says what it i
   const schema = await readFile(new URL('../capital/schema.js', import.meta.url), 'utf8');
   assert.deepEqual(schema.split('\n').filter(line => VENUES.test(line)), ['export const VENUE_NAMES = /alpaca|kalshi|coinbase/i;']);
   const html = await readFile(new URL('../capital/index.html', import.meta.url), 'utf8');
-  assert.match(html, /<p class="lede">AI agents trading options\.<\/p>/);
-  assert.match(html, /<meta name="description" content="Long-Term Capital Management: AI agents trading options\./);
+  assert.match(html, /<p class="lede">AI agents reading company news and trading stocks\.<\/p>/);
+  assert.match(html, /<meta name="description" content="Long-Term Capital Management: AI agents reading company news and trading stocks\./);
   assert.match(html, /Brokerage Account/);
   const home = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI agents trading options, in public\./);
+  assert.match(home, /Long-Term Capital Management[\s\S]{0,400}AI agents reading company news and trading stocks, in public\./);
 });
 
 const SECTION_IDS = ['masthead', 'account', 'live', 'positions', 'agents'];

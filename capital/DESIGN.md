@@ -1,6 +1,6 @@
 # Capital: watch the agents think
 
-The single `/capital/` page shows AI agents trading options. The runtime owns the money, models,
+The single `/capital/` page shows AI agents reading company news and trading stocks (since Oct 19, 2026; options before). The runtime owns the money, models,
 training and orders; visiting this page starts none of those things.
 
 ## The page
