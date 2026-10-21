@@ -16,7 +16,7 @@ const at = Date.parse(PUBLISHED_AT);
 const READ = '/api/capital/checkpoint?progress=1&positions=1';
 // The page's own read since Oct 1, 2026: the ledger and the practice league, Claude's cost, the incubator route, and the
 // House's `levels` and `rationale`.
-const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1&window=1';
+const PAGE_READ = '/api/capital/checkpoint?progress=1&positions=1&practice=1&window=1&lane=1';
 const withRows = (rows, extra = {}) => ledgerCheckpoint({ positions: ledger({ rows, ...extra }) });
 const patchRow = (index, patch) => withRows(POSITIONS.map((row, n) => (n === index ? { ...row, ...patch } : row)));
 const cents = value => { const [whole, fraction = ''] = value.replace('-', '').split('.'); const size = BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2)); return value.startsWith('-') ? -size : size; };

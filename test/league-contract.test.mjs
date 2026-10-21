@@ -10,8 +10,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validCheckpoint, validEventBatch, validEvent, validFunnel, EVENT_KINDS, BANDS, SCHEMA_VERSION, FUNNEL_CHAINS, quoteFree, numbered, plainGlyphs, thesisWords } from '../capital/schema.js';
 import { PERFORMANCE_START_AT, CHECKPOINT_READ, headline, profitNow, totalProfit, swarmRows, streamEntries, positionsLedger, startCapital,
-  agentStages } from '../capital/capital.js';
-import { WINDOW_READ } from '../lib/capital.mjs';
+  agentStages, laneStages, laneCheckpoint } from '../capital/capital.js';
+import { LANE_KEY, validLane } from '../capital/schema.js';
+import { LANE_READ } from '../lib/capital.mjs';
 import { floor, post, get, words, FLOOR_IDS, stubPage, withBrowser } from './harness.mjs';
 import { LEAKS, PLAIN, randomSentences } from './number-words.mjs';
 
@@ -140,7 +141,7 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     if (board.practice) original.practice = { ...board.practice, rows: board.practice.rows.map(unnamed) };
     // The page's read is the Worker's window read (Oct 1, 2026): every block, the swarm window's `levels` and `rationale`
     // included, comes back exactly as the publisher sent it.
-    assert.equal(CHECKPOINT_READ, WINDOW_READ);
+    assert.equal(CHECKPOINT_READ, LANE_READ);
     assert.deepEqual(original, checkpoint);
     assert.equal(validCheckpoint(board, { publicRead: true }), true);
     const events = (await (await get(capital, '/api/capital/events?limit=200')).json()).events;
@@ -174,3 +175,48 @@ for (const [label, read, skipped] of [['', load, skip], [' (with the positions l
     });
   });
 }
+
+// The event lane (Oct 19, 2026): the publisher's checkpoint with its view under `lane_v1` (the House's own reader over a
+// lane store and an equity book it builds, league/tests/test_site_lane.py `lane_checkpoint`), published and drawn here.
+const laneFile = `${FIXTURES.replace(/\/?$/, '/')}site_checkpoint_lane.json`;
+const laneSkip = skip || (!existsSync(laneFile) && `the runtime's fixtures at ${FIXTURES} predate the event lane`);
+const loadLane = () => [JSON.parse(readFileSync(laneFile, 'utf8')), load()[1]];
+test('the publisher’s event-lane fixture passes the site’s own validators and carries no quote, price or program', { skip: laneSkip }, () => {
+  const [checkpoint] = loadLane();
+  assert.equal(validCheckpoint(checkpoint), true);
+  assert.equal(validLane(checkpoint[LANE_KEY], checkpoint.published_at), true);
+  for (const key of keysOf(checkpoint)) assert.doesNotMatch(key, FORBIDDEN_KEYS, key);
+  // Every string is a time, an amount, an id or quote-free words.
+  for (const text of stringsOf(checkpoint[LANE_KEY])) assert.ok(quoteFree(text) || /^\d{4}-\d\d-\d\d(?:T[\d:.]+Z)?$|^-?\d+(?:\.\d+)?$/.test(text), text);
+  const { [LANE_KEY]: _lane, ...older } = checkpoint;
+  assert.equal(validCheckpoint(older), true, 'the same checkpoint without the view: what an older site gets');
+});
+test('published to a record and read back, the lane fixture fills the board, the positions and the checkpoint', { skip: laneSkip }, async () => {
+  const [checkpoint, batch] = loadLane();
+  const capital = await publishedRecord(checkpoint, batch);
+  const board = await (await get(capital, `/api/capital/checkpoint${CHECKPOINT_READ}`)).json();
+  assert.deepEqual(board[LANE_KEY], checkpoint[LANE_KEY], 'exactly as the publisher sent it');
+  const at = Date.parse(board.published_at);
+  const ledger = positionsLedger(board, at);
+  const lots = checkpoint[LANE_KEY].lots.rows;
+  assert.equal(ledger.open.length + ledger.closed.length + (ledger.calibration?.count ?? 0), checkpoint.positions.rows.length + lots.length);
+  assert.equal(ledger.total.pnl, headline(board, at).profit.value, 'every line, the lots among them, adds up to Profit');
+  const stages = laneStages(board, at);
+  assert.deepEqual(stages.map(stage => stage.label), ['Sized', 'Probe', 'Learning', 'Shadow']);
+  assert.equal(stages.reduce((sum, stage) => sum + stage.agents.length, 0), checkpoint[LANE_KEY].programs.filter(row => row.band !== 'retired').length);
+  assert.equal(laneCheckpoint(board).text, `${checkpoint[LANE_KEY].checkpoint.events} / ${checkpoint[LANE_KEY].checkpoint.next} events`);
+  const root = stubPage('floor', [...PAGE_IDS, 'floor-checkpoint']);
+  await withBrowser('', path => capital.fetch(new Request('https://blakewoods.us' + path)), async () => {
+    const saved = Date.now;
+    Date.now = () => at + 30000;
+    try {
+      const feed = await startCapital(root);
+      feed.stop();
+    } finally { Date.now = saved; }
+    assert.deepEqual(root.querySelector('#floor-agents').withClass('rung-name').map(words), ['Sized', 'Probe', 'Learning', 'Shadow']);
+    const shown = root.querySelector('#floor-positions').withClass('pos').map(row => row.dataset.position).filter(id => String(id).startsWith('lot:'));
+    assert.deepEqual(shown.sort(), lots.map(row => row.id).sort());
+    assert.match(words(root.querySelector('#floor-checkpoint')), /^\d[\d,]* \/ \d[\d,]* events$/);
+    assert.doesNotMatch(root.textContent, /kalshi|alpaca|coinbase/i);
+  });
+});

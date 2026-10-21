@@ -1,9 +1,10 @@
 import {
-  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, OTHER_PARTS, AGENT_SOURCES, agentId, validCheckpoint, validPublicEvent,
+  MAX_EVENT_LIMIT, SCHEMA_VERSION, REAL_BANDS, OTHER_PARTS, AGENT_SOURCES, LANE_KEY, agentId, validCheckpoint, validPublicEvent,
   validDisplayName, validProgress, socketMatches, tapeName, numbered, plainGlyphs, MAX_PUBLIC_CHECKPOINT_BYTES,
 } from './schema.js';
 
-// AI agents trading options on the Brokerage Account, drawn from the House's own record with text nodes only. The page
+// AI agents reading company news and trading stocks on the Brokerage Account (options before Oct 19, 2026), drawn from the
+// House's own record with text nodes only. The page
 // never contacts a quote vendor or the brokerage, never shows a quote, and never starts work on anything.
 //
 // The page is five things, top to bottom (the owner, Oct 1, 2026): Profit and Running; the account's balance over its
@@ -24,10 +25,17 @@ const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_SOCKET_MESSAGE = 64 * 1024;
 const HISTORY_LIMIT = 2048;
 const MARK = 'account.mark';
-// The checkpoint read this page validates (the Worker's `WINDOW_READ`): progress, the positions ledger, the House's
-// `levels` and `rationale`. The practice league rides the same read; this page draws none of its figures (the board reads
-// only which agents practise: `practisingAgents`).
-export const CHECKPOINT_READ = '?progress=1&positions=1&practice=1&window=1';
+// The checkpoint read this page validates (the Worker's `LANE_READ`, Oct 19, 2026): progress, the positions ledger, the
+// House's `levels` and `rationale`, and the event lane's view (`lane_v1`: its programs on the board, the equity book's lots
+// in the positions, the goal's checkpoint). The practice league rides the same read; this page draws none of its figures
+// (the older board reads only which agents practise: `practisingAgents`).
+export const CHECKPOINT_READ = '?progress=1&positions=1&practice=1&window=1&lane=1';
+// The event lane's view, when the House sends one: with it the board is the lane's four steps and the positions list its
+// lots; without it (an older House) the page is what it was.
+export const laneOf = checkpoint => {
+  const lane = checkpoint?.[LANE_KEY];
+  return lane && typeof lane === 'object' && Array.isArray(lane.programs) ? lane : null;
+};
 
 // ---- the reset (Sept 26, 2026, the options swarm)
 // The profit basis is the checkpoint's own `performance` block: the Brokerage Account's equity when the record started
@@ -163,12 +171,17 @@ export function totalProfit(checkpoint) {
   if (!basis.published || basis.net_flows === null || !within(basis.verified_at, checkpoint.published_at)) return null;
   return decimalOf(centsOf(account.equity) - centsOf(basis.start_equity) - centsOf(basis.net_flows));
 }
-// The House's own ledger total: complete only while it can value every open position (market hours).
+// The House's own ledger total: complete only while it can value every open position (market hours). With the lane's view
+// it holds the equity book's lots too, and is unknown while they are.
 export function tradingProfit(checkpoint, now = Date.now()) {
   const trading = checkpoint?.trading;
   if (!numeric(trading?.pnl_usd) || !within(trading.as_of, checkpoint.published_at)
       || !within(trading.as_of, new Date(now).toISOString())) return null;
-  return trading.pnl_usd;
+  const lane = laneOf(checkpoint);
+  if (!lane) return trading.pnl_usd;
+  const lots = lane.lots;
+  if (!lots || !numeric(lots.pnl_usd) || !within(lots.as_of, checkpoint.published_at)) return null;
+  return decimalOf(centsOf(trading.pnl_usd) + centsOf(lots.pnl_usd));
 }
 // The headline: what the account has made since the reset (the balance chart's own number), or the House's ledger total
 // while the account cannot be read. A dash when neither is known.
@@ -355,9 +368,18 @@ export function positionWhat(row) {
   if (RIGHT_FIRST.includes(row?.structure) && right) return `${root} ${right} ${STRUCTURE_WORDS[row.structure]}`;
   return structureText(root, row?.structure);
 }
-const pidOf = row => Number(show(row?.id).slice(5)) || 0;
+// A row's number after its prefix ("real:12", "lot:7"): the last tie-break of the table's order.
+const pidOf = row => Number(show(row?.id).split(':')[1]) || 0;
 const stampOf = value => Date.parse(value) || 0;
 const amountLine = value => ({ usd: numeric(value) ? value : null, pnl: numeric(value) ? signedMoney(value) : '—', tone: signOf(value) });
+// A lot of the equity book (the lane's view, Oct 19, 2026): "F shares", and how many ("9 shares", "2.51 shares").
+export const lotWhat = row => `${show(row?.symbol)} shares`;
+export function sharesText(value) {
+  const shares = Number(value);
+  if (!Number.isFinite(shares)) return '';
+  const text = shares.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return `${text} ${shares === 1 ? 'share' : 'shares'}`;
+}
 export function positionsLedger(checkpoint, now = Date.now()) {
   const block = checkpoint?.positions;
   if (!block || typeof block !== 'object' || !Array.isArray(block.rows)) return null;
@@ -371,22 +393,43 @@ export function positionsLedger(checkpoint, now = Date.now()) {
     const agentRow = AGENT_SOURCES.includes(row.source);
     const reason = agentRow ? reasons.get(row.id) || null : null;
     const routeKey = agentRow ? (ROUTE_TAGS[reason?.route] ? reason.route : row.source === 'incubator' ? 'incubator' : null) : null;
+    const quantity = row.status === 'open' && row.open_quantity < row.quantity ? row.open_quantity : row.quantity;
     return {
       id: show(row.id), source: show(row.source), agent: agentRow ? show(row.agent) : null,
       who: agentRow ? (validDisplayName(row.display_name) ? row.display_name : names.get(row.agent) || titleCase(row.agent)) : SOURCE_WORDS[row.source] || '',
       what: positionWhat(row), open: row.status === 'open', route: routeKey, routeText: routeKey ? LEVEL_WORDS[routeKey] : '',
       why: reason?.openWhy || null, closeWhy: reason?.exit === 'agent' ? reason.closeWhy : null, exit: reason?.exit ?? null,
       thesis: agentRow ? thesisOf(row.agent) : null, maxLoss: reason?.maxLoss ?? null,
-      quantity: row.status === 'open' && row.open_quantity < row.quantity ? row.open_quantity : row.quantity,
+      quantity, amount: plural(quantity, 'contract'),
       expiry: expiryText(row.expiry), openedAt: show(row.opened_at), closedAt: row.status === 'closed' ? show(row.closed_at) : null,
       ...amountLine(row.pnl_usd),
     };
   };
-  const open = rows.filter(row => row.status === 'open')
-    .sort((left, right) => stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left)).map(line);
-  const closedRows = rows.filter(row => row.status === 'closed')
-    .sort((left, right) => stampOf(right.closed_at) - stampOf(left.closed_at) || stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left))
-    .map(line);
+  // The lane's lots, like any other position: an event program's (its plain name; its dot on the board) or an older
+  // lane's agent's (its name on the roster), the band it was bought at, its shares and its dollars.
+  const lane = laneOf(checkpoint);
+  const lots = lane?.lots && typeof lane.lots === 'object' && Array.isArray(lane.lots.rows) ? lane.lots : null;
+  const programs = new Map((lane?.programs || []).map(program => [program?.id, program]));
+  const lotLine = row => {
+    const byProgram = row.source === 'program';
+    const route = ROUTE_TAGS[row.route] ? row.route : null;
+    const open = row.status === 'open';
+    return {
+      id: show(row.id), source: byProgram ? 'program' : 'agent', agent: show(row.owner),
+      who: byProgram ? show(programs.get(row.owner)?.name) || titleCase(row.owner) : names.get(row.owner) || titleCase(row.owner),
+      what: lotWhat(row), open, route, routeText: route ? LEVEL_WORDS[route] : '', why: null, closeWhy: null, exit: null,
+      thesis: byProgram ? null : thesisOf(row.owner), maxLoss: null, quantity: Number(open ? row.open_shares : row.shares) || 0,
+      amount: sharesText(open ? row.open_shares : row.shares), expiry: '', openedAt: show(row.opened_at),
+      closedAt: open ? null : show(row.closed_at), ...amountLine(row.pnl_usd),
+    };
+  };
+  const lotRows = (lots?.rows || []).filter(row => row && typeof row === 'object');
+  const byOpened = (left, right) => stampOf(right.opened_at) - stampOf(left.opened_at) || pidOf(right) - pidOf(left);
+  const byClosed = (left, right) => stampOf(right.closed_at) - stampOf(left.closed_at) || stampOf(right.opened_at) - stampOf(left.opened_at)
+    || pidOf(right) - pidOf(left);
+  const both = list => [...rows.filter(list).map(row => ({ row, draw: line })), ...lotRows.filter(list).map(row => ({ row, draw: lotLine }))];
+  const open = both(row => row.status === 'open').sort((left, right) => byOpened(left.row, right.row)).map(({ row, draw }) => draw(row));
+  const closedRows = both(row => row.status === 'closed').sort((left, right) => byClosed(left.row, right.row)).map(({ row, draw }) => draw(row));
   const known = list => list.every(entry => entry.usd !== null);
   const total = list => (known(list) ? sumOf(list.map(entry => entry.usd)) : null);
   // The House's calibration folds into one line among the closed (its open round trip, if any, stays a row of its own).
@@ -398,8 +441,12 @@ export function positionsLedger(checkpoint, now = Date.now()) {
   const closed = closedRows.filter(entry => entry.source !== 'calibration');
   const other = block.other && typeof block.other === 'object' && OTHER_PARTS.every(part => numeric(block.other[part]))
     ? sumOf(OTHER_PARTS.map(part => block.other[part])) : null;
-  const earlier = block.earlier && typeof block.earlier === 'object'
-    ? { count: Number(block.earlier.positions) || 0, ...amountLine(block.earlier.pnl_usd) } : null;
+  // The positions the House stopped listing, the table's and the lots' together, as one line.
+  const folded = [block.earlier, lots?.earlier].filter(part => part && typeof part === 'object');
+  const earlier = folded.length ? {
+    count: folded.reduce((sum, part) => sum + (Number(part.positions) || 0), 0),
+    ...amountLine(folded.every(part => numeric(part.pnl_usd)) ? sumOf(folded.map(part => part.pnl_usd)) : null),
+  } : null;
   // The Closed group: every closed row, and the positions the House no longer lists.
   const closedTotal = total(earlier ? [...closedRows, earlier] : closedRows);
   // What is not an open position: realized results and the account's other activity.
@@ -615,19 +662,22 @@ export function agentThesis(checkpoint, id) {
 
 // ---- the game's levels
 export const LEVEL_WORDS = { train: 'Train', validation: 'Validation', practice: 'Practice', incubator: 'Incubator', tuition: 'Tuition',
-  candidate: 'Candidate', probe: 'Probe', sized: 'Sized', retired: 'Retired' };
+  candidate: 'Candidate', probe: 'Probe', sized: 'Sized', retired: 'Retired', shadow: 'Shadow', learning: 'Learning' };
 export const LEVEL_TAG_KIND = { train: 'band', validation: 'band', candidate: 'band', practice: 'practice', incubator: 'incubator', tuition: 'tuition',
-  probe: 'real', sized: 'real', retired: 'retired' };
+  probe: 'real', sized: 'real', retired: 'retired', shadow: 'shadow', learning: 'learning' };
 // Hover only: never on the page.
 export const LEVEL_TITLES = {
   train: 'Learning on recorded markets', validation: 'Tested on years it never saw', practice: 'Shadow trades on live quotes, never real money',
   incubator: INCUBATOR_TITLE, tuition: 'One real contract to measure fills, never evidence', candidate: 'Passed the unseen market test',
   probe: 'Real money, small', sized: 'Real money, sized by its record',
+  // The event lane's steps (Oct 19, 2026).
+  shadow: 'Traded in shadow only, never real money', learning: 'Real money from its first event, at learning size',
 };
 // A real position's route as a tag beside its agent's name.
 export const ROUTE_TAGS = {
   tuition: { kind: 'tuition', title: LEVEL_TITLES.tuition },
   incubator: { kind: 'incubator', title: INCUBATOR_TITLE },
+  learning: { kind: 'learning', title: LEVEL_TITLES.learning },
   probe: { kind: 'real', title: LEVEL_TITLES.probe },
   sized: { kind: 'real', title: LEVEL_TITLES.sized },
 };
@@ -692,10 +742,10 @@ export const STAIRS = {
 export const REST_SHARES = [0.09, 0.25, 0.45, 0.7];
 // The drawn width of each step, top to bottom, from each step's share (0 to 1, or null when it was not counted). The
 // widths only narrow going up, whatever the counts say: a step counted above the one under it is held a notch inside it.
-export function stairWidths(shares, { floor, cap, notch }) {
+export function stairWidths(shares, { floor, cap, notch }, rest = REST_SHARES) {
   const widths = shares.map(() => 1);
   for (let index = shares.length - 2; index >= 0; index -= 1) {
-    const share = Number.isFinite(shares[index]) ? Math.min(1, Math.max(0, shares[index])) : REST_SHARES[index];
+    const share = Number.isFinite(shares[index]) ? Math.min(1, Math.max(0, shares[index])) : rest[index];
     const wanted = floor[index] + (cap[index] - floor[index]) * share;
     widths[index] = Number(Math.max(floor[index], Math.min(wanted, widths[index + 1] - notch)).toFixed(4));
   }
@@ -725,6 +775,80 @@ export function swarmLine(checkpoint) {
   const trials = countOf(checkpoint?.gym?.trials);
   if (trials !== null) parts.push(plural(trials, 'backtest'));
   return parts.join(' · ');
+}
+
+// ---- the event lane's board (Oct 19, 2026)
+// The lane's four steps, top to bottom: Sized, Probe, Learning, Shadow. The gold line runs under Learning, since a
+// program trades real money from its first event; a program that never seats stands on Shadow. `reached` is the lane's
+// funnel key. The same staircase as the older board: each step as wide as the share of programs that ever reached it.
+export const LANE_STAGES = [
+  { level: 4, key: 'sized', label: 'Sized', levels: ['sized'], real: true, reached: 'sized' },
+  { level: 3, key: 'probe', label: 'Probe', levels: ['probe'], real: true, reached: 'probe' },
+  { level: 2, key: 'learning', label: 'Learning', levels: ['learning'], real: true, reached: 'learning' },
+  { level: 1, key: 'shadow', label: 'Shadow', levels: ['shadow'], reached: 'shadow' },
+];
+const LANE_RUNG = { sized: 4, probe: 3, learning: 2, shadow: 1 };
+// Three steps above the base. The phone layout keeps Learning wide enough for five dots a row at 390 px and narrow enough
+// that the line's label stays beside it at every phone width down to 320 px; it narrows hard only at the line.
+export const LANE_STAIRS = {
+  wide: { floor: [0.3, 0.38, 0.46], cap: [1, 1, 1], notch: 0.06 },
+  narrow: { floor: [0.42, 0.5, 0.635], cap: [0.52, 0.58, 0.65], notch: 0.05 },
+};
+export const LANE_REST_SHARES = [0.09, 0.25, 0.45];
+// What each step means, on hover; and the line's.
+export const LANE_STEP_TITLES = { shadow: LEVEL_TITLES.shadow, learning: LEVEL_TITLES.learning, probe: 'Real money, more of it, after a passed look',
+  sized: LEVEL_TITLES.sized };
+export const LANE_MONEY_LINE = 'Above this line every program trades real money.';
+// The goal's checkpoint, counted in events (the hover on its count).
+export const CHECKPOINT_TITLE = 'Settled real-money events at Probe size or above, toward the next checkpoint.';
+// A program's ring: its settled events toward its next look, only while the House is publishing.
+export function lookProgress(program, checkpoint, now = Date.now()) {
+  const look = program?.look;
+  if (!look || !Number.isSafeInteger(look.need) || look.need < 1 || !Number.isSafeInteger(look.to_go) || !floorRunning(checkpoint, now)) return null;
+  const done = Math.max(0, look.need - look.to_go);
+  return { fraction: Math.min(1, done / look.need), done, need: look.need, toGo: look.to_go, count: `${done.toLocaleString('en-US')} / ${look.need.toLocaleString('en-US')}` };
+}
+// "real 1 event · shadow 14 events": what a program has settled, real money first.
+export function programRecord(program) {
+  const real = Number.isSafeInteger(program?.real) ? program.real : 0;
+  const shadow = Number.isSafeInteger(program?.shadow) ? program.shadow : 0;
+  const parts = [];
+  if (program?.band !== 'shadow') parts.push(`real ${plural(real, 'event')}`);
+  parts.push(`shadow ${plural(shadow, 'event')}`);
+  return { main: parts.join(' · '), tone: '', rest: '' };
+}
+// Every program the House sends, as the board's rows: a dot on its band's step (a retired program leaves the board).
+export function laneRows(checkpoint, now = Date.now()) {
+  const lane = laneOf(checkpoint);
+  if (!lane) return [];
+  return lane.programs.filter(program => program && typeof program === 'object' && agentId(program.id)).map(program => {
+    const level = show(program.band);
+    const progress = lookProgress(program, checkpoint, now);
+    const label = [show(program.name), LEVEL_WORDS[level] || '', progress ? `${progress.toGo.toLocaleString('en-US')} events to the next look` : '']
+      .filter(Boolean).join(' · ');
+    return { id: show(program.id), name: show(program.name) || titleCase(program.id), family: '', band: level, level, levelText: LEVEL_WORDS[level] || '',
+      real: level !== 'shadow' && level !== 'retired', structure: '', record: programRecord(program), progress, practising: false,
+      rung: Object.hasOwn(LANE_RUNG, level) ? LANE_RUNG[level] : null, program: true, label };
+  });
+}
+export function laneStages(checkpoint, now = Date.now()) {
+  const rows = laneRows(checkpoint, now);
+  const funnel = laneOf(checkpoint)?.funnel && typeof laneOf(checkpoint).funnel === 'object' ? laneOf(checkpoint).funnel : null;
+  const counts = LANE_STAGES.map(stage => (funnel ? countOf(funnel[stage.reached]) : null));
+  const most = Math.max(1, ...counts.map(count => count ?? 0));
+  const shareOf = count => (count ? Math.log10(count + 1) / Math.log10(most + 1) : 0);
+  const shares = counts.map(count => (count === null ? null : shareOf(count)));
+  const wide = stairWidths(shares, LANE_STAIRS.wide, LANE_REST_SHARES);
+  const narrow = stairWidths(shares, LANE_STAIRS.narrow, LANE_REST_SHARES);
+  // In the House's order (its band first, then as the lane registered them).
+  return LANE_STAGES.map((stage, index) => ({ ...stage, agents: rows.filter(row => row.rung === stage.level),
+    ever: counts[index], share: shareOf(counts[index]), width: { wide: wide[index], narrow: narrow[index] } }));
+}
+// "0 / 100 events": the goal's checkpoint, counted in settled real-money events at Probe size or above.
+export function laneCheckpoint(checkpoint) {
+  const point = laneOf(checkpoint)?.checkpoint;
+  if (!point || !Number.isSafeInteger(point.events) || !Number.isSafeInteger(point.next)) return null;
+  return { text: `${point.events.toLocaleString('en-US')} / ${point.next.toLocaleString('en-US')} events`, title: CHECKPOINT_TITLE };
 }
 
 // ---- transport
@@ -950,10 +1074,12 @@ function numbersPanel(checkpoint, state) {
 
 // 2. The balance over the whole record: round gridlines, the days along the bottom, each deposit where it landed, a gold
 // dot where an agent opened a real position (hollow while it is open). Hover or tap reads any point.
+// An agent's position, an event program's lot included, gets a dot; the House's own never does.
+const MARKED_SOURCES = [...AGENT_SOURCES, 'program'];
 export function chartMarks(checkpoint, series) {
   const ledger = positionsLedger(checkpoint);
   if (!ledger || !series) return [];
-  return [...ledger.open, ...ledger.closed].filter(line => AGENT_SOURCES.includes(line.source))
+  return [...ledger.open, ...ledger.closed].filter(line => MARKED_SOURCES.includes(line.source))
     .map(line => ({ line, at: Date.parse(line.openedAt) })).filter(({ at }) => Number.isFinite(at) && at >= series.start && at <= series.end)
     .map(({ line, at }) => {
       const after = series.points.find(point => point.at >= at) || series.last;
@@ -1205,7 +1331,7 @@ function positionNode(line, state) {
   }
   meta.append(who);
   if (line.route && ROUTE_TAGS[line.route]) meta.append(tagNode(line.routeText, ROUTE_TAGS[line.route].kind, ROUTE_TAGS[line.route].title));
-  const facts = [plural(line.quantity, 'contract'), `opened ${date(line.openedAt, 'day')}`];
+  const facts = [line.amount || plural(line.quantity, 'contract'), `opened ${date(line.openedAt, 'day')}`];
   if (line.closedAt) facts.push(`closed ${date(line.closedAt, 'day')}`);
   else if (line.expiry) facts.push(`expires ${line.expiry}`);
   if (line.maxLoss) facts.push(`max loss ${money(line.maxLoss, 0)}`);
@@ -1271,7 +1397,7 @@ function positionsPanel(checkpoint, state) {
   if (!nodes.length) nodes.push(element('p', 'No real positions yet.', 'empty-state'));
   state.lastPnl = new Map([...ledger.open, ...ledger.closed].map(line => [line.id, line.usd]));
   const other = element('div', null, 'ledger-line');
-  other.setAttribute('title', 'Fees no position carries, and interest.');
+  other.setAttribute('title', 'Fees no position carries, dividends and interest.');
   other.append(element('span', 'Fees & other'), element('span', ledger.other.pnl, `ledger-sum ${ledger.other.tone}`.trim()));
   const total = element('div', null, 'ledger-total');
   total.append(element('span', 'Profit'), element('span', ledger.total.pnl, `ledger-sum ${ledger.total.tone}`.trim()));
@@ -1319,7 +1445,7 @@ function agentDetail(row, checkpoint, state) {
   close.addEventListener('click', () => state.selectAgent(null, row.id));
   head.append(element('h3', row.name), levelTag(row.level), close);
   card.append(head);
-  const thesis = agentThesis(checkpoint, row.id);
+  const thesis = row.program ? null : agentThesis(checkpoint, row.id);
   if (thesis || row.structure) {
     const strategy = element('p', null, 'agent-strategy');
     if (row.structure) strategy.append(element('span', row.structure, 'strategy-tag'));
@@ -1329,7 +1455,7 @@ function agentDetail(row, checkpoint, state) {
   const record = element('p', null, 'agent-record');
   record.append(element('span', row.record.main, row.record.tone));
   if (row.record.rest) record.append(element('span', row.record.rest));
-  card.append(record, progressDetail(row.progress));
+  card.append(record, row.program ? lookDetail(row.progress) : progressDetail(row.progress));
   return card;
 }
 // The one line across the board. What it means is for a hover, never on the page. Tuition and the Incubator stand under
@@ -1340,11 +1466,20 @@ export const MONEY_LINE = 'Above this line agents trade real money, earned on th
 // which is true of an agent that practises and not of every dot that stands on this step.
 export const STEP_TITLES = { ...LEVEL_TITLES, practice: 'Shadow trades on live quotes. A dotted gold dot is a small real-money test.' };
 // The line's label: an up-caret (drawn, not a character) and its two words.
-function moneyMark() {
+// A program's next look in its card: how many of the look's settled events it has.
+function lookDetail(progress) {
+  const panel = element('div', null, 'agent-progress');
+  if (!progress) return panel;
+  const head = element('div', null, 'progress-heading');
+  head.append(element('span', 'Next look'), element('span', `${progress.count} events`, 'progress-count'));
+  panel.append(head);
+  return panel;
+}
+function moneyMark(title = MONEY_LINE) {
   const mark = element('span', null, 'ladder-real-mark');
   // The group of steps above the line is already named "Real money" for a screen reader.
   mark.setAttribute('aria-hidden', 'true');
-  mark.setAttribute('title', MONEY_LINE);
+  mark.setAttribute('title', title);
   const caret = svgElement('svg', { viewBox: '0 0 10 6', class: 'ladder-real-caret', 'aria-hidden': 'true' });
   caret.append(svgElement('path', { d: 'M1 5 5 1l4 4' }));
   mark.append(caret, element('span', 'Real money'));
@@ -1356,15 +1491,18 @@ function stepWidth(node, width) {
   try { node.style.setProperty('--step', percent(width.wide)); node.style.setProperty('--step-narrow', percent(width.narrow)); } catch { /* no layout here */ }
 }
 // How many ever reached a rung, for a hover and a screen reader; Train's also says what the swarm threw away and tried.
-function reachedTitle(stage, checkpoint) {
-  const reached = `${stage.ever.toLocaleString('en-US')} ${stage.ever === 1 ? 'family has' : 'families have'} ever reached ${stage.label}`;
-  const line = stage.reached === 'born' ? swarmLine(checkpoint) : '';
+function reachedTitle(stage, checkpoint, lane = false) {
+  const noun = lane ? (stage.ever === 1 ? 'program has' : 'programs have') : stage.ever === 1 ? 'family has' : 'families have';
+  const reached = `${stage.ever.toLocaleString('en-US')} ${noun} ever reached ${stage.label}`;
+  const line = !lane && stage.reached === 'born' ? swarmLine(checkpoint) : '';
   return line ? `${reached} · ${line}` : reached;
 }
 function agentsPanel(checkpoint, state) {
-  const board = element('div', null, 'ladder');
+  // The event lane's programs on its four steps when the House sends its view; the older swarm's board otherwise.
+  const lane = Boolean(laneOf(checkpoint));
+  const board = element('div', null, lane ? 'ladder ladder-lane' : 'ladder');
   // Every agent that stands on a rung: the retired are off the board.
-  const rows = swarmRows(checkpoint).filter(row => row.rung !== null);
+  const rows = (lane ? laneRows(checkpoint) : swarmRows(checkpoint)).filter(row => row.rung !== null);
   const details = element('div', null, 'agent-detail');
   details.id = 'agent-detail';
   details.setAttribute('aria-live', 'polite');
@@ -1391,7 +1529,7 @@ function agentsPanel(checkpoint, state) {
   money.setAttribute('aria-label', 'Real money');
   const floor = element('div', null, 'ladder-floor');
   board.append(money);
-  const stages = agentStages(checkpoint);
+  const stages = lane ? laneStages(checkpoint) : agentStages(checkpoint);
   const lowestReal = stages.filter(stage => stage.real).at(-1);
   for (const stage of stages) {
     // A step nobody stands on and nobody is known to have reached is hollow: a dashed outline around its name. With no
@@ -1401,7 +1539,7 @@ function agentsPanel(checkpoint, state) {
     stepWidth(rung, stage.width);
     const heading = element('h3', stage.label, 'rung-name');
     heading.id = `rung-${stage.level}`;
-    heading.setAttribute('title', STEP_TITLES[stage.key]);
+    heading.setAttribute('title', (lane ? LANE_STEP_TITLES : STEP_TITLES)[stage.key]);
     rung.setAttribute('aria-labelledby', heading.id);
     const group = element('div', null, 'agent-dots');
     for (const row of stage.agents) {
@@ -1412,7 +1550,8 @@ function agentsPanel(checkpoint, state) {
       button.dataset.rung = String(stage.level);
       const progress = row.progress ? ` · ${row.progress.count} toward ${row.progress.label}` : '';
       // "practised", not "practising": the read proves a session inside its window, not one this minute.
-      const label = `${row.name} · ${row.levelText}${row.practising ? ', practised' : ''}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
+      const label = row.program ? row.label
+        : `${row.name} · ${row.levelText}${row.practising ? ', practised' : ''}${row.structure ? ` · ${row.structure}` : ''}${progress}`;
       button.setAttribute('aria-label', label);
       button.setAttribute('title', label);
       button.setAttribute('aria-controls', details.id);
@@ -1430,7 +1569,7 @@ function agentsPanel(checkpoint, state) {
     // The count the House published, as a small number at the step's end; a step it did not count shows none.
     if (stage.ever !== null) {
       const reached = element('span', stage.ever.toLocaleString('en-US'), 'reached-count');
-      const title = reachedTitle(stage, checkpoint);
+      const title = reachedTitle(stage, checkpoint, lane);
       reached.setAttribute('role', 'img');
       reached.setAttribute('aria-label', title);
       reached.setAttribute('title', title);
@@ -1438,7 +1577,7 @@ function agentsPanel(checkpoint, state) {
     }
     (stage === lowestReal ? floor : stage.real ? money : board).append(rung);
   }
-  floor.append(moneyMark());
+  floor.append(moneyMark(lane ? LANE_MONEY_LINE : MONEY_LINE));
   money.append(floor);
   state.selectAgent(state.selectedAgent);
   return [board, details];
@@ -1497,7 +1636,7 @@ async function startPage(root) {
   const find = id => root.querySelector(`#${id}`);
   const box = {
     numbers: find('floor-numbers'), account: find('floor-account'), status: find('floor-status'), stream: find('floor-stream'),
-    positions: find('floor-positions'), agents: find('floor-agents'),
+    positions: find('floor-positions'), agents: find('floor-agents'), checkpoint: find('floor-checkpoint'),
   };
   const state = {
     checkpoint: null, agents: new Map(), names: new Map(), feed: [], marks: [], mode: 'loading', clock: null,
@@ -1518,8 +1657,17 @@ async function startPage(root) {
     state.statusText = text;
     box.status.replaceChildren(pulse(), element('span', text, 'status-word'));
   };
+  // The goal's checkpoint beside the Agents heading, in events (the lane's view only).
+  const drawCheckpoint = () => {
+    if (!box.checkpoint) return;
+    const point = laneCheckpoint(state.checkpoint);
+    box.checkpoint.hidden = !point;
+    box.checkpoint.textContent = point ? point.text : '';
+    if (point) box.checkpoint.setAttribute('title', point.title);
+  };
   const drawAgents = () => {
     if (!state.checkpoint) return;
+    drawCheckpoint();
     const focusedAgent = document.activeElement?.dataset?.agent;
     drawn(box.agents, agentsPanel(state.checkpoint, state));
     settleAgents(state);

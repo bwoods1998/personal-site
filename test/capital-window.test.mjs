@@ -9,7 +9,7 @@ import {
   scorePoint, validScorePoint, numberTokens, numbered, MAX_STRUCTURES, MAX_CHECKPOINT_BYTES, MAX_PUBLIC_CHECKPOINT_BYTES, MAX_NAMED_ROWS, MAX_POSITIONS,
   MAX_PRACTICE_ROWS, byteLength,
 } from '../capital/schema.js';
-import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
+import { CURRENT_READ, POSITIONS_READ, WINDOW_READ, LANE_READ, MAX_SCORE_POINTS, SCORE_BUCKET_MS } from '../lib/capital.mjs';
 import { CHECKPOINT_READ } from '../capital/capital.js';
 import { floor, post, get } from './harness.mjs';
 import { LEAKS, PLAIN } from './number-words.mjs';
@@ -31,7 +31,7 @@ test('the window adds two optional blocks: the words for levels, routes and exit
   assert.deepEqual(ROUTES, ['tuition', 'incubator', 'probe', 'sized', 'calibration', 'house']);
   assert.deepEqual(EXITS, ['agent', 'house', 'expiry']);
   assert.equal(FUNNEL_KEYS.length, 14);
-  assert.deepEqual(OPTIONAL_CHECKPOINT_FIELDS, ['trading', 'positions', 'practice', 'levels', 'rationale']);
+  assert.deepEqual(OPTIONAL_CHECKPOINT_FIELDS, ['trading', 'positions', 'practice', 'levels', 'rationale', 'lane_v1']);
   assert.equal(validCheckpoint(windowCheckpoint()), true, 'a new House: both blocks');
   assert.equal(validCheckpoint(ledgerCheckpoint()), true, 'an old House: neither');
   const { rationale: _r, ...levelsOnly } = windowCheckpoint();
@@ -136,7 +136,7 @@ test('rationale: theses in safe words, and each trade’s route, tags, exit and 
 // ---------------------------------------------------------------------------- the Worker
 test('every read but the window read is byte for byte what it was, with the blocks stored or not (C7)', async () => {
   const reads = ['', '?progress=1', POSITIONS_READ, CURRENT_READ, WINDOW_READ];
-  assert.equal(CHECKPOINT_READ, WINDOW_READ, 'the page reads the window (Oct 1, 2026: the owner\'s ideas on the prior design)');
+  assert.equal(CHECKPOINT_READ, LANE_READ, 'the page reads the window and the lane (Oct 19, 2026), a superset of the window read');
   assert.equal(WINDOW_READ, '?progress=1&positions=1&practice=1&window=1');
   const bodies = async checkpoint => {
     const { capital } = floor(at + 30000);
